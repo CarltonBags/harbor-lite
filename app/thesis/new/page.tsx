@@ -1070,14 +1070,99 @@ export default function NewThesisPage() {
   }
 
   const handleFinalStart = async () => {
-    if (!thesisId) {
-      alert('Thesis ID nicht gefunden. Bitte speichere zuerst die Thesis.')
+    if (!user) {
+      alert('Bitte melde Dich an, um fortzufahren.')
+      return
+    }
+
+    // Ensure thesis is saved before starting generation
+    if (!outline || outline.length === 0) {
+      alert('Bitte speichere zuerst die Gliederung.')
+      return
+    }
+
+    // Ensure we have all required form data
+    if (!formData.topic || !formData.field || !formData.type) {
+      alert('Bitte fülle alle erforderlichen Felder aus.')
       return
     }
 
     setLoading(true)
-    
+
     try {
+      // Ensure thesis exists in database - create or update it
+      let currentThesisId = thesisId
+      
+      if (!currentThesisId) {
+        // Create new thesis
+        const fieldValue = formData.field === 'Andere' ? formData.customField : formData.field
+        
+        // Calculate target length in words
+        let minWords: number
+        let maxWords: number
+        
+        if (formData.lengthUnit === 'pages') {
+          const minPages = parseInt(formData.lengthMin) || 0
+          const maxPages = parseInt(formData.lengthMax) || 0
+          minWords = minPages * 320
+          maxWords = maxPages * 320
+        } else {
+          const minWordsInput = parseInt(formData.lengthWords) || 0
+          minWords = minWordsInput
+          maxWords = Math.round(minWordsInput * 1.05)
+        }
+        
+        const avgWords = Math.round((minWords + maxWords) / 2)
+        
+        const newThesis = await createThesis(user.id, {
+          topic: formData.topic,
+          field: fieldValue,
+          thesis_type: formData.type || 'master',
+          research_question: formData.researchQuestion || '',
+          citation_style: formData.citationStyle || 'apa',
+          target_length: avgWords,
+          length_unit: formData.lengthUnit,
+          outline: outline,
+        })
+        currentThesisId = newThesis.id
+        setThesisId(currentThesisId)
+      } else {
+        // Update existing thesis with outline and any missing data
+        const fieldValue = formData.field === 'Andere' ? formData.customField : formData.field
+        
+        // Calculate target length in words
+        let minWords: number
+        let maxWords: number
+        
+        if (formData.lengthUnit === 'pages') {
+          const minPages = parseInt(formData.lengthMin) || 0
+          const maxPages = parseInt(formData.lengthMax) || 0
+          minWords = minPages * 320
+          maxWords = maxPages * 320
+        } else {
+          const minWordsInput = parseInt(formData.lengthWords) || 0
+          minWords = minWordsInput
+          maxWords = Math.round(minWordsInput * 1.05)
+        }
+        
+        const avgWords = Math.round((minWords + maxWords) / 2)
+        
+        await updateThesis(currentThesisId, {
+          topic: formData.topic,
+          field: fieldValue,
+          thesis_type: formData.type || 'master',
+          research_question: formData.researchQuestion || '',
+          citation_style: formData.citationStyle || 'apa',
+          target_length: avgWords,
+          length_unit: formData.lengthUnit,
+          outline: outline,
+        })
+      }
+
+      if (!currentThesisId) {
+        throw new Error('Failed to create or update thesis')
+      }
+    
       // Trigger background worker in TEST MODE
       // Set testMode to false for production, true for testing
       const testMode = true // TODO: Change to false for production
@@ -1087,7 +1172,7 @@ export default function NewThesisPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ thesisId, testMode }),
+        body: JSON.stringify({ thesisId: currentThesisId, testMode }),
       })
 
       if (!response.ok) {
@@ -1112,7 +1197,7 @@ export default function NewThesisPage() {
         setLoading(false)
       } else {
         // Navigate to generation page for production mode
-        router.push(`/thesis/generate?id=${thesisId}`)
+        router.push(`/thesis/generate?id=${currentThesisId}`)
       }
     } catch (error) {
       console.error('Error starting generation:', error)
@@ -2180,13 +2265,13 @@ export default function NewThesisPage() {
             </button>
             <button
               onClick={handleFinalStart}
-              disabled={loading || loadingQueries || searchQueries.length === 0}
+              disabled={loading || !thesisId || !outline || outline.length === 0}
               className="px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 transition-all flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading || loadingQueries ? (
+              {loading ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                  {loadingQueries ? 'Generiere Suchanfragen...' : 'Starte Generierung...'}
+                  Starte Generierung...
                 </>
               ) : (
                 <>

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/client'
-import { getThesisById, updateThesis } from '@/lib/supabase/theses'
 import { env } from '@/lib/env'
+import { GoogleGenAI } from '@google/genai'
 
 /**
  * API endpoint to trigger background thesis generation job
@@ -24,13 +24,18 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get thesis data
+    // Get thesis data using server-side client (bypasses RLS)
     const supabase = createSupabaseServerClient()
-    const thesis = await getThesisById(thesisId)
+    const { data: thesis, error: thesisError } = await supabase
+      .from('theses')
+      .select('*')
+      .eq('id', thesisId)
+      .single()
 
-    if (!thesis) {
+    if (thesisError || !thesis) {
+      console.error('Thesis not found:', { thesisId, error: thesisError })
       return NextResponse.json(
-        { error: 'Thesis not found' },
+        { error: 'Thesis not found. Please make sure the thesis is saved before starting generation.' },
         { status: 404 }
       )
     }
@@ -42,17 +47,70 @@ export async function POST(request: Request) {
       )
     }
 
-    if (!thesis.file_search_store_id) {
-      return NextResponse.json(
-        { error: 'FileSearchStore ID is required' },
-        { status: 400 }
-      )
+    // Create FileSearchStore if it doesn't exist (needed for worker to upload PDFs)
+    let fileSearchStoreId = thesis.file_search_store_id
+    if (!fileSearchStoreId) {
+      try {
+        if (!env.GEMINI_KEY) {
+          console.error('GEMINI_KEY is not configured')
+          return NextResponse.json(
+            { error: 'GEMINI_KEY is not configured' },
+            { status: 500 }
+          )
+        }
+
+        console.log('Creating FileSearchStore for thesis:', thesisId)
+        
+        // Initialize Google Gen AI SDK
+        const ai = new GoogleGenAI({ apiKey: env.GEMINI_KEY })
+
+        // Create a new FileSearchStore
+        const fileSearchStore = await ai.fileSearchStores.create({
+          config: { displayName: `Thesis: ${thesis.topic || 'Unbenannt'}` },
+        })
+
+        console.log('FileSearchStore created:', fileSearchStore.name)
+        fileSearchStoreId = fileSearchStore.name
+
+        // Update thesis with the new FileSearchStore ID using server-side client
+        const { data: updatedThesis, error: updateError } = await supabase
+          .from('theses')
+          .update({ file_search_store_id: fileSearchStoreId })
+          .eq('id', thesisId)
+          .select()
+
+        if (updateError) {
+          console.error('Error updating thesis with FileSearchStore ID:', updateError)
+          throw new Error(`Failed to update thesis: ${updateError.message}`)
+        }
+
+        if (!updatedThesis || updatedThesis.length === 0) {
+          throw new Error('Thesis not found when trying to update FileSearchStore ID')
+        }
+
+        console.log('Thesis updated with FileSearchStore ID:', fileSearchStoreId)
+      } catch (error) {
+        console.error('Error creating FileSearchStore:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        const errorStack = error instanceof Error ? error.stack : undefined
+        console.error('Error details:', { errorMessage, errorStack })
+        return NextResponse.json(
+          { error: 'Failed to create FileSearchStore', details: errorMessage },
+          { status: 500 }
+        )
+      }
     }
 
-    // Update thesis status to 'generating'
-    await updateThesis(thesisId, {
-      status: 'generating',
-    })
+    // Update thesis status to 'generating' using server-side client
+    const { error: statusUpdateError } = await supabase
+      .from('theses')
+      .update({ status: 'generating' })
+      .eq('id', thesisId)
+
+    if (statusUpdateError) {
+      console.error('Error updating thesis status:', statusUpdateError)
+      // Don't fail the whole request, just log it
+    }
 
     // Trigger background worker
     // The worker URL should be set in environment variables
@@ -66,12 +124,25 @@ export async function POST(request: Request) {
       )
     }
 
+    // Get API key for worker authentication
+    const workerApiKey = env.THESIS_WORKER_API_KEY || process.env.THESIS_WORKER_API_KEY
+    
+    if (!workerApiKey) {
+      console.error('THESIS_WORKER_API_KEY is not configured')
+      return NextResponse.json(
+        { error: 'Worker API key is not configured' },
+        { status: 500 }
+      )
+    }
+
+    console.log('Sending request to worker:', { workerUrl, hasApiKey: !!workerApiKey, testMode })
+
     // Send job to background worker
     const workerResponse = await fetch(`${workerUrl}/jobs/thesis-generation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${env.THESIS_WORKER_API_KEY || process.env.THESIS_WORKER_API_KEY || ''}`,
+        'Authorization': `Bearer ${workerApiKey}`,
       },
       body: JSON.stringify({
         thesisId,
@@ -86,7 +157,7 @@ export async function POST(request: Request) {
           targetLength: thesis.target_length,
           lengthUnit: thesis.length_unit,
           outline: thesis.outline,
-          fileSearchStoreId: thesis.file_search_store_id,
+          fileSearchStoreId: fileSearchStoreId,
           language: thesis.metadata?.language || 'german',
         },
       }),
@@ -96,10 +167,15 @@ export async function POST(request: Request) {
       const errorText = await workerResponse.text()
       console.error('Worker error:', errorText)
       
-      // Update thesis status back to draft on error
-      await updateThesis(thesisId, {
-        status: 'draft',
-      })
+      // Update thesis status back to draft on error using server-side client
+      const { error: revertError } = await supabase
+        .from('theses')
+        .update({ status: 'draft' })
+        .eq('id', thesisId)
+      
+      if (revertError) {
+        console.error('Error reverting thesis status:', revertError)
+      }
 
       return NextResponse.json(
         { error: 'Failed to start background job', details: errorText },

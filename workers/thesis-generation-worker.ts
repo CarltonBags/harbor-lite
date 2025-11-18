@@ -475,13 +475,46 @@ async function deduplicateAndEnrichSources(sources: Source[]): Promise<Source[]>
 
 /**
  * Step 5: Rank sources by relevance using Gemini
+ * Processes sources in batches to avoid token limits and timeouts
  */
 async function rankSourcesByRelevance(sources: Source[], thesisData: ThesisData): Promise<Source[]> {
   console.log(`[Ranking] Starting relevance ranking for ${sources.length} sources`)
   console.log(`[Ranking] Thesis: "${thesisData.title}"`)
   console.log(`[Ranking] Field: ${thesisData.field}`)
   
-  const prompt = `Du bist ein Experte für wissenschaftliche Literaturbewertung. Bewerte die Relevanz der folgenden Quellen für diese Thesis:
+  // If we have too many sources, prioritize those with PDFs and limit to top 150 for ranking
+  // This prevents token limit issues and timeouts
+  const MAX_SOURCES_TO_RANK = 150
+  let sourcesToRank = sources
+  
+  if (sources.length > MAX_SOURCES_TO_RANK) {
+    console.log(`[Ranking] Too many sources (${sources.length}), prioritizing sources with PDFs and limiting to ${MAX_SOURCES_TO_RANK}`)
+    // Sort by: PDF first, then by citation count
+    sourcesToRank = [...sources].sort((a, b) => {
+      if (a.pdfUrl && !b.pdfUrl) return -1
+      if (!a.pdfUrl && b.pdfUrl) return 1
+      return (b.citationCount || 0) - (a.citationCount || 0)
+    }).slice(0, MAX_SOURCES_TO_RANK)
+    console.log(`[Ranking] Selected ${sourcesToRank.length} sources for ranking (prioritized by PDF availability)`)
+  }
+  
+  // Process in batches of 50 to avoid token limits
+  const BATCH_SIZE = 50
+  const batches: Source[][] = []
+  for (let i = 0; i < sourcesToRank.length; i += BATCH_SIZE) {
+    batches.push(sourcesToRank.slice(i, i + BATCH_SIZE))
+  }
+  
+  console.log(`[Ranking] Processing ${batches.length} batches of up to ${BATCH_SIZE} sources each`)
+  
+  const allRankings: Array<{ index: number; relevanceScore: number; reason?: string }> = []
+  let globalIndex = 0
+  
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    const batch = batches[batchIndex]
+    console.log(`[Ranking] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} sources)`)
+    
+    const prompt = `Du bist ein Experte für wissenschaftliche Literaturbewertung. Bewerte die Relevanz der folgenden Quellen für diese Thesis:
 
 **Thesis-Informationen:**
 - Titel/Thema: ${thesisData.title}
@@ -489,13 +522,13 @@ async function rankSourcesByRelevance(sources: Source[], thesisData: ThesisData)
 - Forschungsfrage: ${thesisData.researchQuestion}
 - Gliederung: ${JSON.stringify(thesisData.outline, null, 2)}
 
-**Quellen:**
+**Quellen (Batch ${batchIndex + 1} von ${batches.length}):**
 ${JSON.stringify(
-  sources.map(s => ({
+  batch.map(s => ({
     title: s.title,
-    authors: s.authors,
+    authors: s.authors.slice(0, 3), // Limit authors to reduce token usage
     year: s.year,
-    abstract: s.abstract,
+    abstract: s.abstract ? s.abstract.substring(0, 500) : null, // Truncate abstract
     journal: s.journal,
   })),
   null,
@@ -519,65 +552,106 @@ Antworte NUR mit einem JSON-Array im folgenden Format:
   ...
 ]
 
-Die Indizes entsprechen der Reihenfolge der Quellen im Input.`
+Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.length - 1}).`
 
-  try {
-    console.log('[Ranking] Calling Gemini API to rank sources...')
-    const response = await retryApiCall(
-      () => ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-      }),
-      'Rank sources by relevance (Gemini)'
-    )
+    try {
+      const batchStart = Date.now()
+      const response = await retryApiCall(
+        () => ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+        }),
+        `Rank sources batch ${batchIndex + 1}/${batches.length} (Gemini)`
+      )
+      const batchDuration = Date.now() - batchStart
+      console.log(`[Ranking] Batch ${batchIndex + 1} completed in ${batchDuration}ms`)
 
-    const content = response.text
-    if (!content) {
-      console.warn('[Ranking] WARNING: No content from Gemini, returning unranked sources')
-      return sources // Return unranked if ranking fails
-    }
-
-    console.log('[Ranking] Received ranking response from Gemini, length:', content.length)
-    const jsonMatch = content.match(/\[[\s\S]*\]/)
-    if (!jsonMatch) {
-      console.warn('[Ranking] WARNING: Invalid JSON response, returning unranked sources')
-      return sources
-    }
-
-    const rankings = JSON.parse(jsonMatch[0]) as Array<{ index: number; relevanceScore: number; reason?: string }>
-    console.log(`[Ranking] Received ${rankings.length} rankings from Gemini`)
-    
-    // Apply relevance scores
-    const rankedSources = sources.map((source, index) => {
-      const ranking = rankings.find(r => r.index === index)
-      return {
-        ...source,
-        relevanceScore: ranking?.relevanceScore || 50,
+      const content = response.text
+      if (!content) {
+        console.warn(`[Ranking] WARNING: No content from Gemini for batch ${batchIndex + 1}, assigning default scores`)
+        // Assign default scores for this batch
+        batch.forEach((_, localIndex) => {
+          allRankings.push({ index: globalIndex + localIndex, relevanceScore: 50 })
+        })
+        globalIndex += batch.length
+        continue
       }
-    })
 
-    // Sort by relevance score (descending)
-    const sorted = rankedSources.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
-    
-    // Log statistics
-    const highRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) >= 70).length
-    const mediumRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) >= 40 && (s.relevanceScore || 0) < 70).length
-    const lowRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) < 40).length
-    const topScore = sorted[0]?.relevanceScore || 0
-    const avgScore = sorted.reduce((sum, s) => sum + (s.relevanceScore || 0), 0) / sorted.length
-    
-    console.log(`[Ranking] Ranking complete:`)
-    console.log(`[Ranking]   Total sources: ${sorted.length}`)
-    console.log(`[Ranking]   High relevance (>=70): ${highRelevance}`)
-    console.log(`[Ranking]   Medium relevance (40-69): ${mediumRelevance}`)
-    console.log(`[Ranking]   Low relevance (<40): ${lowRelevance}`)
-    console.log(`[Ranking]   Top score: ${topScore}, Average score: ${avgScore.toFixed(1)}`)
-    
-    return sorted
-  } catch (error) {
-    console.error('[Ranking] ERROR ranking sources:', error)
-    return sources // Return unranked if ranking fails
+      const jsonMatch = content.match(/\[[\s\S]*\]/)
+      if (!jsonMatch) {
+        console.warn(`[Ranking] WARNING: Invalid JSON response for batch ${batchIndex + 1}, assigning default scores`)
+        // Assign default scores for this batch
+        batch.forEach((_, localIndex) => {
+          allRankings.push({ index: globalIndex + localIndex, relevanceScore: 50 })
+        })
+        globalIndex += batch.length
+        continue
+      }
+
+      const batchRankings = JSON.parse(jsonMatch[0]) as Array<{ index: number; relevanceScore: number; reason?: string }>
+      console.log(`[Ranking] Received ${batchRankings.length} rankings for batch ${batchIndex + 1}`)
+      
+      // Adjust indices to global indices
+      batchRankings.forEach(ranking => {
+        allRankings.push({
+          index: globalIndex + ranking.index,
+          relevanceScore: ranking.relevanceScore,
+          reason: ranking.reason,
+        })
+      })
+      
+      globalIndex += batch.length
+      
+      // Small delay between batches to avoid rate limiting
+      if (batchIndex < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+    } catch (error) {
+      console.error(`[Ranking] ERROR ranking batch ${batchIndex + 1}:`, error)
+      // Assign default scores for this batch on error
+      batch.forEach((_, localIndex) => {
+        allRankings.push({ index: globalIndex + localIndex, relevanceScore: 50 })
+      })
+      globalIndex += batch.length
+    }
   }
+  
+  // Apply relevance scores to sources that were ranked
+  const rankedSources = sourcesToRank.map((source, index) => {
+    const ranking = allRankings.find(r => r.index === index)
+    return {
+      ...source,
+      relevanceScore: ranking?.relevanceScore || 50,
+    }
+  })
+  
+  // Add sources that weren't ranked with default scores
+  const unrankedSources = sources.slice(MAX_SOURCES_TO_RANK).map(source => ({
+    ...source,
+    relevanceScore: 30, // Lower default score for unranked sources
+  }))
+  
+  // Combine and sort by relevance score (descending)
+  const allSourcesWithScores = [...rankedSources, ...unrankedSources]
+  const sorted = allSourcesWithScores.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
+  
+  // Log statistics
+  const highRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) >= 70).length
+  const mediumRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) >= 40 && (s.relevanceScore || 0) < 70).length
+  const lowRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) < 40).length
+  const topScore = sorted[0]?.relevanceScore || 0
+  const avgScore = sorted.reduce((sum, s) => sum + (s.relevanceScore || 0), 0) / sorted.length
+  
+  console.log(`[Ranking] Ranking complete:`)
+  console.log(`[Ranking]   Total sources: ${sorted.length}`)
+  console.log(`[Ranking]   Ranked sources: ${rankedSources.length}`)
+  console.log(`[Ranking]   Unranked sources (default score 30): ${unrankedSources.length}`)
+  console.log(`[Ranking]   High relevance (>=70): ${highRelevance}`)
+  console.log(`[Ranking]   Medium relevance (40-69): ${mediumRelevance}`)
+  console.log(`[Ranking]   Low relevance (<40): ${lowRelevance}`)
+  console.log(`[Ranking]   Top score: ${topScore}, Average score: ${avgScore.toFixed(1)}`)
+  
+  return sorted
 }
 
 /**
