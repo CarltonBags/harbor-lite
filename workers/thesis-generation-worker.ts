@@ -26,7 +26,7 @@ const GEMINI_KEY = process.env.GEMINI_KEY
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const WORKER_API_KEY = process.env.THESIS_WORKER_API_KEY
-const OPENALEX_EMAIL = process.env.OPENALEX_EMAIL || 'moontools@proton.me'
+const OPENALEX_EMAIL = process.env.OPENALEX_EMAIL || 'moontoolsinc@proton.me'
 
 if (!GEMINI_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Missing required environment variables')
@@ -1097,7 +1097,19 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
           source: source.source, // 'openalex' or 'semantic_scholar'
         }))
 
+      // Prepare statistics
+      const statistics = {
+        totalSourcesFound: allSources.length,
+        sourcesAfterDeduplication: deduplicated.length,
+        sourcesAfterRanking: ranked.length,
+        sourcesWithPDFs: ranked.filter(s => s.pdfUrl).length,
+        uploadedPDFs: uploadedCount,
+        selectedSourcesCount: selectedSources.length,
+      }
+
       // Update thesis status to indicate test completed
+      console.log('[PROCESS] Updating thesis in database with test mode results...')
+      const dbUpdateStart = Date.now()
       await retryApiCall(
         async () => {
           const result = await supabase
@@ -1105,14 +1117,10 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
             .update({
               status: 'draft',
               metadata: {
-                ...thesisData,
                 testMode: true,
+                testCompletedAt: new Date().toISOString(),
+                statistics,
                 selectedSources: selectedSources,
-                totalSourcesFound: allSources.length,
-                sourcesAfterDeduplication: deduplicated.length,
-                sourcesAfterRanking: ranked.length,
-                sourcesWithPDFs: ranked.filter(s => s.pdfUrl).length,
-                uploadedPDFs: uploadedCount,
               },
             })
             .eq('id', thesisId)
@@ -1121,6 +1129,8 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
         },
         `Update thesis status (test mode): ${thesisId}`
       )
+      const dbUpdateDuration = Date.now() - dbUpdateStart
+      console.log(`[PROCESS] Database updated in ${dbUpdateDuration}ms`)
 
       const processDuration = Date.now() - processStartTime
       console.log(`[PROCESS] Test mode completed in ${processDuration}ms`)
@@ -1150,6 +1160,8 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
     console.log(`[PROCESS] Step 7 completed in ${step7Duration}ms`)
 
     // Update thesis in database
+    console.log('[PROCESS] Updating thesis in database with generated content...')
+    const dbUpdateStart = Date.now()
     await retryApiCall(
       async () => {
         const result = await supabase
@@ -1165,6 +1177,8 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
       },
       `Update thesis status (completed): ${thesisId}`
     )
+    const dbUpdateDuration = Date.now() - dbUpdateStart
+    console.log(`[PROCESS] Database updated in ${dbUpdateDuration}ms`)
 
     const processDuration = Date.now() - processStartTime
     console.log('\n[PROCESS] ========== Thesis Generation Complete ==========')
@@ -1202,34 +1216,53 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
 
 // API endpoint to start thesis generation job
 app.post('/jobs/thesis-generation', authenticate, async (req: Request, res: Response) => {
+  const requestStart = Date.now()
+  console.log('\n[API] ========== POST /jobs/thesis-generation ==========')
+  console.log('[API] Request received at:', new Date().toISOString())
+  
   try {
     const { thesisId, thesisData, testMode } = req.body
+    console.log('[API] Request body:', {
+      thesisId,
+      testMode: testMode === true,
+      hasThesisData: !!thesisData,
+      thesisTitle: thesisData?.title,
+    })
 
     if (!thesisId || !thesisData) {
+      console.error('[API] ERROR: Missing required fields')
       return res.status(400).json({ error: 'Thesis ID and data are required' })
     }
 
     const isTestMode = testMode === true
+    console.log(`[API] Mode: ${isTestMode ? 'TEST MODE' : 'PRODUCTION MODE'}`)
 
     if (isTestMode) {
       // In test mode, process synchronously and return results
-      console.log('Running in TEST MODE - will return selected sources JSON')
+      console.log('[API] Running in TEST MODE - will return selected sources JSON')
       try {
         const result = await processThesisGeneration(thesisId, thesisData, true)
+        const requestDuration = Date.now() - requestStart
+        console.log(`[API] Test mode completed in ${requestDuration}ms`)
+        console.log('[API] Returning test mode results')
         return res.json(result)
       } catch (error) {
-        console.error('Test mode error:', error)
+        const requestDuration = Date.now() - requestStart
+        console.error(`[API] ERROR in test mode after ${requestDuration}ms:`, error)
         return res.status(500).json({
           error: error instanceof Error ? error.message : 'Unknown error',
         })
       }
     } else {
       // In production mode, start processing asynchronously
+      console.log('[API] Starting background job (async)...')
       processThesisGeneration(thesisId, thesisData, false).catch(error => {
-        console.error('Background job error:', error)
+        console.error('[API] Background job error:', error)
       })
 
       // Return immediately
+      const requestDuration = Date.now() - requestStart
+      console.log(`[API] Job started, returning immediately (${requestDuration}ms)`)
       return res.json({
         success: true,
         jobId: `job-${thesisId}-${Date.now()}`,
@@ -1237,7 +1270,8 @@ app.post('/jobs/thesis-generation', authenticate, async (req: Request, res: Resp
       })
     }
   } catch (error) {
-    console.error('Error starting job:', error)
+    const requestDuration = Date.now() - requestStart
+    console.error(`[API] ERROR starting job after ${requestDuration}ms:`, error)
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     })
@@ -1246,30 +1280,49 @@ app.post('/jobs/thesis-generation', authenticate, async (req: Request, res: Resp
 
 // Job status query endpoint
 app.get('/jobs/:thesisId', authenticate, async (req: Request, res: Response) => {
+  const requestStart = Date.now()
+  console.log('\n[API] ========== GET /jobs/:thesisId ==========')
+  console.log('[API] Request received at:', new Date().toISOString())
+  
   try {
     const { thesisId } = req.params
+    console.log('[API] Querying status for thesis:', thesisId)
 
     if (!thesisId) {
+      console.error('[API] ERROR: Thesis ID is required')
       return res.status(400).json({ error: 'Thesis ID is required' })
     }
 
     // Query database for thesis status
+    console.log('[API] Querying database for thesis status...')
+    const queryStart = Date.now()
     const { data: thesis, error } = await supabase
       .from('theses')
       .select('id, status, created_at, updated_at, completed_at, metadata')
       .eq('id', thesisId)
       .single()
+    const queryDuration = Date.now() - queryStart
+    console.log(`[API] Database query completed in ${queryDuration}ms`)
 
     if (error) {
-      console.error('Error querying thesis:', error)
+      console.error('[API] ERROR querying thesis:', error)
       return res.status(500).json({ error: 'Failed to query thesis status' })
     }
 
     if (!thesis) {
+      console.log('[API] Thesis not found:', thesisId)
       return res.status(404).json({ error: 'Thesis not found' })
     }
 
+    console.log('[API] Thesis found:', {
+      id: thesis.id,
+      status: thesis.status,
+      hasMetadata: !!thesis.metadata,
+    })
+
     // Return job status
+    const requestDuration = Date.now() - requestStart
+    console.log(`[API] Returning status (${requestDuration}ms)`)
     return res.json({
       thesisId: thesis.id,
       status: thesis.status, // 'draft', 'generating', 'completed'
@@ -1280,7 +1333,8 @@ app.get('/jobs/:thesisId', authenticate, async (req: Request, res: Response) => 
       metadata: thesis.metadata || {},
     })
   } catch (error) {
-    console.error('Error querying job status:', error)
+    const requestDuration = Date.now() - requestStart
+    console.error(`[API] ERROR querying job status after ${requestDuration}ms:`, error)
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Unknown error',
     })
@@ -1289,11 +1343,17 @@ app.get('/jobs/:thesisId', authenticate, async (req: Request, res: Response) => 
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok' })
+  console.log('[API] Health check requested')
+  res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`Thesis generation worker listening on port ${PORT}`)
+  console.log('='.repeat(80))
+  console.log(`[SERVER] Thesis generation worker started`)
+  console.log(`[SERVER] Listening on port ${PORT}`)
+  console.log(`[SERVER] Environment: ${process.env.NODE_ENV || 'development'}`)
+  console.log(`[SERVER] Started at: ${new Date().toISOString()}`)
+  console.log('='.repeat(80))
 })
 

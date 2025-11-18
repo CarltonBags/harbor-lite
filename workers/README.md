@@ -28,9 +28,11 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 THESIS_WORKER_API_KEY=your_secure_api_key_for_authentication
 
 # Optional
-PORT=3001
 OPENALEX_EMAIL=moontools@proton.me  # For polite pool (10x faster, 10 req/sec instead of 1)
 SEMANTIC_SCHOLAR_API_KEY=your_semantic_scholar_key  # Optional but recommended
+
+# Note: PORT is automatically set by Render (defaults to 10000)
+# For local development, the worker defaults to port 3001
 ```
 
 ### Deploy Steps
@@ -56,7 +58,7 @@ npm install
 npm run dev
 ```
 
-The worker will start on `http://localhost:3001`
+The worker will start on `http://localhost:3001` (local development only)
 
 ### API Endpoints
 
