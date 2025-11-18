@@ -12,7 +12,7 @@ import type { FileMetadata } from '@/lib/supabase/types'
 
 type ThesisType = 'hausarbeit' | 'bachelor' | 'master' | 'dissertation'
 type LengthUnit = 'pages' | 'words'
-type CitationStyle = 'apa' | 'mla' | 'chicago' | 'harvard' | 'ieee' | 'vancouver' | 'deutsche-zitierweise'
+type CitationStyle = 'apa' | 'mla' | 'harvard' | 'deutsche-zitierweise'
 
 interface OutlineSection {
   number: string
@@ -64,28 +64,10 @@ const citationStyles = [
     example: 'Müller, Anna. Künstliche Intelligenz in der Medizin. Springer, 2023.'
   },
   { 
-    value: 'chicago', 
-    label: 'Chicago', 
-    description: 'Chicago Manual of Style',
-    example: 'Müller, Anna. 2023. Künstliche Intelligenz in der Medizin. Berlin: Springer.'
-  },
-  { 
     value: 'harvard', 
     label: 'Harvard', 
     description: 'Harvard Referencing Style',
     example: 'Müller, A 2023, Künstliche Intelligenz in der Medizin, Springer, Berlin.'
-  },
-  { 
-    value: 'ieee', 
-    label: 'IEEE', 
-    description: 'Institute of Electrical and Electronics Engineers',
-    example: 'A. Müller, Künstliche Intelligenz in der Medizin. Berlin: Springer, 2023.'
-  },
-  { 
-    value: 'vancouver', 
-    label: 'Vancouver', 
-    description: 'Vancouver Style',
-    example: 'Müller A. Künstliche Intelligenz in der Medizin. Berlin: Springer; 2023.'
   },
   { 
     value: 'deutsche-zitierweise', 
@@ -1068,13 +1050,16 @@ export default function NewThesisPage() {
     setLoading(true)
     
     try {
-      // Trigger background worker
+      // Trigger background worker in TEST MODE
+      // Set testMode to false for production, true for testing
+      const testMode = true // TODO: Change to false for production
+      
       const response = await fetch('/api/start-thesis-generation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ thesisId }),
+        body: JSON.stringify({ thesisId, testMode }),
       })
 
       if (!response.ok) {
@@ -1085,8 +1070,24 @@ export default function NewThesisPage() {
       const data = await response.json()
       console.log('Generation started:', data)
       
-      // Navigate to generation page
-      router.push(`/thesis/generate?id=${thesisId}`)
+      // If test mode, display the selected sources JSON
+      if (data.testMode && data.selectedSources) {
+        console.log('Test Mode Results:', data)
+        console.log('Selected Sources:', JSON.stringify(data.selectedSources, null, 2))
+        console.log('Statistics:', data.statistics)
+        
+        // Display in alert for now (you can create a better UI later)
+        alert(`Test Mode Complete!\n\nSelected ${data.selectedSources.length} sources.\n\nCheck console for full JSON.`)
+        
+        // Also log to console in a readable format
+        console.group('📊 Test Mode Results')
+        console.log('Statistics:', data.statistics)
+        console.log('Selected Sources (JSON):', JSON.stringify(data.selectedSources, null, 2))
+        console.groupEnd()
+      } else {
+        // Navigate to generation page for production mode
+        router.push(`/thesis/generate?id=${thesisId}`)
+      }
     } catch (error) {
       console.error('Error starting generation:', error)
       alert(error instanceof Error ? error.message : 'Fehler beim Starten der Generierung')

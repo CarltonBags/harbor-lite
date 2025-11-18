@@ -30,10 +30,7 @@ export async function POST(request: Request) {
     const citationStyleLabels: Record<string, string> = {
       apa: 'APA',
       mla: 'MLA',
-      chicago: 'Chicago',
       harvard: 'Harvard',
-      ieee: 'IEEE',
-      vancouver: 'Vancouver',
       'deutsche-zitierweise': 'Deutsche Zitierweise',
     }
 

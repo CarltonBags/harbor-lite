@@ -2,12 +2,13 @@
 
 Background worker for processing thesis generation jobs. This worker handles:
 1. Generating search queries (2 per chapter, German + English)
-2. Querying OpenAlex API
+2. Querying OpenAlex API (with polite pool via email)
 3. Querying Semantic Scholar API
-4. Deduplicating and prioritizing sources with PDF URLs
-5. Ranking sources by relevance using Gemini
-6. Downloading PDFs and uploading to Google FileSearchStore
-7. Generating thesis content using Gemini Pro
+4. Enriching sources with Unpaywall API to find PDF URLs (with email)
+5. Deduplicating and prioritizing sources with PDF URLs
+6. Ranking sources by relevance using Gemini
+7. Downloading PDFs and uploading to Google FileSearchStore
+8. Generating thesis content using Gemini Pro
 
 ## Deployment on Render
 
@@ -28,7 +29,7 @@ THESIS_WORKER_API_KEY=your_secure_api_key_for_authentication
 
 # Optional
 PORT=3001
-OPENALEX_EMAIL=[email protected]  # For polite pool (10x faster)
+OPENALEX_EMAIL=moontools@proton.me  # For polite pool (10x faster, 10 req/sec instead of 1)
 SEMANTIC_SCHOLAR_API_KEY=your_semantic_scholar_key  # Optional but recommended
 ```
 

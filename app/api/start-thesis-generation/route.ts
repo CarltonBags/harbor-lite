@@ -15,7 +15,7 @@ import { env } from '@/lib/env'
  */
 export async function POST(request: Request) {
   try {
-    const { thesisId } = await request.json()
+    const { thesisId, testMode } = await request.json()
 
     if (!thesisId) {
       return NextResponse.json(
@@ -75,6 +75,7 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         thesisId,
+        testMode: testMode === true, // Pass test mode flag to worker
         thesisData: {
           title: thesis.title || thesis.topic,
           topic: thesis.topic,
@@ -107,6 +108,12 @@ export async function POST(request: Request) {
     }
 
     const jobData = await workerResponse.json()
+
+    // In test mode, the worker returns results synchronously
+    // In production mode, it returns a job ID
+    if (testMode && jobData.testMode) {
+      return NextResponse.json(jobData)
+    }
 
     return NextResponse.json({
       success: true,
