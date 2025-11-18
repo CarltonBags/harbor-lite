@@ -40,8 +40,10 @@ SEMANTIC_SCHOLAR_API_KEY=your_semantic_scholar_key  # Optional but recommended
 1. **Create a new Web Service on Render**
    - Connect your repository
    - Root Directory: `workers`
-   - Build Command: `npm install`
+   - Build Command: `npm install` (or leave default `npm install; npm run build`)
    - Start Command: `npm start`
+   
+   **Note:** The worker uses `tsx` to run TypeScript directly, so no compilation step is needed. The build script is a no-op.
 
 2. **Set Environment Variables**
    - Add all required environment variables in Render dashboard

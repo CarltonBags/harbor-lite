@@ -5,7 +5,8 @@
   "main": "thesis-generation-worker.ts",
   "scripts": {
     "start": "tsx thesis-generation-worker.ts",
-    "dev": "tsx watch thesis-generation-worker.ts"
+    "dev": "tsx watch thesis-generation-worker.ts",
+    "build": "echo 'No build step required - using tsx to run TypeScript directly'"
   },
   "dependencies": {
     "@google/genai": "^1.29.1",
