@@ -1,0 +1,24 @@
+{
+  "name": "thesis-generation-worker",
+  "version": "1.0.0",
+  "description": "Background worker for thesis generation pipeline",
+  "main": "thesis-generation-worker.ts",
+  "scripts": {
+    "start": "tsx thesis-generation-worker.ts",
+    "dev": "tsx watch thesis-generation-worker.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.29.1",
+    "@supabase/supabase-js": "^2.81.1",
+    "express": "^4.18.2",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.10",
+    "@types/node-fetch": "^2.6.11",
+    "tsx": "^4.7.0",
+    "typescript": "^5.5.3"
+  }
+}
+
