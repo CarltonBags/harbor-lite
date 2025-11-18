@@ -1183,18 +1183,14 @@ export default function NewThesisPage() {
       const data = await response.json()
       console.log('Generation started:', data)
       
-      // If test mode, display the selected sources JSON
+      // If test mode, navigate to test results page
       if (data.testMode && data.selectedSources) {
         console.log('Test Mode Results:', data)
         console.log('Selected Sources:', JSON.stringify(data.selectedSources, null, 2))
         console.log('Statistics:', data.statistics)
         
-        // Store results in state to display in modal
-        setTestModeResults({
-          selectedSources: data.selectedSources,
-          statistics: data.statistics,
-        })
-        setLoading(false)
+        // Navigate to test results page
+        router.push(`/thesis/test?id=${currentThesisId}`)
       } else {
         // Navigate to generation page for production mode
         router.push(`/thesis/generate?id=${currentThesisId}`)

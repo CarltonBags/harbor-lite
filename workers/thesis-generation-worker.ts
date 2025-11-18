@@ -1117,65 +1117,38 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
     console.log(`[PROCESS] Step 5 completed in ${step5Duration}ms`)
     console.log(`[PROCESS] Ranked ${ranked.length} sources`)
 
-    // Step 6: Download and upload PDFs (top 50 most relevant, exclude low relevance)
-    console.log('\n[PROCESS] ========== Step 6: Download and Upload PDFs ==========')
-    const step6Start = Date.now()
-    // Filter out sources with relevance score < 40 and take top 50
-    const topSources = ranked
-      .filter(s => s.relevanceScore && s.relevanceScore >= 40)
-      .slice(0, 50)
-    
-    console.log(`[PROCESS] Top sources to process: ${topSources.length} (relevance >= 40)`)
-    const sourcesWithPdf = topSources.filter(s => s.pdfUrl).length
-    console.log(`[PROCESS] Sources with PDF URLs: ${sourcesWithPdf}`)
-    
-    let uploadedCount = 0
-    let failedCount = 0
-
-    for (let i = 0; i < topSources.length; i++) {
-      const source = topSources[i]
-      console.log(`[PROCESS] Processing source ${i + 1}/${topSources.length}: "${source.title}"`)
-      
-      if (source.pdfUrl) {
-        const success = await downloadAndUploadPDF(source, thesisData.fileSearchStoreId, thesisId)
-        if (success) {
-          uploadedCount++
-        } else {
-          failedCount++
-        }
-        // Rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      } else {
-        console.log(`[PROCESS] Skipping source (no PDF URL): "${source.title}"`)
-      }
-    }
-
-    const step6Duration = Date.now() - step6Start
-    console.log(`[PROCESS] Step 6 completed in ${step6Duration}ms`)
-    console.log(`[PROCESS] Uploaded ${uploadedCount} PDFs, ${failedCount} failed`)
-
-    // If test mode, return selected sources JSON instead of generating thesis
+    // If test mode, skip PDF uploads and return selected sources JSON
     if (testMode) {
+      console.log('\n[PROCESS] ========== Test Mode: Skipping PDF Uploads ==========')
+      console.log('[PROCESS] Test mode - PDFs will not be downloaded or uploaded')
       console.log('\n[PROCESS] ========== Test Mode: Returning Selected Sources ==========')
       
       // Get top sources that would be used (filtered by relevance and with PDF URLs)
-      const selectedSources = ranked
-        .filter(s => s.relevanceScore && s.relevanceScore >= 40)
+      // Filter by relevance score >= 40 and take top 50
+      const sourcesWithRelevance = ranked.filter(s => s.relevanceScore && s.relevanceScore >= 40)
+      console.log(`[PROCESS] Sources with relevance >= 40: ${sourcesWithRelevance.length}`)
+      
+      const selectedSources = sourcesWithRelevance
         .slice(0, 50)
         .map(source => ({
-          title: source.title,
-          authors: source.authors,
-          year: source.year,
-          doi: source.doi,
-          url: source.url,
-          pdfUrl: source.pdfUrl,
-          abstract: source.abstract,
-          journal: source.journal,
-          publisher: source.publisher,
-          citationCount: source.citationCount,
-          relevanceScore: source.relevanceScore,
-          source: source.source, // 'openalex' or 'semantic_scholar'
+          title: source.title || null,
+          authors: source.authors || [],
+          year: source.year || null,
+          doi: source.doi || null,
+          url: source.url || null,
+          pdfUrl: source.pdfUrl || null,
+          abstract: source.abstract || null,
+          journal: source.journal || null,
+          publisher: source.publisher || null,
+          citationCount: source.citationCount || null,
+          relevanceScore: source.relevanceScore || null,
+          source: source.source || 'unknown', // 'openalex' or 'semantic_scholar'
         }))
+
+      console.log(`[PROCESS] Selected ${selectedSources.length} sources for storage`)
+      if (selectedSources.length > 0) {
+        console.log(`[PROCESS] First source example:`, JSON.stringify(selectedSources[0], null, 2))
+      }
 
       // Prepare statistics
       const statistics = {
@@ -1183,9 +1156,38 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
         sourcesAfterDeduplication: deduplicated.length,
         sourcesAfterRanking: ranked.length,
         sourcesWithPDFs: ranked.filter(s => s.pdfUrl).length,
-        uploadedPDFs: uploadedCount,
         selectedSourcesCount: selectedSources.length,
+        selectedSourcesWithPDFs: selectedSources.filter(s => s.pdfUrl).length,
       }
+
+      // Get existing metadata to preserve other fields
+      console.log('[PROCESS] Fetching existing thesis metadata...')
+      const { data: existingThesis } = await retryApiCall(
+        async () => {
+          const result = await supabase
+            .from('theses')
+            .select('metadata')
+            .eq('id', thesisId)
+            .single()
+          if (result.error) throw result.error
+          return result
+        },
+        `Fetch existing thesis metadata: ${thesisId}`
+      )
+
+      const existingMetadata = (existingThesis?.metadata as Record<string, any>) || {}
+      
+      // Merge with existing metadata, but override test mode fields
+      const updatedMetadata = {
+        ...existingMetadata,
+        testMode: true,
+        testCompletedAt: new Date().toISOString(),
+        statistics,
+        selectedSources: selectedSources, // Store all selected sources with full metadata
+      }
+
+      console.log(`[PROCESS] Storing ${selectedSources.length} sources in metadata`)
+      console.log(`[PROCESS] Metadata size: ${JSON.stringify(updatedMetadata).length} bytes`)
 
       // Update thesis status to indicate test completed
       console.log('[PROCESS] Updating thesis in database with test mode results...')
@@ -1196,21 +1198,37 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
             .from('theses')
             .update({
               status: 'draft',
-              metadata: {
-                testMode: true,
-                testCompletedAt: new Date().toISOString(),
-                statistics,
-                selectedSources: selectedSources,
-              },
+              metadata: updatedMetadata,
             })
             .eq('id', thesisId)
-          if (result.error) throw result.error
+          if (result.error) {
+            console.error('[PROCESS] Database update error:', result.error)
+            throw result.error
+          }
           return result
         },
         `Update thesis status (test mode): ${thesisId}`
       )
       const dbUpdateDuration = Date.now() - dbUpdateStart
       console.log(`[PROCESS] Database updated in ${dbUpdateDuration}ms`)
+      
+      // Verify the update
+      const { data: verifyThesis } = await retryApiCall(
+        async () => {
+          const result = await supabase
+            .from('theses')
+            .select('metadata')
+            .eq('id', thesisId)
+            .single()
+          if (result.error) throw result.error
+          return result
+        },
+        `Verify thesis metadata update: ${thesisId}`
+      )
+      
+      const verifyMetadata = verifyThesis?.metadata as any
+      const verifySources = verifyMetadata?.selectedSources || []
+      console.log(`[PROCESS] Verification: ${verifySources.length} sources stored in database`)
 
       const processDuration = Date.now() - processStartTime
       console.log(`[PROCESS] Test mode completed in ${processDuration}ms`)
@@ -1226,8 +1244,8 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
           sourcesAfterDeduplication: deduplicated.length,
           sourcesAfterRanking: ranked.length,
           sourcesWithPDFs: ranked.filter(s => s.pdfUrl).length,
-          uploadedPDFs: uploadedCount,
           selectedSourcesCount: selectedSources.length,
+          selectedSourcesWithPDFs: selectedSources.filter(s => s.pdfUrl).length,
         },
       }
     }
