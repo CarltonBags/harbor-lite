@@ -23,7 +23,7 @@ Set these in your Render service:
 ```bash
 # Required
 GEMINI_KEY=your_gemini_api_key
-SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_URL=https://your-project.supabase.co  # Can also use NEXT_PUBLIC_SUPABASE_URL
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 THESIS_WORKER_API_KEY=your_secure_api_key_for_authentication
 

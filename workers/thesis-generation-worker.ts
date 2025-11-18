@@ -23,13 +23,19 @@ app.use(express.json())
 // Environment variables
 const PORT = process.env.PORT || 3001
 const GEMINI_KEY = process.env.GEMINI_KEY
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+// Support both NEXT_PUBLIC_SUPABASE_URL (for compatibility) and SUPABASE_URL
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const WORKER_API_KEY = process.env.THESIS_WORKER_API_KEY
 const OPENALEX_EMAIL = process.env.OPENALEX_EMAIL || 'moontoolsinc@proton.me'
 
 if (!GEMINI_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Missing required environment variables')
+  console.error('Required: GEMINI_KEY, SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL), SUPABASE_SERVICE_ROLE_KEY')
+  console.error('Current values:')
+  console.error(`  GEMINI_KEY: ${GEMINI_KEY ? 'SET' : 'MISSING'}`)
+  console.error(`  SUPABASE_URL: ${SUPABASE_URL ? 'SET' : 'MISSING'}`)
+  console.error(`  SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY ? 'SET' : 'MISSING'}`)
   process.exit(1)
 }
 
