@@ -11,6 +11,10 @@ import remarkGfm from 'remark-gfm'
 import rehypeKatex from 'rehype-katex'
 import remarkMath from 'remark-math'
 import 'katex/dist/katex.min.css'
+import './thesis-document.css'
+import { addPageNumbers } from './add-page-numbers'
+import { TableOfContents } from './table-of-contents'
+import type { OutlineChapter } from '@/lib/supabase/types'
 
 interface ChatMessage {
   id: string
@@ -35,10 +39,12 @@ export default function ThesisPreviewPage() {
   const [chatInput, setChatInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [userProfile, setUserProfile] = useState<any>(null)
   
   const chatEndRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!thesisId) {
@@ -52,6 +58,86 @@ export default function ThesisPreviewPage() {
     // Scroll chat to bottom when new messages arrive
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
+
+  useEffect(() => {
+    // Debug: Log TOC format from raw content
+    if (content && content.includes('Inhaltsverzeichnis')) {
+      const tocIndex = content.indexOf('Inhaltsverzeichnis')
+      const tocSection = content.substring(tocIndex, Math.min(tocIndex + 1000, content.length))
+      console.log('[TOC Debug] Raw markdown TOC section:', tocSection)
+    }
+    
+    // Add page numbers after content is rendered - use multiple attempts
+    const tryAddPageNumbers = (attemptCount = 0) => {
+      const maxAttempts = 10
+      
+      console.log(`[PageNumbers useEffect] Attempt ${attemptCount + 1}/${maxAttempts}`, {
+        hasContent: !!content,
+        hasRef: !!contentRef.current,
+        contentLength: content?.length || 0,
+        childrenCount: contentRef.current?.children.length || 0
+      })
+      
+      if (!contentRef.current) {
+        if (attemptCount < maxAttempts) {
+          console.log('[PageNumbers] contentRef.current is null, retrying in 500ms...')
+          setTimeout(() => tryAddPageNumbers(attemptCount + 1), 500)
+        } else {
+          console.error('[PageNumbers] contentRef.current is still null after max attempts!')
+        }
+        return
+      }
+      
+      if (!content) {
+        if (attemptCount < maxAttempts) {
+          console.log('[PageNumbers] content is empty, retrying in 500ms...')
+          setTimeout(() => tryAddPageNumbers(attemptCount + 1), 500)
+        }
+        return
+      }
+      
+      // Check if ReactMarkdown has rendered content
+      const hasContent = contentRef.current.children.length > 0 || 
+                        contentRef.current.textContent?.trim().length > 0
+      
+      if (hasContent || attemptCount >= maxAttempts) {
+        console.log('[PageNumbers] Content ready, processing...', {
+          childrenCount: contentRef.current.children.length,
+          textLength: contentRef.current.textContent?.trim().length || 0
+        })
+        
+        // Add page numbers
+        console.log('[PageNumbers] Calling addPageNumbers')
+        addPageNumbers(contentRef.current)
+        
+        // Re-add page numbers after a delay to ensure they persist
+        if (attemptCount < maxAttempts - 1) {
+          setTimeout(() => {
+            if (contentRef.current) {
+              console.log('[PageNumbers] Re-adding page numbers')
+              addPageNumbers(contentRef.current)
+            }
+          }, 2000)
+        }
+      } else {
+        // Content not ready, try again
+        console.log('[PageNumbers] Content not ready yet, retrying in 1000ms...')
+        setTimeout(() => tryAddPageNumbers(attemptCount + 1), 1000)
+      }
+    }
+    
+    // Start trying after a short delay
+    if (content) {
+      console.log('useEffect triggered for page numbers, content length:', content.length)
+      const timeoutId = setTimeout(() => tryAddPageNumbers(), 500)
+      return () => clearTimeout(timeoutId)
+    } else {
+      console.log('Page numbers useEffect: contentRef or content missing', {
+        hasRef: !!contentRef.current,
+        hasContent: !!content
+      })
+    }
+  }, [content])
 
   const loadThesis = async () => {
     if (!thesisId) return
@@ -69,6 +155,18 @@ export default function ThesisPreviewPage() {
       const thesisContent = thesisData.latex_content || ''
       setContent(thesisContent)
       setOriginalContent(thesisContent)
+
+      // Load user profile for cover page
+      const supabase = createSupabaseClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('full_name, email')
+          .eq('id', user.id)
+          .single()
+        setUserProfile(profile)
+      }
     } catch (error) {
       console.error('Error loading thesis:', error)
     } finally {
@@ -412,8 +510,8 @@ export default function ThesisPreviewPage() {
           </div>
         </div>
 
-        {/* Preview Panel (Right) */}
-        <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-900">
+        {/* Preview Panel (Right) - Document Style */}
+        <div className="flex-1 overflow-y-auto overflow-x-auto bg-gray-100 dark:bg-gray-800">
           {isEditing ? (
             <div className="p-8">
               <textarea
@@ -425,53 +523,396 @@ export default function ThesisPreviewPage() {
               />
             </div>
           ) : (
-            <div
-              ref={previewRef}
-              onMouseUp={handleTextSelection}
-              className="max-w-4xl mx-auto p-8"
-            >
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex]}
-                components={{
-                  h1: ({ node, ...props }) => (
-                    <h1 className="text-4xl font-bold mt-8 mb-4 text-gray-900 dark:text-white" {...props} />
-                  ),
-                  h2: ({ node, ...props }) => (
-                    <h2 className="text-3xl font-semibold mt-6 mb-3 text-gray-900 dark:text-white" {...props} />
-                  ),
-                  h3: ({ node, ...props }) => (
-                    <h3 className="text-2xl font-semibold mt-4 mb-2 text-gray-900 dark:text-white" {...props} />
-                  ),
-                  p: ({ node, ...props }) => (
-                    <p className="mb-4 text-gray-800 dark:text-gray-200 leading-relaxed" {...props} />
-                  ),
-                  ul: ({ node, ...props }) => (
-                    <ul className="list-disc list-inside mb-4 space-y-2 text-gray-800 dark:text-gray-200" {...props} />
-                  ),
-                  ol: ({ node, ...props }) => (
-                    <ol className="list-decimal list-inside mb-4 space-y-2 text-gray-800 dark:text-gray-200" {...props} />
-                  ),
-                  li: ({ node, ...props }) => (
-                    <li className="ml-4 text-gray-800 dark:text-gray-200" {...props} />
-                  ),
-                  blockquote: ({ node, ...props }) => (
-                    <blockquote className="border-l-4 border-purple-500 pl-4 italic my-4 text-gray-700 dark:text-gray-300" {...props} />
-                  ),
-                  code: ({ node, inline, ...props }: any) => {
-                    if (inline) {
-                      return (
-                        <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-sm font-mono text-purple-600 dark:text-purple-400" {...props} />
-                      )
-                    }
-                    return (
-                      <code className="block bg-gray-100 dark:bg-gray-800 p-4 rounded-lg overflow-x-auto text-sm font-mono" {...props} />
-                    )
-                  },
+            <div className="flex justify-center py-8" style={{ overflowX: 'auto', width: '100%', overflowY: 'visible' }}>
+              <div
+                ref={previewRef}
+                onMouseUp={handleTextSelection}
+                className="thesis-document shadow-2xl"
+                style={{
+                  width: '210mm', // A4 width - fixed
+                  minWidth: '210mm', // Prevent shrinking
+                  minHeight: '297mm', // A4 height
+                  padding: '25mm 30mm',
+                  fontFamily: '"Times New Roman", "Times", serif',
+                  fontSize: '12pt',
+                  lineHeight: '1.5',
+                  color: '#000',
+                  backgroundColor: '#ffffff', // Always white, regardless of dark mode
+                  flexShrink: 0, // Prevent shrinking
+                  position: 'relative', // Ensure page numbers can position absolutely
+                  overflow: 'visible', // Allow page numbers to be visible
                 }}
               >
-                {content || '*Kein Inhalt verfügbar*'}
-              </ReactMarkdown>
+                {/* Cover Page */}
+                <div className="cover-page thesis-page" style={{ 
+                  minHeight: '247mm', // Full page minus padding (297mm - 25mm top - 25mm bottom)
+                  height: '247mm',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  textAlign: 'center',
+                  pageBreakAfter: 'always',
+                  marginBottom: '10mm',
+                  borderBottom: '1px solid #e0e0e0',
+                }}>
+                  {/* Top section - Title */}
+                  <div style={{ 
+                    marginTop: '50mm',
+                    width: '100%',
+                    padding: '0 20mm',
+                  }}>
+                    <h1 style={{
+                      fontSize: '24pt',
+                      fontWeight: 'bold',
+                      lineHeight: '1.3',
+                      marginBottom: '0',
+                      textAlign: 'center',
+                      letterSpacing: '0.5px',
+                      color: '#000',
+                    }}>
+                      {thesis?.topic || 'Thesis Title'}
+                    </h1>
+                  </div>
+                  
+                  {/* Bottom section - Metadata */}
+                  <div style={{ 
+                    marginBottom: '50mm',
+                    width: '100%',
+                  }}>
+                    <div style={{ 
+                      borderTop: '1px solid #000',
+                      borderBottom: '1px solid #000',
+                      padding: '8mm 0',
+                      margin: '0 20mm 15mm 20mm',
+                    }}>
+                      <p style={{ fontSize: '12pt', marginBottom: '4mm', fontWeight: 'bold' }}>
+                        {thesis?.field || 'Fachbereich'}
+                      </p>
+                      <p style={{ fontSize: '12pt', marginBottom: '0' }}>
+                        {thesis?.thesis_type === 'hausarbeit' ? 'Hausarbeit' :
+                         thesis?.thesis_type === 'bachelor' ? 'Bachelorarbeit' :
+                         thesis?.thesis_type === 'master' ? 'Masterarbeit' :
+                         thesis?.thesis_type === 'dissertation' ? 'Dissertation' : 'Thesis'}
+                      </p>
+                    </div>
+                    <p style={{ fontSize: '12pt', marginTop: '10mm' }}>
+                      {thesis?.completed_at 
+                        ? new Date(thesis.completed_at).getFullYear()
+                        : new Date().getFullYear()}
+                    </p>
+                    {userProfile?.full_name && (
+                      <p style={{ fontSize: '11pt', marginTop: '5mm', color: '#666' }}>
+                        {userProfile.full_name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Table of Contents - Generated from Outline JSON */}
+                {thesis?.outline && (
+                  <div style={{ 
+                    position: 'relative',
+                    pageBreakAfter: 'always',
+                    marginBottom: '10mm',
+                  }}>
+                    <TableOfContents 
+                      outline={thesis.outline as OutlineChapter[]}
+                      language={thesis.metadata?.language || 'german'}
+                    />
+                  </div>
+                )}
+
+                {/* Document Content with Page Numbers */}
+                <div 
+                  ref={contentRef}
+                  className="thesis-content" 
+                  style={{ 
+                    position: 'relative',
+                    minHeight: '247mm',
+                    paddingBottom: '30mm', // Space for page numbers
+                    overflow: 'visible', // Allow page numbers to be visible
+                  }}
+                  data-thesis-content="true"
+                  id="thesis-content-container"
+                  data-test="page-numbers-container"
+                >
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                    components={{
+                      h1: ({ node, children, ...props }: any) => {
+                        // Check if this is the first content heading after TOC
+                        // We want to ensure it starts on a new page
+                        return (
+                          <h1 style={{
+                            fontSize: '16pt',
+                            fontWeight: 'bold',
+                            textAlign: 'left',
+                            marginTop: '12mm',
+                            marginBottom: '8mm',
+                            pageBreakBefore: 'always',
+                            breakBefore: 'page',
+                          }} {...props}>{children}</h1>
+                        )
+                      },
+                      h2: ({ node, children, ...props }: any) => {
+                        // Skip TOC heading if we're rendering TOC from JSON
+                        const text = String(children || '')
+                        const isTOCHeading = text.includes('Inhaltsverzeichnis') || text.includes('Table of Contents')
+                        
+                        if (isTOCHeading && thesis?.outline) {
+                          // Don't render TOC heading from markdown if we have outline JSON
+                          return null
+                        }
+                        
+                        return (
+                          <h2 style={{
+                            fontSize: '14pt',
+                            fontWeight: 'bold',
+                            marginTop: '8mm',
+                            marginBottom: '4mm',
+                            textAlign: 'left',
+                          }} {...props}>{children}</h2>
+                        )
+                      },
+                      h3: ({ node, ...props }) => (
+                        <h3 style={{
+                          fontSize: '12pt',
+                          fontWeight: 'bold',
+                          marginTop: '8mm',
+                          marginBottom: '4mm',
+                          textAlign: 'left',
+                        }} {...props} />
+                      ),
+                      p: ({ node, children, ...props }: any) => {
+                        // TOC should be in lists, not paragraphs
+                        return (
+                          <p style={{
+                            marginBottom: '6mm',
+                            textAlign: 'justify',
+                            textIndent: '0mm',
+                            lineHeight: '1.6',
+                            fontSize: '12pt',
+                          }} {...props}>{children}</p>
+                        )
+                      },
+                      ul: ({ node, children, ...props }: any) => {
+                        // Check if this is TOC by examining children
+                        const childrenArray = Array.isArray(children) ? children : [children]
+                        let isTOC = false
+                        let tocEntryCount = 0
+                        
+                        // Check if any child looks like TOC entry
+                        for (const child of childrenArray) {
+                          const text = String(child?.props?.children || child || '')
+                          // More flexible TOC detection - check for number patterns
+                          if (/^\d+\.(?:\d+\.)*\s+/.test(text.trim())) {
+                            isTOC = true
+                            tocEntryCount++
+                            console.log('[TOC Detection] Found TOC entry in ul:', text.substring(0, 50))
+                          }
+                        }
+                        
+                        // If at least 2 entries match TOC pattern, treat as TOC
+                        if (isTOC && tocEntryCount >= 2) {
+                          console.log('[TOC Detection] Rendering TOC ul list with', tocEntryCount, 'entries')
+                          return (
+                            <ul className="toc-list" style={{
+                              marginBottom: '6mm',
+                              marginLeft: '0',
+                              paddingLeft: '0',
+                              fontSize: '12pt',
+                              listStyle: 'none',
+                              display: 'block',
+                            }} {...props}>{children}</ul>
+                          )
+                        }
+                        
+                        return (
+                          <ul style={{
+                            marginBottom: '6mm',
+                            marginLeft: '10mm',
+                            paddingLeft: '5mm',
+                            fontSize: '12pt',
+                          }} {...props}>{children}</ul>
+                        )
+                      },
+                      ol: ({ node, children, ...props }: any) => {
+                        const childrenArray = Array.isArray(children) ? children : [children]
+                        let isTOC = false
+                        let tocEntryCount = 0
+                        
+                        // Check if any child looks like TOC entry
+                        for (const child of childrenArray) {
+                          const text = String(child?.props?.children || child || '')
+                          // More flexible TOC detection - check for number patterns
+                          if (/^\d+\.(?:\d+\.)*\s+/.test(text.trim())) {
+                            isTOC = true
+                            tocEntryCount++
+                            console.log('[TOC Detection] Found TOC entry in ol:', text.substring(0, 50))
+                          }
+                        }
+                        
+                        // If at least 2 entries match TOC pattern, treat as TOC
+                        if (isTOC && tocEntryCount >= 2) {
+                          console.log('[TOC Detection] Rendering TOC ol list with', tocEntryCount, 'entries')
+                          return (
+                            <ol className="toc-list" style={{
+                              marginBottom: '6mm',
+                              marginLeft: '0',
+                              paddingLeft: '0',
+                              fontSize: '12pt',
+                              listStyle: 'none',
+                              display: 'block',
+                            }} {...props}>{children}</ol>
+                          )
+                        }
+                        
+                        return (
+                          <ol style={{
+                            marginBottom: '6mm',
+                            marginLeft: '10mm',
+                            paddingLeft: '5mm',
+                            fontSize: '12pt',
+                          }} {...props}>{children}</ol>
+                        )
+                      },
+                      li: ({ node, children, ...props }: any) => {
+                        // Extract text to check for TOC entry - handle nested React elements
+                        let text = ''
+                        const extractText = (node: any): string => {
+                          if (typeof node === 'string') return node
+                          if (typeof node === 'number') return String(node)
+                          if (Array.isArray(node)) {
+                            return node.map(extractText).join(' ').trim()
+                          }
+                          if (node?.props?.children) {
+                            return extractText(node.props.children)
+                          }
+                          return ''
+                        }
+                        
+                        text = extractText(children)
+                        const trimmedText = text.trim()
+                        
+                        console.log('[TOC li] Raw text:', trimmedText.substring(0, 100))
+                        
+                        // TOC entries format: "1. Einleitung" or "1.1 Hinführung..." or "1. Title ......... 5"
+                        // More flexible pattern matching
+                        const tocPattern = /^(\d+\.(?:\d+\.)*)\s+(.+?)(?:\s+[\.]{2,}\s+(\d+))?$|^(\d+\.(?:\d+\.)*)\s+(.+?)\s+(\d+)$|^(\d+\.(?:\d+\.)*)\s+(.+)$/
+                        const tocMatch = trimmedText.match(tocPattern)
+                        
+                        if (tocMatch) {
+                          // Extract parts - handle multiple pattern groups
+                          const numberPart = tocMatch[1] || tocMatch[4] || tocMatch[7] || ''
+                          const titlePart = (tocMatch[2] || tocMatch[5] || tocMatch[8] || '').trim()
+                          const pagePart = tocMatch[3] || tocMatch[6] || ''
+                          
+                          if (numberPart) {
+                            console.log('[TOC Entry] ✓ Matched:', { numberPart, titlePart, pagePart })
+                            
+                            // Determine indentation level
+                            const numberSegments = numberPart.split('.').filter(Boolean)
+                            const level = Math.max(0, numberSegments.length - 1)
+                            const isMainChapter = level === 0
+                            const indent = level * 8
+                            
+                            return (
+                              <li 
+                                className={`toc-entry toc-entry-level-${level}`}
+                                style={{
+                                  marginBottom: '4mm',
+                                  lineHeight: '1.6',
+                                  listStyle: 'none',
+                                  paddingLeft: '0',
+                                  marginLeft: `${indent}mm`,
+                                  fontSize: '12pt',
+                                  display: 'block',
+                                  breakInside: 'avoid',
+                                  pageBreakInside: 'avoid',
+                                }} 
+                                {...props}
+                              >
+                                <span style={{
+                                  fontWeight: isMainChapter ? 'bold' : 'normal',
+                                }}>
+                                  {numberPart} {titlePart}
+                                </span>
+                                {pagePart && (
+                                  <span style={{
+                                    float: 'right',
+                                    fontVariantNumeric: 'tabular-nums',
+                                    marginLeft: '4mm',
+                                  }}>
+                                    {pagePart}
+                                  </span>
+                                )}
+                              </li>
+                            )
+                          }
+                        }
+                        
+                        // If it looks like a TOC entry but didn't match, log it
+                        if (trimmedText && /^\d+\./.test(trimmedText)) {
+                          console.warn('[TOC Entry] ✗ Not matched:', trimmedText.substring(0, 100))
+                        }
+                        
+                        return (
+                          <li style={{
+                            marginBottom: '4mm',
+                            fontSize: '12pt',
+                            lineHeight: '1.6',
+                          }} {...props}>{children}</li>
+                        )
+                      },
+                      blockquote: ({ node, ...props }) => (
+                        <blockquote style={{
+                          borderLeft: '3px solid #666',
+                          paddingLeft: '8mm',
+                          marginLeft: '10mm',
+                          marginRight: '10mm',
+                          marginTop: '4mm',
+                          marginBottom: '4mm',
+                          fontStyle: 'italic',
+                          fontSize: '11pt',
+                          color: '#333',
+                        }} {...props} />
+                      ),
+                      code: ({ node, inline, ...props }: any) => {
+                        if (inline) {
+                          return (
+                            <code style={{
+                              backgroundColor: '#f5f5f5',
+                              padding: '1mm 2mm',
+                              borderRadius: '2px',
+                              fontSize: '11pt',
+                              fontFamily: '"Courier New", monospace',
+                              color: '#000',
+                            }} {...props} />
+                          )
+                        }
+                        return (
+                          <code style={{
+                            display: 'block',
+                            backgroundColor: '#f5f5f5',
+                            padding: '4mm',
+                            borderRadius: '2px',
+                            fontSize: '10pt',
+                            fontFamily: '"Courier New", monospace',
+                            marginBottom: '6mm',
+                            overflowX: 'auto',
+                            border: '1px solid #ddd',
+                          }} {...props} />
+                        )
+                      },
+                    }}
+                  >
+                    {content || '*Kein Inhalt verfügbar*'}
+                  </ReactMarkdown>
+                  
+                </div>
+              </div>
             </div>
           )}
         </div>

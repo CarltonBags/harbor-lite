@@ -1354,6 +1354,11 @@ ${sourceUsageGuidance}
 - Die Quellenanzahl muss zur Länge der Arbeit passen. Eine kurze Hausarbeit sollte nicht wie eine Dissertation zitiert werden.
 - Im Literaturverzeichnis NUR die tatsächlich im Text zitierten Quellen aufführen (maximal ${recommendedSourceCount}).
 
+**Menschlicher Stil:**
+- Verwende einen menschlichen, natürlichen Ton.
+- Achte darauf, dass nicht zu häufig wiederholende Formulierungen verwendet werden. Sei Facettenreich in deiner Formulierung.
+- Der Text darf NICHT als maschinell formuliert erkannt werden.
+
 **Wissenschaftlicher Stil (${thesisData.language === 'german' ? 'deutsch' : 'englisch'}):**
 - Objektiv, präzise, sachlich.
 - Keine Meinungen, kein Marketing, keine Füllsätze.
@@ -1367,6 +1372,7 @@ ${sourceUsageGuidance}
 
 **Zitationsstil:**
 - Halte dich exakt an den vorgegebenen Zitationsstil (${citationStyleLabel}).
+- Der Zitationsstil MUSS ebenfalls im Fließtext berücksichtigt werden. Dort wo eine Quelle verwendet wird, ist dies im entsprechenden Zitationsstilzu kennzeichnen.
 - Im Text und im Literaturverzeichnis strikt korrekt formatieren.
 - Wenn der Stil Seitenzahlen verlangt, aber die Quelle keine liefert → Seitenzahl weglassen, niemals raten.
 
@@ -1383,6 +1389,12 @@ ${sourceUsageGuidance}
 - Extrahiere relevante Aussagen und verarbeite sie wissenschaftlich.
 - Keine Inhalte außerhalb der bereitgestellten Daten außer allgemein anerkanntes Basiswissen (Definitionen, Methodik).
 
+**WICHTIG - Inhaltsverzeichnis:**
+- ERSTELLE KEIN Inhaltsverzeichnis (Table of Contents / Inhaltsverzeichnis) im generierten Text.
+- Das Inhaltsverzeichnis wird automatisch aus der Gliederung generiert und separat angezeigt.
+- Beginne direkt mit dem ersten Kapitel (z.B. "## Einleitung" oder "## 1. Einleitung").
+- Keine Überschrift "Inhaltsverzeichnis" oder "Table of Contents" im Text.
+
 **Output-Format:**
 - Gib die komplette Arbeit in Markdown mit klaren Überschriften aus.
 - Strukturbeispiel:
@@ -1392,6 +1404,7 @@ ${sourceUsageGuidance}
   ...
   ## Fazit
   ## Literaturverzeichnis
+- BEGINNE direkt mit dem ersten Kapitel - KEIN Inhaltsverzeichnis.
 
 **Ziel:**
 Erstelle eine vollständige, zitierfähige, wissenschaftlich fundierte Arbeit, die logisch aufgebaut ist, den Zitationsstil korrekt umsetzt, ausschließlich validierte Quellen nutzt und die vorgegebene Länge einhält.`

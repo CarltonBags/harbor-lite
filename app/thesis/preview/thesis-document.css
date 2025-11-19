@@ -1,0 +1,292 @@
+/* Thesis Document Styling - LaTeX/PDF Style */
+
+.thesis-document {
+  position: relative;
+  font-family: "Times New Roman", "Times", serif;
+  color: #000 !important;
+  background: #ffffff !important; /* Always white, even in dark mode */
+  width: 210mm !important; /* A4 width - fixed */
+  min-width: 210mm !important;
+  flex-shrink: 0 !important; /* Prevent shrinking */
+}
+
+/* Page container - simulates A4 pages */
+.thesis-page {
+  position: relative;
+  min-height: 247mm; /* 297mm - 25mm top - 25mm bottom */
+  height: 247mm;
+  page-break-after: always;
+  margin-bottom: 2mm; /* Small gap between pages */
+  border-bottom: 1px solid #e0e0e0;
+  overflow: hidden;
+}
+
+/* Cover page - no page number */
+.cover-page {
+  position: relative;
+  margin-bottom: 2mm;
+}
+
+.cover-page::after {
+  display: none;
+}
+
+/* Page number styling for content pages */
+.thesis-content {
+  position: relative !important;
+  display: flex;
+  flex-direction: column;
+  overflow: visible !important; /* Allow page numbers to be visible */
+}
+
+/* Visual page breaks - split content into pages with shadows and borders */
+.thesis-content {
+  position: relative;
+}
+
+/* Page containers - no longer used, kept for backwards compatibility */
+.thesis-page-container {
+  position: relative;
+  min-height: 247mm;
+  margin-bottom: 2mm;
+  background: #ffffff;
+  z-index: 2;
+  /* Remove all visual artifacts */
+  border: none !important;
+  box-shadow: none !important;
+  padding-bottom: 0;
+}
+
+/* Visual page separators - DISABLED - using page containers instead */
+/* Page containers prevent breaks from cutting through text */
+.thesis-content::before,
+.thesis-content::after {
+  display: none !important; /* Disabled - using page containers instead */
+}
+
+/* Simulate page breaks with spacing */
+.thesis-content h1 {
+  page-break-before: always;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.thesis-content h1:first-of-type {
+  page-break-before: auto;
+  padding-top: 0;
+}
+
+/* Academic document styling */
+.thesis-document h1,
+.thesis-document h2,
+.thesis-document h3 {
+  color: #000 !important; /* Always black, even in dark mode */
+  font-weight: bold;
+  text-align: left !important; /* Never center headings */
+}
+
+.thesis-document p,
+.thesis-document li,
+.thesis-document blockquote,
+.thesis-document code {
+  color: #000 !important; /* Always black text */
+}
+
+.thesis-document p {
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  -moz-hyphens: auto;
+  text-indent: 0;
+}
+
+/* Add page numbers at logical page breaks */
+.thesis-content > * {
+  position: relative;
+  z-index: 2; /* Above page separator lines */
+}
+
+/* Page number markers added by JavaScript - MUST be visible in preview */
+.page-number-marker {
+  position: absolute !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  font-size: 10pt !important;
+  color: #333 !important;
+  font-family: "Times New Roman", serif !important;
+  width: 100% !important;
+  text-align: center !important;
+  pointer-events: none !important;
+  z-index: 10000 !important;
+  background: transparent !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  line-height: 1 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  outline: none !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ensure page numbers are always visible, even if parent has overflow */
+.thesis-content .page-number-marker {
+  position: absolute !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  min-height: 1px !important; /* Ensure it takes up space */
+}
+
+/* Debug: Make page numbers very visible if they exist */
+.thesis-content .page-number-marker[data-visible="true"] {
+  background: rgba(255, 0, 0, 0.1) !important; /* Light red background for debugging - remove later */
+  border: 1px solid rgba(255, 0, 0, 0.3) !important; /* Red border for debugging - remove later */
+}
+
+/* Table of Contents formatting */
+.thesis-content h2.toc-heading {
+  text-align: center;
+  margin-bottom: 6mm;
+  page-break-after: auto; /* Don't force page break - keep with TOC content */
+}
+
+/* TOC list - ensure proper formatting */
+.thesis-content .toc-list {
+  page-break-after: always; /* TOC list should be on its own page, but heading stays with it */
+  margin-bottom: 10mm;
+}
+
+/* TOC entries - proper academic format (both paragraphs and list items) */
+.thesis-content p.toc-entry {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  text-align: left !important;
+  margin-bottom: 3mm;
+}
+
+/* Main chapters in TOC: bold, no indent */
+.thesis-content p.toc-entry-level-0 {
+  margin-left: 0mm;
+  font-weight: bold !important;
+}
+
+/* Sub-chapters in TOC: not bold, indented */
+.thesis-content p.toc-entry-level-1 {
+  margin-left: 8mm;
+  font-weight: normal !important;
+}
+
+.thesis-content p.toc-entry-level-2 {
+  margin-left: 16mm;
+  font-weight: normal !important;
+}
+
+.thesis-content p.toc-entry-level-3 {
+  margin-left: 24mm;
+  font-weight: normal !important;
+}
+
+/* TOC list formatting - hierarchical indentation */
+.thesis-content ul.toc-list,
+.thesis-content ol.toc-list {
+  list-style: none;
+  margin-left: 0;
+  padding-left: 0;
+  margin-bottom: 6mm;
+}
+
+/* TOC entries - proper academic format */
+.thesis-content li.toc-entry {
+  font-variant-numeric: tabular-nums;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Main chapters: bold, no indent */
+.thesis-content li.toc-entry-level-0 {
+  margin-left: 0mm;
+  font-weight: bold;
+}
+
+/* Sub-chapters: not bold, indented */
+.thesis-content li.toc-entry-level-1 {
+  margin-left: 8mm;
+  font-weight: normal;
+}
+
+.thesis-content li.toc-entry-level-2 {
+  margin-left: 16mm;
+  font-weight: normal;
+}
+
+.thesis-content li.toc-entry-level-3 {
+  margin-left: 24mm;
+  font-weight: normal;
+}
+
+/* Print styles */
+@media print {
+  .thesis-document {
+    box-shadow: none;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .cover-page {
+    page-break-after: always;
+  }
+  
+  @page {
+    size: A4;
+    margin: 25mm 30mm;
+  }
+  
+  @page:first {
+    @bottom-center {
+      content: '';
+    }
+  }
+  
+  @page {
+    @bottom-center {
+      content: counter(page);
+      font-size: 10pt;
+      font-family: "Times New Roman", serif;
+      color: #666;
+    }
+  }
+  
+  .cover-page {
+    page: first;
+  }
+  
+  /* Hide JavaScript-added page numbers in print (use CSS page numbers instead) */
+  .page-number-marker {
+    display: none;
+  }
+}
+
+/* Responsive: Don't shrink, only zoom out */
+@media (max-width: 1200px) {
+  .thesis-document {
+    transform: scale(0.9);
+    transform-origin: top center;
+  }
+}
+
+@media (max-width: 900px) {
+  .thesis-document {
+    transform: scale(0.75);
+    transform-origin: top center;
+  }
+}
+
+@media (max-width: 600px) {
+  .thesis-document {
+    transform: scale(0.6);
+    transform-origin: top center;
+  }
+}

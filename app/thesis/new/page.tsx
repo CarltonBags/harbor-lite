@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, ArrowRight, Loader2, FileText, BookOpen, Target, CheckCircle, RefreshCw, List, Plus, Trash2, Save, Upload, Search, X, Download, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Loader2, FileText, BookOpen, Target, CheckCircle, RefreshCw, List, Plus, Trash2, Save, Upload, Search, X, Download, ExternalLink, ChevronDown, ChevronUp, Mail } from 'lucide-react'
 import { FileMetadataCard } from '@/components/file-metadata-card'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -179,7 +179,7 @@ export default function NewThesisPage() {
   }
   const [searchQueries, setSearchQueries] = useState<SearchQuerySection[]>([])
   const [loadingQueries, setLoadingQueries] = useState(false)
-  
+  const [showGenerationModal, setShowGenerationModal] = useState(false)
   
   const [formData, setFormData] = useState<ThesisFormData>({
     language: null,
@@ -1136,16 +1136,13 @@ export default function NewThesisPage() {
         throw new Error('Failed to create or update thesis')
       }
     
-      // Trigger background worker in TEST MODE
-      // Always run in production mode (full thesis generation)
-      const testMode = false
-      
+      // Trigger background worker for full thesis generation
       const response = await fetch('/api/start-thesis-generation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ thesisId: currentThesisId, testMode }),
+        body: JSON.stringify({ thesisId: currentThesisId }),
       })
 
       if (!response.ok) {
@@ -1156,8 +1153,13 @@ export default function NewThesisPage() {
       const data = await response.json()
       console.log('Generation started:', data)
       
-      // Navigate to generation page
-      router.push(`/thesis/generate?id=${currentThesisId}`)
+      // Show notification modal
+      setShowGenerationModal(true)
+      
+      // Navigate to generation page after a short delay
+      setTimeout(() => {
+        router.push(`/thesis/generate?id=${currentThesisId}`)
+      }, 2000)
     } catch (error) {
       console.error('Error starting generation:', error)
       alert(error instanceof Error ? error.message : 'Fehler beim Starten der Generierung')
@@ -2242,6 +2244,43 @@ export default function NewThesisPage() {
           </div>
         )}
       </div>
+
+      {/* Generation Started Modal */}
+      {showGenerationModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full p-6">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle className="w-8 h-8 text-purple-600 dark:text-purple-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                Generierung gestartet!
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                Ihre Thesis wird jetzt im Hintergrund generiert. Dies kann einige Minuten dauern.
+              </p>
+              <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4 mb-6">
+                <div className="flex items-center justify-center gap-2 text-purple-700 dark:text-purple-300 mb-1">
+                  <Mail className="w-5 h-5" />
+                  <span className="font-semibold">E-Mail-Benachrichtigung</span>
+                </div>
+                <p className="text-sm text-purple-600 dark:text-purple-400">
+                  Sie erhalten eine E-Mail, sobald Ihre Thesis fertig ist.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowGenerationModal(false)
+                  router.push('/thesis')
+                }}
+                className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 transition-all"
+              >
+                Zur Übersicht
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
