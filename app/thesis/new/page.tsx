@@ -1626,8 +1626,10 @@ export default function NewThesisPage() {
                   <div>
                     <dt className="text-sm font-medium text-gray-600 dark:text-gray-400">Umfang:</dt>
                     <dd className="text-gray-900 dark:text-white">
-                      {formData.lengthMin && formData.lengthMax 
+                      {formData.lengthUnit === 'pages' && formData.lengthMin && formData.lengthMax
                         ? `${formData.lengthMin}-${formData.lengthMax} Seiten (${parseInt(formData.lengthMin) * 320}-${parseInt(formData.lengthMax) * 320} Wörter)`
+                        : formData.lengthUnit === 'words' && formData.lengthWords
+                        ? `${formData.lengthWords} Wörter (ca. ${Math.ceil(parseInt(formData.lengthWords) / 250)} Seiten)`
                         : '-'}
                     </dd>
                   </div>

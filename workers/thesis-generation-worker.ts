@@ -858,14 +858,62 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     // Use arrayBuffer() instead of deprecated buffer() method
     const arrayBuffer = await pdfResponse.arrayBuffer()
     const pdfBuffer = Buffer.from(arrayBuffer)
-    console.log(`[PDFUpload] PDF buffer created: ${(pdfBuffer.length / 1024).toFixed(2)} KB`)
+    const fileSizeKB = pdfBuffer.length / 1024
+    const fileSizeMB = fileSizeKB / 1024
+    console.log(`[PDFUpload] PDF buffer created: ${fileSizeKB.toFixed(2)} KB (${fileSizeMB.toFixed(2)} MB)`)
+    
+    // Validate PDF before processing
+    // Check 1: File size - Google FileSearchStore has a 20MB limit per file
+    const MAX_FILE_SIZE_MB = 20
+    if (fileSizeMB > MAX_FILE_SIZE_MB) {
+      console.error(`[PDFUpload] ERROR: PDF too large (${fileSizeMB.toFixed(2)} MB > ${MAX_FILE_SIZE_MB} MB limit)`)
+      return false
+    }
+    
+    // Check 2: Minimum size - ensure it's not empty or corrupted
+    const MIN_FILE_SIZE_KB = 1
+    if (fileSizeKB < MIN_FILE_SIZE_KB) {
+      console.error(`[PDFUpload] ERROR: PDF too small (${fileSizeKB.toFixed(2)} KB < ${MIN_FILE_SIZE_KB} KB) - likely corrupted or empty`)
+      return false
+    }
+    
+    // Check 3: Validate PDF header - should start with %PDF
+    const pdfHeader = pdfBuffer.subarray(0, 4).toString('ascii')
+    if (pdfHeader !== '%PDF') {
+      console.error(`[PDFUpload] ERROR: Invalid PDF format (header: "${pdfHeader}", expected: "%PDF")`)
+      return false
+    }
+    console.log(`[PDFUpload] PDF validation passed: valid PDF format, size OK`)
     
     // Extract page numbers using Gemini 2.5 Flash
     console.log(`[PDFUpload] Extracting page numbers...`)
     const pageExtractStart = Date.now()
-    const { pageStart, pageEnd } = await extractPageNumbers(pdfBuffer)
-    const pageExtractDuration = Date.now() - pageExtractStart
-    console.log(`[PDFUpload] Page extraction completed (${pageExtractDuration}ms)`)
+    let pageStart: string | null = null
+    let pageEnd: string | null = null
+    try {
+      const pageNumbers = await extractPageNumbers(pdfBuffer)
+      pageStart = pageNumbers.pageStart
+      pageEnd = pageNumbers.pageEnd
+      const pageExtractDuration = Date.now() - pageExtractStart
+      console.log(`[PDFUpload] Page extraction completed (${pageExtractDuration}ms)`)
+    } catch (error) {
+      console.warn(`[PDFUpload] WARNING: Page number extraction failed, using fallback estimation:`, error)
+      // Fallback: Estimate page count from PDF size
+      // Average academic PDF page is ~50-75 KB, use conservative 50 KB per page
+      const estimatedPages = Math.max(1, Math.ceil(fileSizeKB / 50))
+      pageStart = "1"
+      pageEnd = estimatedPages.toString()
+      console.log(`[PDFUpload] Using fallback: estimated ${estimatedPages} pages based on file size (${fileSizeKB.toFixed(2)} KB / 50 KB per page)`)
+    }
+    
+    // Ensure we have page numbers (fallback if extraction returned null)
+    if (!pageStart || !pageEnd) {
+      console.warn(`[PDFUpload] WARNING: Page extraction returned null, using fallback estimation`)
+      const estimatedPages = Math.max(1, Math.ceil(fileSizeKB / 50))
+      pageStart = "1"
+      pageEnd = estimatedPages.toString()
+      console.log(`[PDFUpload] Using fallback: estimated ${estimatedPages} pages based on file size`)
+    }
     
     // Create a Blob from Buffer for SDK compatibility
     const fileSource = new Blob([pdfBuffer], { type: 'application/pdf' })
@@ -908,26 +956,46 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
 
     // Upload to FileSearchStore
     console.log(`[PDFUpload] Uploading to FileSearchStore...`)
+    console.log(`[PDFUpload]   File size: ${fileSizeMB.toFixed(2)} MB`)
     console.log(`[PDFUpload]   Metadata fields: ${customMetadata.length}`)
+    console.log(`[PDFUpload]   Display name: ${source.title.substring(0, 100) || 'Untitled'}`)
     const uploadStart = Date.now()
-    const operation = await retryApiCall(
-      () => ai.fileSearchStores.uploadToFileSearchStore({
-        file: fileSource,
-        fileSearchStoreName: fileSearchStoreId,
-        config: {
-          displayName: source.title.substring(0, 100) || 'Untitled',
-          customMetadata,
-          chunkingConfig: {
-            whiteSpaceConfig: {
-              maxTokensPerChunk: 512,
-              maxOverlapTokens: 50,
+    
+    let operation: any
+    try {
+      operation = await retryApiCall(
+        () => ai.fileSearchStores.uploadToFileSearchStore({
+          file: fileSource,
+          fileSearchStoreName: fileSearchStoreId,
+          config: {
+            displayName: source.title.substring(0, 100) || 'Untitled',
+            customMetadata,
+            chunkingConfig: {
+              whiteSpaceConfig: {
+                maxTokensPerChunk: 512,
+                maxOverlapTokens: 50,
+              },
             },
           },
-        },
-      }),
-      `Upload to FileSearchStore: ${source.title}`
-    )
-    console.log(`[PDFUpload] Upload operation started, polling for completion...`)
+        }),
+        `Upload to FileSearchStore: ${source.title}`,
+        3, // 3 retries
+        2000 // 2 second base delay
+      )
+      console.log(`[PDFUpload] Upload operation started, polling for completion...`)
+    } catch (error: any) {
+      // Handle specific 500 errors from Google API
+      if (error?.status === 500) {
+        console.error(`[PDFUpload] ERROR: Google API returned 500 Internal Server Error`)
+        console.error(`[PDFUpload]   This usually means the PDF is corrupted, too large, or in an invalid format`)
+        console.error(`[PDFUpload]   File size: ${fileSizeMB.toFixed(2)} MB`)
+        console.error(`[PDFUpload]   PDF header validated: Yes`)
+        console.error(`[PDFUpload]   Error details:`, error.message || error)
+        return false
+      }
+      // Re-throw other errors
+      throw error
+    }
 
     // Poll until complete
     const maxWaitTime = 300000 // 5 minutes
