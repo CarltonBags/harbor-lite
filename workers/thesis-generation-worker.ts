@@ -1388,6 +1388,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   
   console.log(`[ThesisGeneration] Target pages: ${targetPages}, Recommended sources: ${recommendedSourceCount}`)
   console.log(`[ThesisGeneration] Available sources: ${rankedSources.length}`)
+  console.log(`[ThesisGeneration] Using top ${rankedSources.length} sources by relevance for RAG context`)
 
   const prompt = `Du bist ein wissenschaftlicher Assistent, der akademische Texte ausschließlich auf Basis der bereitgestellten, indexierten Quellen (RAG / File Search) schreibt.
 
@@ -1479,117 +1480,78 @@ Erstelle eine vollständige, zitierfähige, wissenschaftlich fundierte Arbeit, d
 
   console.log('[ThesisGeneration] Calling Gemini Pro to generate thesis content...')
   console.log('[ThesisGeneration] Using FileSearchStore for RAG context')
+  console.log('[ThesisGeneration] FileSearchStore ID:', thesisData.fileSearchStoreId)
   const generationStart = Date.now()
   
-  // Retry with fallbacks: try with full context first, then with reduced context if needed
+  // Retry with SAME config (FileSearchStore + Gemini Pro) - 3 total attempts
   let content = ''
   let lastError: Error | unknown = null
+  const maxAttempts = 3
   
-  // Attempt 1: Full generation with FileSearchStore
-  try {
-    console.log('[ThesisGeneration] Attempt 1: Full generation with FileSearchStore')
-    const response = await retryApiCall(
-      () => ai.models.generateContent({
-        model: 'gemini-2.5-pro',
-        contents: prompt,
-        config: {
-          tools: [{
-            fileSearch: {
-              fileSearchStoreNames: [thesisData.fileSearchStoreId],
-            },
-          }],
-        },
-      }),
-      'Generate thesis content (Gemini Pro) - Attempt 1',
-      3, // 3 retries
-      2000 // 2 second base delay
-    )
-    
-    content = response.text || ''
-    if (content && content.length > 100) {
-      const generationDuration = Date.now() - generationStart
-      const contentLength = content.length
-      const wordCount = content.split(/\s+/).length
-      console.log(`[ThesisGeneration] Thesis generation completed (${generationDuration}ms)`)
-      console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
-      return content
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[ThesisGeneration] Attempt ${attempt}/${maxAttempts}: Full generation with FileSearchStore + Gemini Pro`)
+      console.log(`[ThesisGeneration]   Model: gemini-2.5-pro`)
+      console.log(`[ThesisGeneration]   FileSearchStore: ${thesisData.fileSearchStoreId}`)
+      
+      const response = await retryApiCall(
+        () => ai.models.generateContent({
+          model: 'gemini-2.5-pro',
+          contents: prompt,
+          config: {
+            tools: [{
+              fileSearch: {
+                fileSearchStoreNames: [thesisData.fileSearchStoreId],
+              },
+            }],
+          },
+        }),
+        `Generate thesis content (Gemini Pro + FileSearchStore) - Attempt ${attempt}`,
+        1, // Single retry per attempt (we're doing 3 attempts total)
+        3000 // 3 second delay between attempts
+      )
+      
+      content = response.text || ''
+      if (content && content.length > 100) {
+        const generationDuration = Date.now() - generationStart
+        const contentLength = content.length
+        const wordCount = content.split(/\s+/).length
+        console.log(`[ThesisGeneration] ✓ Thesis generation completed successfully on attempt ${attempt} (${generationDuration}ms)`)
+        console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
+        return content
+      } else {
+        console.warn(`[ThesisGeneration] Attempt ${attempt} returned invalid content (length: ${content.length})`)
+        lastError = new Error(`Invalid content returned: length ${content.length} < 100`)
+      }
+    } catch (error: any) {
+      lastError = error
+      const errorMessage = error?.message || String(error)
+      const errorStatus = error?.status || error?.code || 'unknown'
+      console.error(`[ThesisGeneration] ✗ Attempt ${attempt}/${maxAttempts} failed:`)
+      console.error(`[ThesisGeneration]   Error: ${errorMessage}`)
+      console.error(`[ThesisGeneration]   Status/Code: ${errorStatus}`)
+      if (error?.response) {
+        console.error(`[ThesisGeneration]   Response:`, JSON.stringify(error.response).substring(0, 500))
+      }
+      
+      // If not the last attempt, wait before retrying
+      if (attempt < maxAttempts) {
+        const waitTime = 5000 * attempt // Exponential backoff: 5s, 10s
+        console.log(`[ThesisGeneration] Waiting ${waitTime}ms before retry...`)
+        await new Promise(resolve => setTimeout(resolve, waitTime))
+      }
     }
-  } catch (error) {
-    lastError = error
-    console.warn('[ThesisGeneration] Attempt 1 failed, trying fallback...', error)
   }
   
-  // Attempt 2: Fallback - try without FileSearchStore, use source metadata only
-  try {
-    console.log('[ThesisGeneration] Attempt 2: Fallback generation without FileSearchStore')
-    const fallbackPrompt = prompt + `\n\n**Hinweis:** Falls FileSearchStore nicht verfügbar ist, nutze die oben bereitgestellten Quellen-Metadaten.`
-    
-    const response = await retryApiCall(
-      () => ai.models.generateContent({
-        model: 'gemini-2.5-pro',
-        contents: fallbackPrompt,
-        // No FileSearchStore in fallback
-      }),
-      'Generate thesis content (Gemini Pro) - Attempt 2 (Fallback)',
-      3,
-      2000
-    )
-    
-    content = response.text || ''
-    if (content && content.length > 100) {
-      const generationDuration = Date.now() - generationStart
-      const contentLength = content.length
-      const wordCount = content.split(/\s+/).length
-      console.log(`[ThesisGeneration] Fallback generation completed (${generationDuration}ms)`)
-      console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
-      return content
-    }
-  } catch (error) {
-    lastError = error
-    console.warn('[ThesisGeneration] Attempt 2 failed, trying final fallback...', error)
-  }
-  
-  // Attempt 3: Final fallback - use gemini-2.5-flash (faster, cheaper, but lower quality)
-  try {
-    console.log('[ThesisGeneration] Attempt 3: Final fallback with gemini-2.5-flash')
-    const response = await retryApiCall(
-      () => ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-          tools: [{
-            fileSearch: {
-              fileSearchStoreNames: [thesisData.fileSearchStoreId],
-            },
-          }],
-        },
-      }),
-      'Generate thesis content (Gemini Flash) - Attempt 3 (Final Fallback)',
-      2, // Fewer retries for fallback
-      1000
-    )
-    
-    content = response.text || ''
-    if (content && content.length > 100) {
-      const generationDuration = Date.now() - generationStart
-      const contentLength = content.length
-      const wordCount = content.split(/\s+/).length
-      console.log(`[ThesisGeneration] Final fallback generation completed (${generationDuration}ms)`)
-      console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
-      console.log(`[ThesisGeneration] WARNING: Used gemini-2.5-flash as fallback - quality may be lower`)
-      return content
-    }
-  } catch (error) {
-    lastError = error
-    console.error('[ThesisGeneration] All generation attempts failed')
-  }
-  
-  // If all attempts failed, throw the last error
-  if (!content || content.length < 100) {
-    throw new Error(`Failed to generate thesis content after all retry attempts: ${lastError instanceof Error ? lastError.message : 'Unknown error'}`)
-  }
-  
-  return content
+  // If all attempts failed, throw detailed error
+  const errorDetails = lastError instanceof Error 
+    ? `${lastError.message} (${lastError.name})`
+    : String(lastError)
+  throw new Error(
+    `Failed to generate thesis content after ${maxAttempts} attempts with FileSearchStore + Gemini Pro. ` +
+    `Last error: ${errorDetails}. ` +
+    `FileSearchStore ID: ${thesisData.fileSearchStoreId}`
+  )
 }
 
 /**
@@ -1899,10 +1861,33 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.log('\n[PROCESS] ========== Step 7: Generate Thesis Content ==========')
     const step7Start = Date.now()
     
-    // Use successfully uploaded sources for thesis generation (these are the ones with accessible PDFs)
-    const sourcesForGeneration = successfullyUploaded.length > 0 ? successfullyUploaded : ranked.slice(0, 50)
-    console.log(`[PROCESS] Using ${sourcesForGeneration.length} sources for thesis generation`)
-    console.log(`[PROCESS]   ${successfullyUploaded.length} successfully uploaded, ${sourcesForGeneration.length - successfullyUploaded.length} from ranked list`)
+    // Calculate appropriate number of sources based on thesis length
+    // Formula: ~1.25 sources per page, max 50 sources
+    // Example: 20 pages = 25 sources, 40 pages = 50 sources (max)
+    let targetPages = thesisData.targetLength
+    if (thesisData.lengthUnit === 'words') {
+      // Convert words to pages (assuming ~250 words per page)
+      targetPages = Math.ceil(thesisData.targetLength / 250)
+    } else {
+      // Already in pages, use average of min/max if available, or target length
+      targetPages = thesisData.targetLength
+    }
+    
+    // Calculate target source count: 1.25 sources per page, max 50
+    const targetSourceCount = Math.min(50, Math.max(10, Math.ceil(targetPages * 1.25)))
+    console.log(`[PROCESS] Target thesis length: ${targetPages} pages`)
+    console.log(`[PROCESS] Calculated target source count: ${targetSourceCount} sources (1.25 per page, max 50)`)
+    
+    // Use successfully uploaded sources, sorted by relevance score (highest first)
+    const availableSources = successfullyUploaded.length > 0 
+      ? [...successfullyUploaded].sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
+      : [...ranked].sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
+    
+    // Select top N sources by relevance score
+    const sourcesForGeneration = availableSources.slice(0, targetSourceCount)
+    console.log(`[PROCESS] Selected ${sourcesForGeneration.length} sources for thesis generation (top ${targetSourceCount} by relevance)`)
+    console.log(`[PROCESS]   ${successfullyUploaded.length} successfully uploaded available`)
+    console.log(`[PROCESS]   Relevance scores: min=${Math.min(...sourcesForGeneration.map(s => s.relevanceScore || 0))}, max=${Math.max(...sourcesForGeneration.map(s => s.relevanceScore || 0))}`)
     
     let thesisContent = ''
     try {
