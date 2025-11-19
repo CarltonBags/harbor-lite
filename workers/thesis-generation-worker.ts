@@ -1512,14 +1512,12 @@ Erstelle eine vollständige, zitierfähige, wissenschaftlich fundierte Arbeit, d
 }
 
 /**
- * Main job handler
- * @param testMode - If true, returns selected sources JSON instead of generating thesis
+ * Main job handler - always runs full thesis generation
  */
-async function processThesisGeneration(thesisId: string, thesisData: ThesisData, testMode: boolean = false) {
+async function processThesisGeneration(thesisId: string, thesisData: ThesisData) {
   const processStartTime = Date.now()
   console.log('='.repeat(80))
   console.log(`[PROCESS] Starting thesis generation for thesis ${thesisId}`)
-  console.log(`[PROCESS] Test mode: ${testMode}`)
   console.log(`[PROCESS] Thesis: "${thesisData.title}"`)
   console.log(`[PROCESS] Field: ${thesisData.field}`)
   console.log(`[PROCESS] Type: ${thesisData.thesisType}`)
@@ -1663,141 +1661,9 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
       console.log(`[PROCESS] Using ${ranked.length} unranked sources as fallback`)
     }
 
-    // If test mode, skip PDF uploads and return selected sources JSON
-    if (testMode) {
-      console.log('\n[PROCESS] ========== Test Mode: Skipping PDF Uploads ==========')
-      console.log('[PROCESS] Test mode - PDFs will not be downloaded or uploaded')
-      console.log('\n[PROCESS] ========== Test Mode: Returning Selected Sources ==========')
-      
-      // Get top sources that would be used (filtered by relevance and with PDF URLs)
-      // Filter by relevance score >= 40 and take top 50
-      const sourcesWithRelevance = ranked.filter(s => s.relevanceScore && s.relevanceScore >= 40)
-      console.log(`[PROCESS] Sources with relevance >= 40: ${sourcesWithRelevance.length}`)
-      
-      const selectedSources = sourcesWithRelevance
-        .slice(0, 50)
-        .map(source => ({
-          title: source.title || null,
-          authors: source.authors || [],
-          year: source.year || null,
-          doi: source.doi || null,
-          url: source.url || null,
-          pdfUrl: source.pdfUrl || null,
-          abstract: source.abstract || null,
-          journal: source.journal || null,
-          publisher: source.publisher || null,
-          citationCount: source.citationCount || null,
-          relevanceScore: source.relevanceScore || null,
-          source: source.source || 'unknown', // 'openalex' or 'semantic_scholar'
-        }))
 
-      console.log(`[PROCESS] Selected ${selectedSources.length} sources for storage`)
-      if (selectedSources.length > 0) {
-        console.log(`[PROCESS] First source example:`, JSON.stringify(selectedSources[0], null, 2))
-      }
-
-      // Prepare statistics
-      const statistics = {
-        totalSourcesFound: allSources.length,
-        sourcesAfterDeduplication: deduplicated.length,
-        sourcesAfterRanking: ranked.length,
-        sourcesWithPDFs: ranked.filter(s => s.pdfUrl).length,
-        selectedSourcesCount: selectedSources.length,
-        selectedSourcesWithPDFs: selectedSources.filter(s => s.pdfUrl).length,
-      }
-
-      // Get existing metadata to preserve other fields
-      console.log('[PROCESS] Fetching existing thesis metadata...')
-      const { data: existingThesis } = await retryApiCall(
-        async () => {
-          const result = await supabase
-            .from('theses')
-            .select('metadata')
-            .eq('id', thesisId)
-            .single()
-          if (result.error) throw result.error
-          return result
-        },
-        `Fetch existing thesis metadata: ${thesisId}`
-      )
-
-      const existingMetadata = (existingThesis?.metadata as Record<string, any>) || {}
-      
-      // Merge with existing metadata, but override test mode fields
-      const updatedMetadata = {
-        ...existingMetadata,
-        testMode: true,
-        testCompletedAt: new Date().toISOString(),
-        statistics,
-        selectedSources: selectedSources, // Store all selected sources with full metadata
-      }
-
-      console.log(`[PROCESS] Storing ${selectedSources.length} sources in metadata`)
-      console.log(`[PROCESS] Metadata size: ${JSON.stringify(updatedMetadata).length} bytes`)
-
-      // Update thesis status to indicate test completed
-      console.log('[PROCESS] Updating thesis in database with test mode results...')
-      const dbUpdateStart = Date.now()
-      await retryApiCall(
-        async () => {
-          const result = await supabase
-            .from('theses')
-            .update({
-              status: 'draft',
-              metadata: updatedMetadata,
-            })
-            .eq('id', thesisId)
-          if (result.error) {
-            console.error('[PROCESS] Database update error:', result.error)
-            throw result.error
-          }
-          return result
-        },
-        `Update thesis status (test mode): ${thesisId}`
-      )
-      const dbUpdateDuration = Date.now() - dbUpdateStart
-      console.log(`[PROCESS] Database updated in ${dbUpdateDuration}ms`)
-      
-      // Verify the update
-      const { data: verifyThesis } = await retryApiCall(
-        async () => {
-          const result = await supabase
-            .from('theses')
-            .select('metadata')
-            .eq('id', thesisId)
-            .single()
-          if (result.error) throw result.error
-          return result
-        },
-        `Verify thesis metadata update: ${thesisId}`
-      )
-      
-      const verifyMetadata = verifyThesis?.metadata as any
-      const verifySources = verifyMetadata?.selectedSources || []
-      console.log(`[PROCESS] Verification: ${verifySources.length} sources stored in database`)
-
-      const processDuration = Date.now() - processStartTime
-      console.log(`[PROCESS] Test mode completed in ${processDuration}ms`)
-      console.log(`[PROCESS] Selected ${selectedSources.length} sources`)
-      console.log('='.repeat(80))
-      
-      return { 
-        success: true, 
-        testMode: true,
-        selectedSources,
-        statistics: {
-          totalSourcesFound: allSources.length,
-          sourcesAfterDeduplication: deduplicated.length,
-          sourcesAfterRanking: ranked.length,
-          sourcesWithPDFs: ranked.filter(s => s.pdfUrl).length,
-          selectedSourcesCount: selectedSources.length,
-          selectedSourcesWithPDFs: selectedSources.filter(s => s.pdfUrl).length,
-        },
-      }
-    }
-
-    // Step 6: Download and upload PDFs using smart filtering (only in production mode)
-    console.log('\n[PROCESS] ========== Step 6: Download and Upload PDFs (Smart Filtering) ==========')
+    // Step 6: Download and upload PDFs using smart filtering with replacement for inaccessible PDFs
+    console.log('\n[PROCESS] ========== Step 6: Download and Upload PDFs (Smart Filtering with Replacement) ==========')
     const step6Start = Date.now()
     
     // Use smart filtering to ensure at least 2 sources per chapter
@@ -1807,72 +1673,159 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
     const sourcesWithPdf = topSources.filter(s => s.pdfUrl).length
     console.log(`[PROCESS] Sources with PDF URLs: ${sourcesWithPdf}`)
     
+    // Track which sources have been used (by DOI or title to avoid duplicates)
+    const usedSourceIds = new Set<string>()
+    const getSourceId = (source: Source) => source.doi || source.title || ''
+    
+    // Mark initial top sources as used
+    topSources.forEach(s => usedSourceIds.add(getSourceId(s)))
+    
+    // Track successfully uploaded sources
+    const successfullyUploaded: Source[] = []
     let uploadedCount = 0
     let failedCount = 0
+    let replacedCount = 0
 
-    // Track failed sources for potential retry
-    const failedSources: Source[] = []
+    // Process sources with replacement logic
+    const sourcesToProcess: Source[] = [...topSources]
+    let sourceIndex = 0
     
-    for (let i = 0; i < topSources.length; i++) {
-      const source = topSources[i]
-      console.log(`[PROCESS] Processing source ${i + 1}/${topSources.length}: "${source.title}"`)
+    while (sourceIndex < sourcesToProcess.length && successfullyUploaded.length < 50) {
+      const source = sourcesToProcess[sourceIndex]
+      console.log(`[PROCESS] Processing source ${sourceIndex + 1}/${sourcesToProcess.length}: "${source.title}"`)
       console.log(`[PROCESS]   Chapter: ${source.chapterNumber || 'N/A'} - ${source.chapterTitle || 'N/A'}`)
+      console.log(`[PROCESS]   Progress: ${successfullyUploaded.length}/50 uploaded`)
       
       if (source.pdfUrl) {
         try {
           const success = await downloadAndUploadPDF(source, thesisData.fileSearchStoreId, thesisId)
           if (success) {
             uploadedCount++
+            successfullyUploaded.push(source)
+            console.log(`[PROCESS] ✓ Successfully uploaded: "${source.title}"`)
           } else {
             failedCount++
-            failedSources.push(source) // Track for potential retry
-            console.log(`[PROCESS] Failed to upload source, will retry later if needed: "${source.title}"`)
+            console.log(`[PROCESS] ✗ Failed to upload (paywalled/inaccessible): "${source.title}"`)
+            console.log(`[PROCESS]   Looking for replacement from ranked sources...`)
+            
+            // Find replacement from ranked sources
+            // Priority: same chapter > high relevance > has PDF
+            const candidates = ranked.filter(s => {
+              const sourceId = getSourceId(s)
+              // Must not be already used
+              if (usedSourceIds.has(sourceId)) return false
+              // Must have PDF URL
+              if (!s.pdfUrl) return false
+              // Must have relevance >= 40
+              return (s.relevanceScore || 0) >= 40
+            })
+            
+            // Sort candidates: same chapter first, then by relevance score
+            candidates.sort((a, b) => {
+              const aSameChapter = source.chapterNumber && a.chapterNumber === source.chapterNumber ? 1 : 0
+              const bSameChapter = source.chapterNumber && b.chapterNumber === source.chapterNumber ? 1 : 0
+              if (aSameChapter !== bSameChapter) return bSameChapter - aSameChapter
+              return (b.relevanceScore || 0) - (a.relevanceScore || 0)
+            })
+            
+            const replacement = candidates[0]
+            
+            if (replacement) {
+              const replacementId = getSourceId(replacement)
+              usedSourceIds.add(replacementId)
+              sourcesToProcess.push(replacement)
+              replacedCount++
+              console.log(`[PROCESS]   ✓ Found replacement: "${replacement.title}"`)
+              console.log(`[PROCESS]   Replacement chapter: ${replacement.chapterNumber || 'N/A'}, relevance: ${replacement.relevanceScore || 'N/A'}`)
+            } else {
+              console.log(`[PROCESS]   ✗ No suitable replacement found (may have exhausted available sources)`)
+            }
           }
         } catch (error) {
           failedCount++
-          failedSources.push(source)
           console.error(`[PROCESS] Error uploading source: "${source.title}"`, error)
+          
+          // Try to find replacement on error too
+          const candidates = ranked.filter(s => {
+            const sourceId = getSourceId(s)
+            if (usedSourceIds.has(sourceId)) return false
+            if (!s.pdfUrl) return false
+            return (s.relevanceScore || 0) >= 40
+          })
+          
+          candidates.sort((a, b) => {
+            const aSameChapter = source.chapterNumber && a.chapterNumber === source.chapterNumber ? 1 : 0
+            const bSameChapter = source.chapterNumber && b.chapterNumber === source.chapterNumber ? 1 : 0
+            if (aSameChapter !== bSameChapter) return bSameChapter - aSameChapter
+            return (b.relevanceScore || 0) - (a.relevanceScore || 0)
+          })
+          
+          const replacement = candidates[0]
+          
+          if (replacement) {
+            const replacementId = getSourceId(replacement)
+            usedSourceIds.add(replacementId)
+            sourcesToProcess.push(replacement)
+            replacedCount++
+            console.log(`[PROCESS]   ✓ Found replacement after error: "${replacement.title}"`)
+          }
         }
         // Rate limiting
         await new Promise(resolve => setTimeout(resolve, 1000))
       } else {
         console.log(`[PROCESS] Skipping source (no PDF URL): "${source.title}"`)
-      }
-    }
-    
-    // Retry failed uploads once (with exponential backoff)
-    if (failedSources.length > 0 && uploadedCount < 10) {
-      console.log(`[PROCESS] Retrying ${failedSources.length} failed PDF uploads...`)
-      await new Promise(resolve => setTimeout(resolve, 5000)) // Wait 5 seconds before retry
-      
-      for (const source of failedSources.slice(0, 10)) { // Limit retries to 10
-        try {
-          console.log(`[PROCESS] Retrying upload: "${source.title}"`)
-          const success = await downloadAndUploadPDF(source, thesisData.fileSearchStoreId, thesisId)
-          if (success) {
-            uploadedCount++
-            failedCount--
-            console.log(`[PROCESS] Retry successful: "${source.title}"`)
-          }
-          await new Promise(resolve => setTimeout(resolve, 2000)) // Longer delay for retries
-        } catch (error) {
-          console.error(`[PROCESS] Retry failed: "${source.title}"`, error)
+        // Try to find replacement for sources without PDF URLs too
+        const candidates = ranked.filter(s => {
+          const sourceId = getSourceId(s)
+          if (usedSourceIds.has(sourceId)) return false
+          if (!s.pdfUrl) return false
+          return (s.relevanceScore || 0) >= 40
+        })
+        
+        candidates.sort((a, b) => {
+          const aSameChapter = source.chapterNumber && a.chapterNumber === source.chapterNumber ? 1 : 0
+          const bSameChapter = source.chapterNumber && b.chapterNumber === source.chapterNumber ? 1 : 0
+          if (aSameChapter !== bSameChapter) return bSameChapter - aSameChapter
+          return (b.relevanceScore || 0) - (a.relevanceScore || 0)
+        })
+        
+        const replacement = candidates[0]
+        
+        if (replacement) {
+          const replacementId = getSourceId(replacement)
+          usedSourceIds.add(replacementId)
+          sourcesToProcess.push(replacement)
+          replacedCount++
+          console.log(`[PROCESS]   ✓ Found replacement (no PDF URL): "${replacement.title}"`)
         }
       }
+      
+      sourceIndex++
     }
+    
+    console.log(`[PROCESS] PDF upload summary:`)
+    console.log(`[PROCESS]   Successfully uploaded: ${uploadedCount}`)
+    console.log(`[PROCESS]   Failed/inaccessible: ${failedCount}`)
+    console.log(`[PROCESS]   Replaced: ${replacedCount}`)
+    console.log(`[PROCESS]   Total processed: ${sourceIndex}`)
 
     const step6Duration = Date.now() - step6Start
     console.log(`[PROCESS] Step 6 completed in ${step6Duration}ms`)
     console.log(`[PROCESS] Uploaded ${uploadedCount} PDFs, ${failedCount} failed`)
 
-    // Step 7: Generate thesis content (only in production mode)
+    // Step 7: Generate thesis content using successfully uploaded sources
     // This step has built-in retries and fallbacks
     console.log('\n[PROCESS] ========== Step 7: Generate Thesis Content ==========')
     const step7Start = Date.now()
     
+    // Use successfully uploaded sources for thesis generation (these are the ones with accessible PDFs)
+    const sourcesForGeneration = successfullyUploaded.length > 0 ? successfullyUploaded : ranked.slice(0, 50)
+    console.log(`[PROCESS] Using ${sourcesForGeneration.length} sources for thesis generation`)
+    console.log(`[PROCESS]   ${successfullyUploaded.length} successfully uploaded, ${sourcesForGeneration.length - successfullyUploaded.length} from ranked list`)
+    
     let thesisContent = ''
     try {
-      thesisContent = await generateThesisContent(thesisData, ranked)
+      thesisContent = await generateThesisContent(thesisData, sourcesForGeneration)
       const step7Duration = Date.now() - step7Start
       console.log(`[PROCESS] Step 7 completed in ${step7Duration}ms`)
     } catch (error) {
@@ -1968,10 +1921,9 @@ app.post('/jobs/thesis-generation', authenticate, async (req: Request, res: Resp
   console.log('[API] Request received at:', new Date().toISOString())
   
   try {
-    const { thesisId, thesisData, testMode } = req.body
+    const { thesisId, thesisData } = req.body
     console.log('[API] Request body:', {
       thesisId,
-      testMode: testMode === true,
       hasThesisData: !!thesisData,
       thesisTitle: thesisData?.title,
     })
@@ -1981,41 +1933,20 @@ app.post('/jobs/thesis-generation', authenticate, async (req: Request, res: Resp
       return res.status(400).json({ error: 'Thesis ID and data are required' })
     }
 
-    const isTestMode = testMode === true
-    console.log(`[API] Mode: ${isTestMode ? 'TEST MODE' : 'PRODUCTION MODE'}`)
+    // Start processing asynchronously
+    console.log('[API] Starting background job (async)...')
+    processThesisGeneration(thesisId, thesisData).catch(error => {
+      console.error('[API] Background job error:', error)
+    })
 
-    if (isTestMode) {
-      // In test mode, process synchronously and return results
-      console.log('[API] Running in TEST MODE - will return selected sources JSON')
-      try {
-        const result = await processThesisGeneration(thesisId, thesisData, true)
-        const requestDuration = Date.now() - requestStart
-        console.log(`[API] Test mode completed in ${requestDuration}ms`)
-        console.log('[API] Returning test mode results')
-        return res.json(result)
-      } catch (error) {
-        const requestDuration = Date.now() - requestStart
-        console.error(`[API] ERROR in test mode after ${requestDuration}ms:`, error)
-        return res.status(500).json({
-          error: error instanceof Error ? error.message : 'Unknown error',
-        })
-      }
-    } else {
-      // In production mode, start processing asynchronously
-      console.log('[API] Starting background job (async)...')
-      processThesisGeneration(thesisId, thesisData, false).catch(error => {
-        console.error('[API] Background job error:', error)
-      })
-
-      // Return immediately
-      const requestDuration = Date.now() - requestStart
-      console.log(`[API] Job started, returning immediately (${requestDuration}ms)`)
-      return res.json({
-        success: true,
-        jobId: `job-${thesisId}-${Date.now()}`,
-        message: 'Thesis generation job started',
-      })
-    }
+    // Return immediately
+    const requestDuration = Date.now() - requestStart
+    console.log(`[API] Job started, returning immediately (${requestDuration}ms)`)
+    return res.json({
+      success: true,
+      jobId: `job-${thesisId}-${Date.now()}`,
+      message: 'Thesis generation job started',
+    })
   } catch (error) {
     const requestDuration = Date.now() - requestStart
     console.error(`[API] ERROR starting job after ${requestDuration}ms:`, error)

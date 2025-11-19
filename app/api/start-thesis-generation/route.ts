@@ -15,7 +15,7 @@ import { GoogleGenAI } from '@google/genai'
  */
 export async function POST(request: Request) {
   try {
-    const { thesisId, testMode } = await request.json()
+    const { thesisId } = await request.json()
 
     if (!thesisId) {
       return NextResponse.json(
@@ -135,7 +135,7 @@ export async function POST(request: Request) {
       )
     }
 
-    console.log('Sending request to worker:', { workerUrl, hasApiKey: !!workerApiKey, testMode })
+    console.log('Sending request to worker:', { workerUrl, hasApiKey: !!workerApiKey })
 
     // Send job to background worker
     const workerResponse = await fetch(`${workerUrl}/jobs/thesis-generation`, {
@@ -146,7 +146,6 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         thesisId,
-        testMode: testMode === true, // Pass test mode flag to worker
         thesisData: {
           title: thesis.title || thesis.topic,
           topic: thesis.topic,
@@ -184,12 +183,6 @@ export async function POST(request: Request) {
     }
 
     const jobData = await workerResponse.json()
-
-    // In test mode, the worker returns results synchronously
-    // In production mode, it returns a job ID
-    if (testMode && jobData.testMode) {
-      return NextResponse.json(jobData)
-    }
 
     return NextResponse.json({
       success: true,

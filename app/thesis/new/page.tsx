@@ -180,33 +180,6 @@ export default function NewThesisPage() {
   const [searchQueries, setSearchQueries] = useState<SearchQuerySection[]>([])
   const [loadingQueries, setLoadingQueries] = useState(false)
   
-  // Test mode results state
-  interface TestModeResult {
-    selectedSources: Array<{
-      title: string
-      authors: string[]
-      year: number | null
-      doi: string | null
-      url: string | null
-      pdfUrl: string | null
-      abstract: string | null
-      journal: string | null
-      publisher: string | null
-      citationCount: number | null
-      relevanceScore: number | undefined
-      source: 'openalex' | 'semantic_scholar'
-    }>
-    statistics: {
-      totalSourcesFound: number
-      sourcesAfterDeduplication: number
-      sourcesAfterRanking: number
-      sourcesWithPDFs: number
-      uploadedPDFs: number
-      selectedSourcesCount: number
-    }
-  }
-  const [testModeResults, setTestModeResults] = useState<TestModeResult | null>(null)
-  const [expandedSourceIndex, setExpandedSourceIndex] = useState<number | null>(null)
   
   const [formData, setFormData] = useState<ThesisFormData>({
     language: null,
@@ -1164,8 +1137,8 @@ export default function NewThesisPage() {
       }
     
       // Trigger background worker in TEST MODE
-      // Set testMode to false for production, true for testing
-      const testMode = true // TODO: Change to false for production
+      // Always run in production mode (full thesis generation)
+      const testMode = false
       
       const response = await fetch('/api/start-thesis-generation', {
         method: 'POST',
@@ -1183,18 +1156,8 @@ export default function NewThesisPage() {
       const data = await response.json()
       console.log('Generation started:', data)
       
-      // If test mode, navigate to test results page
-      if (data.testMode && data.selectedSources) {
-        console.log('Test Mode Results:', data)
-        console.log('Selected Sources:', JSON.stringify(data.selectedSources, null, 2))
-        console.log('Statistics:', data.statistics)
-        
-        // Navigate to test results page
-        router.push(`/thesis/test?id=${currentThesisId}`)
-      } else {
-        // Navigate to generation page for production mode
-        router.push(`/thesis/generate?id=${currentThesisId}`)
-      }
+      // Navigate to generation page
+      router.push(`/thesis/generate?id=${currentThesisId}`)
     } catch (error) {
       console.error('Error starting generation:', error)
       alert(error instanceof Error ? error.message : 'Fehler beim Starten der Generierung')
@@ -2279,218 +2242,6 @@ export default function NewThesisPage() {
           </div>
         )}
       </div>
-
-      {/* Test Mode Results Modal */}
-      {testModeResults && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Test Mode: Ausgewählte Quellen
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  {testModeResults.selectedSources.length} Quellen wurden ausgewählt
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    const json = JSON.stringify(testModeResults, null, 2)
-                    const blob = new Blob([json], { type: 'application/json' })
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = `thesis-sources-${thesisId}-${Date.now()}.json`
-                    a.click()
-                    URL.revokeObjectURL(url)
-                  }}
-                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  JSON herunterladen
-                </button>
-                <button
-                  onClick={() => {
-                    setTestModeResults(null)
-                    setExpandedSourceIndex(null)
-                  }}
-                  className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Statistics */}
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Statistiken</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Gefundene Quellen</div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                    {testModeResults.statistics.totalSourcesFound}
-                  </div>
-                </div>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Nach Deduplizierung</div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                    {testModeResults.statistics.sourcesAfterDeduplication}
-                  </div>
-                </div>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Nach Ranking</div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                    {testModeResults.statistics.sourcesAfterRanking}
-                  </div>
-                </div>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Mit PDF</div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                    {testModeResults.statistics.sourcesWithPDFs}
-                  </div>
-                </div>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Hochgeladen</div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                    {testModeResults.statistics.uploadedPDFs}
-                  </div>
-                </div>
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg">
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Ausgewählt</div>
-                  <div className="text-2xl font-bold text-purple-600 dark:text-purple-400 mt-1">
-                    {testModeResults.statistics.selectedSourcesCount}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Sources List */}
-            <div className="flex-1 overflow-y-auto p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Ausgewählte Quellen ({testModeResults.selectedSources.length})
-              </h3>
-              <div className="space-y-4">
-                {testModeResults.selectedSources.map((source, index) => (
-                  <div
-                    key={index}
-                    className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center text-purple-600 dark:text-purple-400 font-semibold text-sm">
-                            {index + 1}
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-gray-900 dark:text-white mb-1">
-                              {source.title}
-                            </h4>
-                            <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mb-2">
-                              {source.authors.length > 0 && (
-                                <span>{source.authors.slice(0, 3).join(', ')}{source.authors.length > 3 ? ' et al.' : ''}</span>
-                              )}
-                              {source.year && <span>{source.year}</span>}
-                              {source.journal && <span className="italic">{source.journal}</span>}
-                              {source.relevanceScore !== undefined && (
-                                <span className="px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-xs font-medium">
-                                  Relevanz: {source.relevanceScore}
-                                </span>
-                              )}
-                              <span className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs">
-                                {source.source === 'openalex' ? 'OpenAlex' : 'Semantic Scholar'}
-                              </span>
-                            </div>
-                            {expandedSourceIndex === index && (
-                              <div className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                                {source.abstract && (
-                                  <div>
-                                    <strong className="text-gray-900 dark:text-white">Abstract:</strong>
-                                    <p className="mt-1 line-clamp-4">{source.abstract}</p>
-                                  </div>
-                                )}
-                                <div className="grid grid-cols-2 gap-2">
-                                  {source.doi && (
-                                    <div>
-                                      <strong className="text-gray-900 dark:text-white">DOI:</strong>{' '}
-                                      <a
-                                        href={`https://doi.org/${source.doi}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-purple-600 dark:text-purple-400 hover:underline"
-                                      >
-                                        {source.doi}
-                                      </a>
-                                    </div>
-                                  )}
-                                  {source.citationCount !== null && (
-                                    <div>
-                                      <strong className="text-gray-900 dark:text-white">Zitationen:</strong>{' '}
-                                      {source.citationCount}
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="flex gap-2 pt-2">
-                                  {source.url && (
-                                    <a
-                                      href={source.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-1"
-                                    >
-                                      <ExternalLink className="w-3 h-3" />
-                                      Artikel
-                                    </a>
-                                  )}
-                                  {source.pdfUrl && (
-                                    <a
-                                      href={source.pdfUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded text-xs hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors flex items-center gap-1"
-                                    >
-                                      <FileText className="w-3 h-3" />
-                                      PDF
-                                    </a>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setExpandedSourceIndex(expandedSourceIndex === index ? null : index)}
-                        className="ml-4 p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        {expandedSourceIndex === index ? (
-                          <ChevronUp className="w-5 h-5" />
-                        ) : (
-                          <ChevronDown className="w-5 h-5" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-3">
-              <button
-                onClick={() => {
-                  setTestModeResults(null)
-                  setExpandedSourceIndex(null)
-                }}
-                className="px-6 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-              >
-                Schließen
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
