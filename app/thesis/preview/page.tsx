@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText } from 'lucide-react'
 import { createSupabaseClient } from '@/lib/supabase/client'
-import { getThesisById, updateThesis } from '@/lib/supabase/theses'
+import { getThesisById } from '@/lib/supabase/theses'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -169,9 +169,21 @@ export default function ThesisPreviewPage() {
 
     try {
       setIsProcessing(true)
-      await updateThesis(thesisId, {
-        latex_content: content,
+      const response = await fetch('/api/save-thesis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          thesisId,
+          content,
+        }),
       })
+
+      if (!response.ok) {
+        throw new Error('Failed to save thesis')
+      }
+
       setOriginalContent(content)
       setHasUnsavedChanges(false)
       
@@ -416,7 +428,7 @@ export default function ThesisPreviewPage() {
             <div
               ref={previewRef}
               onMouseUp={handleTextSelection}
-              className="max-w-4xl mx-auto p-8 prose prose-lg dark:prose-invert max-w-none"
+              className="max-w-4xl mx-auto p-8"
             >
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}

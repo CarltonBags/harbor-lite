@@ -1289,6 +1289,38 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   const citationStyleLabel = citationStyleLabels[thesisData.citationStyle] || thesisData.citationStyle
   console.log(`[ThesisGeneration] Citation style: ${citationStyleLabel}`)
 
+  // Calculate appropriate number of sources based on thesis length
+  // Rule: ~1-1.5 sources per page for short theses, up to 2-2.5 for longer theses
+  // Very short theses (< 10 pages): 8-12 sources
+  // Short theses (10-20 pages): 12-25 sources
+  // Medium theses (20-40 pages): 25-50 sources
+  // Long theses (40+ pages): 50-80 sources
+  let targetPages = thesisData.targetLength
+  if (thesisData.lengthUnit === 'words') {
+    // Convert words to pages (assuming ~250 words per page)
+    targetPages = Math.ceil(thesisData.targetLength / 250)
+  }
+  
+  let recommendedSourceCount: number
+  let sourceUsageGuidance: string
+  
+  if (targetPages < 10) {
+    recommendedSourceCount = Math.max(8, Math.min(12, Math.ceil(targetPages * 1.0)))
+    sourceUsageGuidance = `Sehr kurze Arbeit (${targetPages} Seiten): Verwende nur ${recommendedSourceCount}-${recommendedSourceCount + 2} hochwertige, zentrale Quellen. Jede Quelle muss essentiell sein. Keine Füllquellen. Eine Arbeit von ${targetPages} Seiten mit ${recommendedSourceCount + 20}+ Quellen wirkt übertrieben und unprofessionell.`
+  } else if (targetPages < 20) {
+    recommendedSourceCount = Math.max(12, Math.min(25, Math.ceil(targetPages * 1.2)))
+    sourceUsageGuidance = `Kurze Arbeit (${targetPages} Seiten): Verwende ${recommendedSourceCount}-${recommendedSourceCount + 3} sorgfältig ausgewählte Quellen. Fokus auf Qualität, nicht Quantität. Eine Arbeit von ${targetPages} Seiten sollte nicht mehr als ${recommendedSourceCount + 5} Quellen haben, sonst wirkt sie überladen.`
+  } else if (targetPages < 40) {
+    recommendedSourceCount = Math.max(25, Math.min(50, Math.ceil(targetPages * 1.3)))
+    sourceUsageGuidance = `Mittlere Arbeit (${targetPages} Seiten): Verwende ${recommendedSourceCount}-${recommendedSourceCount + 5} relevante Quellen. Jede Quelle sollte einen klaren Zweck erfüllen.`
+  } else {
+    recommendedSourceCount = Math.max(50, Math.min(80, Math.ceil(targetPages * 1.5)))
+    sourceUsageGuidance = `Längere Arbeit (${targetPages} Seiten): Verwende ${recommendedSourceCount}-${recommendedSourceCount + 10} Quellen. Umfangreiche Literaturrecherche ist hier angemessen.`
+  }
+  
+  console.log(`[ThesisGeneration] Target pages: ${targetPages}, Recommended sources: ${recommendedSourceCount}`)
+  console.log(`[ThesisGeneration] Available sources: ${rankedSources.length}`)
+
   const prompt = `Du bist ein wissenschaftlicher Assistent, der akademische Texte ausschließlich auf Basis der bereitgestellten, indexierten Quellen (RAG / File Search) schreibt.
 
 **Thesis-Informationen:**
@@ -1297,19 +1329,30 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 - Art: ${thesisData.thesisType}
 - Forschungsfrage: ${thesisData.researchQuestion}
 - Zitationsstil: ${citationStyleLabel}
-- Ziel-Länge: ${thesisData.targetLength} ${thesisData.lengthUnit}
+- Ziel-Länge: ${thesisData.targetLength} ${thesisData.lengthUnit} (ca. ${targetPages} Seiten)
 - Sprache: ${thesisData.language}
 
 **Gliederung:**
 ${JSON.stringify(thesisData.outline, null, 2)}
 
-**Quellenverwendung (strikt):**
+**Quellenverwendung (KRITISCH - strikt befolgen):**
 - Nutze ausschließlich die im Kontext bereitgestellten Quellen (File Search / RAG).
 - Verwende nur Informationen, die eindeutig in diesen Quellen enthalten sind.
 - Keine erfundenen Seitenzahlen, keine erfundenen Zitate, keine erfundenen Quellen.
 - Wenn Seitenzahlen fehlen → nur Autor + Jahr verwenden.
 - Wenn essentielle Informationen fehlen → explizit darauf hinweisen.
-- Umfang der Quellen an Textlänge anpassen: Bei kürzeren Arbeiten nur relevante, hochwertige, wissenschaftliche Quellen verwenden. Keine unnötige Über-Zitierung. Fokus auf präziser Argumentation, nicht auf Quellenmasse.
+
+**QUELLENANZAHL - ABSOLUT WICHTIG:**
+${sourceUsageGuidance}
+
+**Konkrete Anweisungen zur Quellenverwendung:**
+- Verwende maximal ${recommendedSourceCount} Quellen im gesamten Text.
+- Jede Quelle muss einen klaren, essentiellen Beitrag leisten.
+- Keine "Füllquellen" - keine Quellen nur um die Anzahl zu erhöhen.
+- Bei kurzen Arbeiten: Weniger ist mehr. ${targetPages < 15 ? `Eine ${targetPages}-Seiten-Arbeit mit 30+ Quellen wirkt unprofessionell und übertrieben.` : ''}
+- Qualität über Quantität: Lieber 10 hochwertige, relevante Quellen als 30 oberflächliche.
+- Die Quellenanzahl muss zur Länge der Arbeit passen. Eine kurze Hausarbeit sollte nicht wie eine Dissertation zitiert werden.
+- Im Literaturverzeichnis NUR die tatsächlich im Text zitierten Quellen aufführen (maximal ${recommendedSourceCount}).
 
 **Wissenschaftlicher Stil (${thesisData.language === 'german' ? 'deutsch' : 'englisch'}):**
 - Objektiv, präzise, sachlich.

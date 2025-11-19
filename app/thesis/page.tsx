@@ -174,7 +174,13 @@ export default function MyThesesPage() {
             {theses.map((thesis) => (
               <div
                 key={thesis.id}
-                onClick={() => router.push(`/thesis/new?id=${thesis.id}`)}
+                onClick={() => {
+                  if (thesis.status === 'completed') {
+                    router.push(`/thesis/preview?id=${thesis.id}`)
+                  } else {
+                    router.push(`/thesis/new?id=${thesis.id}`)
+                  }
+                }}
                 className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 hover:shadow-xl transition-all cursor-pointer group"
               >
                 <div className="flex items-start justify-between mb-4">
