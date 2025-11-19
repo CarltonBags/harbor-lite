@@ -28,6 +28,8 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABAS
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const WORKER_API_KEY = process.env.THESIS_WORKER_API_KEY
 const OPENALEX_EMAIL = process.env.OPENALEX_EMAIL || 'moontoolsinc@proton.me'
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY // Optional: for generating embeddings
+const OPENAI_EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-ada-002' // Default to ada-002 (1536 dims)
 
 if (!GEMINI_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Missing required environment variables')
@@ -71,6 +73,8 @@ interface Source {
   citationCount: number | null
   relevanceScore?: number
   source: 'openalex' | 'semantic_scholar'
+  chapterNumber?: string // Track which chapter this source came from
+  chapterTitle?: string // Track chapter title for metadata
 }
 
 // Retry wrapper for API calls
@@ -482,9 +486,9 @@ async function rankSourcesByRelevance(sources: Source[], thesisData: ThesisData)
   console.log(`[Ranking] Thesis: "${thesisData.title}"`)
   console.log(`[Ranking] Field: ${thesisData.field}`)
   
-  // If we have too many sources, prioritize those with PDFs and limit to top 150 for ranking
+  // If we have too many sources, prioritize those with PDFs and limit to top 350 for ranking
   // This prevents token limit issues and timeouts
-  const MAX_SOURCES_TO_RANK = 150
+  const MAX_SOURCES_TO_RANK = 350
   let sourcesToRank = sources
   
   if (sources.length > MAX_SOURCES_TO_RANK) {
@@ -655,6 +659,79 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
 }
 
 /**
+ * Smart filtering: Select top 50 sources but ensure at least 2 sources per chapter
+ * This prevents chapters from being excluded even if their sources rank lower
+ */
+function selectTopSourcesWithChapterGuarantee(rankedSources: Source[], maxSources: number = 50, minPerChapter: number = 2): Source[] {
+  console.log(`[SmartFilter] Starting smart filtering: max ${maxSources} sources, min ${minPerChapter} per chapter`)
+  
+  // Group sources by chapter
+  const sourcesByChapter = new Map<string, Source[]>()
+  for (const source of rankedSources) {
+    const chapterKey = source.chapterNumber || 'unknown'
+    if (!sourcesByChapter.has(chapterKey)) {
+      sourcesByChapter.set(chapterKey, [])
+    }
+    sourcesByChapter.get(chapterKey)!.push(source)
+  }
+  
+  console.log(`[SmartFilter] Sources grouped into ${sourcesByChapter.size} chapters`)
+  sourcesByChapter.forEach((sources, chapter) => {
+    console.log(`[SmartFilter]   Chapter ${chapter}: ${sources.length} sources`)
+  })
+  
+  // First, ensure minimum per chapter
+  const guaranteedSources: Source[] = []
+  const usedSources = new Set<string>() // Track by DOI or title to avoid duplicates
+  
+  for (const [chapter, sources] of sourcesByChapter.entries()) {
+    const chapterSources = sources
+      .filter(s => s.relevanceScore && s.relevanceScore >= 40) // Only consider relevant sources
+      .slice(0, minPerChapter)
+    
+    for (const source of chapterSources) {
+      const key = source.doi || source.title || ''
+      if (!usedSources.has(key)) {
+        guaranteedSources.push(source)
+        usedSources.add(key)
+      }
+    }
+  }
+  
+  console.log(`[SmartFilter] Guaranteed sources (min per chapter): ${guaranteedSources.length}`)
+  
+  // Then, fill remaining slots with top-ranked sources (excluding already selected)
+  const remainingSlots = maxSources - guaranteedSources.length
+  if (remainingSlots > 0) {
+    const topSources = rankedSources
+      .filter(s => {
+        const key = s.doi || s.title || ''
+        return !usedSources.has(key) && s.relevanceScore && s.relevanceScore >= 40
+      })
+      .slice(0, remainingSlots)
+    
+    console.log(`[SmartFilter] Adding ${topSources.length} top-ranked sources to fill remaining slots`)
+    guaranteedSources.push(...topSources)
+  }
+  
+  // Sort final selection by relevance score
+  const finalSelection = guaranteedSources.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
+  
+  // Log chapter distribution in final selection
+  const finalByChapter = new Map<string, number>()
+  for (const source of finalSelection) {
+    const chapter = source.chapterNumber || 'unknown'
+    finalByChapter.set(chapter, (finalByChapter.get(chapter) || 0) + 1)
+  }
+  console.log(`[SmartFilter] Final selection: ${finalSelection.length} sources`)
+  finalByChapter.forEach((count, chapter) => {
+    console.log(`[SmartFilter]   Chapter ${chapter}: ${count} sources`)
+  })
+  
+  return finalSelection
+}
+
+/**
  * Extract page numbers from PDF using Gemini 2.5 Flash
  */
 async function extractPageNumbers(pdfBuffer: Buffer): Promise<{ pageStart: string | null; pageEnd: string | null }> {
@@ -821,6 +898,13 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     if (pageStart && pageEnd) {
       customMetadata.push({ key: 'pages', stringValue: `${pageStart}-${pageEnd}`.substring(0, 256) })
     }
+    // Add chapter information for relevance tracking
+    if (source.chapterNumber) {
+      customMetadata.push({ key: 'chapterNumber', stringValue: source.chapterNumber.substring(0, 256) })
+    }
+    if (source.chapterTitle) {
+      customMetadata.push({ key: 'chapterTitle', stringValue: source.chapterTitle.substring(0, 256) })
+    }
 
     // Upload to FileSearchStore
     console.log(`[PDFUpload] Uploading to FileSearchStore...`)
@@ -937,6 +1021,253 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
 }
 
 /**
+ * Generate embeddings for text using OpenAI API
+ * Uses text-embedding-ada-002 by default (1536 dimensions) to match database schema
+ * Can be changed via OPENAI_EMBEDDING_MODEL env var (e.g., text-embedding-3-small, text-embedding-3-large)
+ * Note: If using a different model, you may need to update the database schema dimensions
+ */
+async function generateEmbedding(text: string): Promise<number[] | null> {
+  if (!OPENAI_API_KEY) {
+    console.log('[Embedding] OpenAI API key not available, skipping embedding generation')
+    return null
+  }
+  
+  // Model dimension mapping
+  const modelDimensions: Record<string, number> = {
+    'text-embedding-ada-002': 1536,
+    'text-embedding-3-small': 1536, // Can be reduced to 512
+    'text-embedding-3-large': 3072, // Can be reduced to 1024 or 256
+  }
+  
+  const expectedDims = modelDimensions[OPENAI_EMBEDDING_MODEL] || 1536
+  console.log(`[Embedding] Using model: ${OPENAI_EMBEDDING_MODEL} (expected ${expectedDims} dimensions)`)
+  
+  // Note: Database schema expects 1536 dimensions
+  // If using text-embedding-3-large (3072 dims), you'd need to update the schema
+  // For text-embedding-3-small, you can request 1536 dims to match schema
+  
+  try {
+    const requestBody: any = {
+      model: OPENAI_EMBEDDING_MODEL,
+      input: text,
+    }
+    
+    // For text-embedding-3 models, we can request specific dimensions
+    if (OPENAI_EMBEDDING_MODEL.startsWith('text-embedding-3')) {
+      // Request 1536 dimensions to match database schema
+      requestBody.dimensions = 1536
+    }
+    
+    const response = await retryApiCall(
+      () => fetch('https://api.openai.com/v1/embeddings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify(requestBody),
+      }),
+      `Generate embedding (OpenAI ${OPENAI_EMBEDDING_MODEL})`,
+      2,
+      1000
+    )
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`OpenAI API error: ${response.status} ${errorText}`)
+    }
+    
+    const data = await response.json() as { data: Array<{ embedding: number[] }> }
+    const embedding = data.data[0]?.embedding || null
+    
+    if (embedding && embedding.length !== 1536) {
+      console.warn(`[Embedding] WARNING: Embedding dimension (${embedding.length}) doesn't match database schema (1536)`)
+      console.warn(`[Embedding] You may need to update the database schema or use a different model`)
+    }
+    
+    return embedding
+  } catch (error) {
+    console.error('[Embedding] Error generating embedding:', error)
+    return null
+  }
+}
+
+/**
+ * Chunk thesis content and store in Supabase vector DB (NOT in Google FileSearchStore)
+ * The thesis content is stored in thesis_paragraphs table with embeddings for semantic search
+ */
+async function chunkAndStoreThesis(thesisId: string, latexContent: string, outline: any[]): Promise<void> {
+  console.log('[Chunking] Starting thesis chunking and embedding for Supabase vector DB...')
+  console.log('[Chunking] NOTE: Thesis content goes to Supabase vector DB, NOT Google FileSearchStore')
+  
+  // First, delete any existing paragraphs for this thesis (in case of regeneration)
+  console.log('[Chunking] Cleaning up existing paragraphs...')
+  try {
+    await retryApiCall(
+      async () => {
+        const { error } = await supabase
+          .from('thesis_paragraphs')
+          .delete()
+          .eq('thesis_id', thesisId)
+        if (error) throw error
+        return { data: null, error: null }
+      },
+      `Delete existing thesis paragraphs: ${thesisId}`
+    )
+    console.log('[Chunking] Existing paragraphs deleted')
+  } catch (error) {
+    console.warn('[Chunking] Could not delete existing paragraphs (may not exist):', error)
+  }
+  
+  // Parse LaTeX/Markdown content into paragraphs
+  // Handle both LaTeX and Markdown formats
+  let textContent: string[] = []
+  
+  // Try to detect format and parse accordingly
+  if (latexContent.includes('\\') || latexContent.includes('\\section') || latexContent.includes('\\chapter')) {
+    // LaTeX format
+    console.log('[Chunking] Detected LaTeX format')
+    textContent = latexContent
+      .replace(/\\[a-zA-Z]+\{([^}]*)\}/g, '$1') // Remove LaTeX commands, keep content
+      .replace(/\\[^a-zA-Z]/g, ' ') // Remove LaTeX special characters
+      .split(/\n\s*\n/) // Split by double newlines (paragraphs)
+      .map(p => p.trim())
+      .filter(p => p.length > 50) // Only keep substantial paragraphs
+  } else {
+    // Markdown format (from thesis generation)
+    console.log('[Chunking] Detected Markdown format')
+    textContent = latexContent
+      .split(/\n\s*\n/) // Split by double newlines
+      .map(p => p.trim())
+      .filter(p => {
+        // Filter out markdown headers and very short paragraphs
+        return p.length > 50 && !p.match(/^#{1,6}\s/)
+      })
+      .map(p => p.replace(/^#{1,6}\s+/, '')) // Remove markdown headers from paragraph text
+  }
+  
+  console.log(`[Chunking] Extracted ${textContent.length} paragraphs from thesis`)
+  
+  if (textContent.length === 0) {
+    console.warn('[Chunking] No paragraphs extracted - thesis content may be empty or malformed')
+    return
+  }
+  
+  // Map paragraphs to chapters based on outline
+  const chapters = outline || []
+  const paragraphsPerChapter = Math.ceil(textContent.length / Math.max(chapters.length, 1))
+  
+  let paragraphIndex = 0
+  const paragraphsToStore: Array<{
+    thesis_id: string
+    chapter_number: number
+    section_number: number | null
+    paragraph_number: number
+    text: string
+    embedding: number[] | null
+    metadata: Record<string, any>
+  }> = []
+  
+  console.log('[Chunking] Mapping paragraphs to chapters and generating embeddings...')
+  
+  for (let chapterIdx = 0; chapterIdx < chapters.length; chapterIdx++) {
+    const chapter = chapters[chapterIdx]
+    const chapterNumber = parseInt(chapter.number || String(chapterIdx + 1)) || chapterIdx + 1
+    
+    // Get paragraphs for this chapter
+    const chapterParagraphs = textContent.slice(
+      paragraphIndex,
+      Math.min(paragraphIndex + paragraphsPerChapter, textContent.length)
+    )
+    
+    console.log(`[Chunking] Processing chapter ${chapterNumber} (${chapter.title || 'N/A'}): ${chapterParagraphs.length} paragraphs`)
+    
+    for (let paraIdx = 0; paraIdx < chapterParagraphs.length; paraIdx++) {
+      const text = chapterParagraphs[paraIdx]
+      
+      // Generate embedding for this paragraph
+      let embedding: number[] | null = null
+      if (OPENAI_API_KEY) {
+        try {
+          embedding = await generateEmbedding(text)
+          if (embedding) {
+            console.log(`[Chunking] Generated embedding for paragraph ${paraIdx + 1} (${embedding.length} dimensions)`)
+          }
+        } catch (error) {
+          console.warn(`[Chunking] Failed to generate embedding for paragraph ${paraIdx + 1}:`, error)
+        }
+      } else {
+        console.log(`[Chunking] Skipping embedding for paragraph ${paraIdx + 1} (no OpenAI API key)`)
+      }
+      
+      paragraphsToStore.push({
+        thesis_id: thesisId,
+        chapter_number: chapterNumber,
+        section_number: null, // Could be extracted from LaTeX/Markdown structure
+        paragraph_number: paraIdx + 1,
+        text: text,
+        embedding: embedding, // Vector embedding (1536 dimensions for ada-002, configurable via OPENAI_EMBEDDING_MODEL)
+        metadata: {
+          chapterTitle: chapter.title || null,
+        },
+      })
+      
+      // Small delay to avoid rate limiting
+      if (OPENAI_API_KEY && paraIdx < chapterParagraphs.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+    }
+    
+    paragraphIndex += chapterParagraphs.length
+  }
+  
+  const paragraphsWithEmbeddings = paragraphsToStore.filter(p => p.embedding !== null).length
+  console.log(`[Chunking] Prepared ${paragraphsToStore.length} paragraphs for storage`)
+  console.log(`[Chunking] ${paragraphsWithEmbeddings} paragraphs have embeddings, ${paragraphsToStore.length - paragraphsWithEmbeddings} without`)
+  
+  // Store paragraphs in batches in Supabase vector DB
+  const BATCH_SIZE = 50
+  for (let i = 0; i < paragraphsToStore.length; i += BATCH_SIZE) {
+    const batch = paragraphsToStore.slice(i, i + BATCH_SIZE)
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1
+    const totalBatches = Math.ceil(paragraphsToStore.length / BATCH_SIZE)
+    console.log(`[Chunking] Storing batch ${batchNum}/${totalBatches} in Supabase vector DB...`)
+    
+    await retryApiCall(
+      async () => {
+        const { error } = await supabase
+          .from('thesis_paragraphs')
+          .insert(batch)
+        
+        if (error) throw error
+        return { data: null, error: null }
+      },
+      `Store thesis paragraphs batch ${batchNum} in Supabase`
+    )
+    
+    console.log(`[Chunking] Batch ${batchNum}/${totalBatches} stored successfully`)
+  }
+  
+  console.log(`[Chunking] ✓ Successfully stored ${paragraphsToStore.length} paragraphs in Supabase vector DB`)
+  console.log(`[Chunking] ✓ ${paragraphsWithEmbeddings} paragraphs have embeddings for semantic search`)
+  if (paragraphsWithEmbeddings < paragraphsToStore.length) {
+    console.log(`[Chunking] Note: ${paragraphsToStore.length - paragraphsWithEmbeddings} paragraphs stored without embeddings (set OPENAI_API_KEY to generate embeddings)`)
+  }
+}
+
+/**
+ * Send email notification when thesis is complete
+ * The email is automatically sent via database trigger when status changes to 'completed'
+ * No action needed here - the trigger handles everything
+ */
+async function sendCompletionEmail(thesisId: string, thesisTitle: string): Promise<void> {
+  console.log('[Email] Email notification will be sent automatically via database trigger')
+  console.log('[Email] The trigger fires when status changes to "completed"')
+  // The database trigger (005_thesis_completion_email_trigger.sql) handles the email
+  // No additional action needed - just updating the status triggers the email
+}
+
+/**
  * Step 7: Generate thesis content using Gemini Pro
  */
 async function generateThesisContent(thesisData: ThesisData, rankedSources: Source[]): Promise<string> {
@@ -958,7 +1289,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   const citationStyleLabel = citationStyleLabels[thesisData.citationStyle] || thesisData.citationStyle
   console.log(`[ThesisGeneration] Citation style: ${citationStyleLabel}`)
 
-  const prompt = `Du bist ein Experte für wissenschaftliches Schreiben. Erstelle den vollständigen Text für diese Thesis.
+  const prompt = `Du bist ein wissenschaftlicher Assistent, der akademische Texte ausschließlich auf Basis der bereitgestellten, indexierten Quellen (RAG / File Search) schreibt.
 
 **Thesis-Informationen:**
 - Titel/Thema: ${thesisData.title}
@@ -972,58 +1303,167 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 **Gliederung:**
 ${JSON.stringify(thesisData.outline, null, 2)}
 
-**Verfügbare Quellen:**
-${JSON.stringify(
-  rankedSources.slice(0, 50).map(s => ({
-    title: s.title,
-    authors: s.authors,
-    year: s.year,
-    doi: s.doi,
-    abstract: s.abstract,
-    journal: s.journal,
-  })),
-  null,
-  2
-)}
+**Quellenverwendung (strikt):**
+- Nutze ausschließlich die im Kontext bereitgestellten Quellen (File Search / RAG).
+- Verwende nur Informationen, die eindeutig in diesen Quellen enthalten sind.
+- Keine erfundenen Seitenzahlen, keine erfundenen Zitate, keine erfundenen Quellen.
+- Wenn Seitenzahlen fehlen → nur Autor + Jahr verwenden.
+- Wenn essentielle Informationen fehlen → explizit darauf hinweisen.
+- Umfang der Quellen an Textlänge anpassen: Bei kürzeren Arbeiten nur relevante, hochwertige, wissenschaftliche Quellen verwenden. Keine unnötige Über-Zitierung. Fokus auf präziser Argumentation, nicht auf Quellenmasse.
 
-**Aufgabe:**
-Erstelle den vollständigen Thesis-Text entsprechend der Gliederung. Der Text sollte:
-1. Wissenschaftlich präzise und gut strukturiert sein
-2. Alle Kapitel und Abschnitte der Gliederung abdecken
-3. Die Forschungsfrage beantworten
-4. Quellen korrekt zitieren (${citationStyleLabel} Stil)
-5. Die Ziel-Länge erreichen
-6. In ${thesisData.language === 'german' ? 'Deutsch' : 'Englisch'} verfasst sein
+**Wissenschaftlicher Stil (${thesisData.language === 'german' ? 'deutsch' : 'englisch'}):**
+- Objektiv, präzise, sachlich.
+- Keine Meinungen, kein Marketing, keine Füllsätze.
+- Klare Struktur, klarer roter Faden.
+- Saubere Definitionen, methodische Klarheit, kritische Reflexion.
 
-**Format:**
-Erstelle den Text direkt, ohne zusätzliche Formatierung. Verwende die korrekte Nummerierung für Kapitel und Abschnitte.`
+**Struktur:**
+- Verwende das vorgegebene Outline.
+- Nimm nur minimale Anpassungen vor, wenn sie die logische Struktur verbessern.
+- Jeder Abschnitt muss einen klaren wissenschaftlichen Zweck erfüllen.
+
+**Zitationsstil:**
+- Halte dich exakt an den vorgegebenen Zitationsstil (${citationStyleLabel}).
+- Im Text und im Literaturverzeichnis strikt korrekt formatieren.
+- Wenn der Stil Seitenzahlen verlangt, aber die Quelle keine liefert → Seitenzahl weglassen, niemals raten.
+
+**Literaturverzeichnis:**
+- Am Ende des Dokuments ein vollständiges, korrekt formatiertes Literaturverzeichnis ausgeben.
+- Nur tatsächlich zitierte Quellen aufnehmen.
+- Alphabetisch sortiert.
+- Format entsprechend dem Zitationsstil (${citationStyleLabel}).
+- DOI, URL und Journal-Metadaten verwenden, sofern vorhanden.
+- Keine doppelten Einträge.
+
+**RAG-Nutzung:**
+- Nutze aktiv die Inhalte der bereitgestellten Quellen (File Search / Embeddings).
+- Extrahiere relevante Aussagen und verarbeite sie wissenschaftlich.
+- Keine Inhalte außerhalb der bereitgestellten Daten außer allgemein anerkanntes Basiswissen (Definitionen, Methodik).
+
+**Output-Format:**
+- Gib die komplette Arbeit in Markdown mit klaren Überschriften aus.
+- Strukturbeispiel:
+  # Titel
+  ## Abstract
+  ## Einleitung
+  ...
+  ## Fazit
+  ## Literaturverzeichnis
+
+**Ziel:**
+Erstelle eine vollständige, zitierfähige, wissenschaftlich fundierte Arbeit, die logisch aufgebaut ist, den Zitationsstil korrekt umsetzt, ausschließlich validierte Quellen nutzt und die vorgegebene Länge einhält.`
 
   console.log('[ThesisGeneration] Calling Gemini Pro to generate thesis content...')
   console.log('[ThesisGeneration] Using FileSearchStore for RAG context')
   const generationStart = Date.now()
   
-  const response = await retryApiCall(
-    () => ai.models.generateContent({
-      model: 'gemini-2.5-pro',
-      contents: prompt,
-      config: {
-        tools: [{
-          fileSearch: {
-            fileSearchStoreNames: [thesisData.fileSearchStoreId],
-          },
-        }],
-      },
-    }),
-    'Generate thesis content (Gemini Pro)'
-  )
-
-  const generationDuration = Date.now() - generationStart
-  const content = response.text || ''
-  const contentLength = content.length
-  const wordCount = content.split(/\s+/).length
+  // Retry with fallbacks: try with full context first, then with reduced context if needed
+  let content = ''
+  let lastError: Error | unknown = null
   
-  console.log(`[ThesisGeneration] Thesis generation completed (${generationDuration}ms)`)
-  console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
+  // Attempt 1: Full generation with FileSearchStore
+  try {
+    console.log('[ThesisGeneration] Attempt 1: Full generation with FileSearchStore')
+    const response = await retryApiCall(
+      () => ai.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents: prompt,
+        config: {
+          tools: [{
+            fileSearch: {
+              fileSearchStoreNames: [thesisData.fileSearchStoreId],
+            },
+          }],
+        },
+      }),
+      'Generate thesis content (Gemini Pro) - Attempt 1',
+      3, // 3 retries
+      2000 // 2 second base delay
+    )
+    
+    content = response.text || ''
+    if (content && content.length > 100) {
+      const generationDuration = Date.now() - generationStart
+      const contentLength = content.length
+      const wordCount = content.split(/\s+/).length
+      console.log(`[ThesisGeneration] Thesis generation completed (${generationDuration}ms)`)
+      console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
+      return content
+    }
+  } catch (error) {
+    lastError = error
+    console.warn('[ThesisGeneration] Attempt 1 failed, trying fallback...', error)
+  }
+  
+  // Attempt 2: Fallback - try without FileSearchStore, use source metadata only
+  try {
+    console.log('[ThesisGeneration] Attempt 2: Fallback generation without FileSearchStore')
+    const fallbackPrompt = prompt + `\n\n**Hinweis:** Falls FileSearchStore nicht verfügbar ist, nutze die oben bereitgestellten Quellen-Metadaten.`
+    
+    const response = await retryApiCall(
+      () => ai.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents: fallbackPrompt,
+        // No FileSearchStore in fallback
+      }),
+      'Generate thesis content (Gemini Pro) - Attempt 2 (Fallback)',
+      3,
+      2000
+    )
+    
+    content = response.text || ''
+    if (content && content.length > 100) {
+      const generationDuration = Date.now() - generationStart
+      const contentLength = content.length
+      const wordCount = content.split(/\s+/).length
+      console.log(`[ThesisGeneration] Fallback generation completed (${generationDuration}ms)`)
+      console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
+      return content
+    }
+  } catch (error) {
+    lastError = error
+    console.warn('[ThesisGeneration] Attempt 2 failed, trying final fallback...', error)
+  }
+  
+  // Attempt 3: Final fallback - use gemini-2.5-flash (faster, cheaper, but lower quality)
+  try {
+    console.log('[ThesisGeneration] Attempt 3: Final fallback with gemini-2.5-flash')
+    const response = await retryApiCall(
+      () => ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+          tools: [{
+            fileSearch: {
+              fileSearchStoreNames: [thesisData.fileSearchStoreId],
+            },
+          }],
+        },
+      }),
+      'Generate thesis content (Gemini Flash) - Attempt 3 (Final Fallback)',
+      2, // Fewer retries for fallback
+      1000
+    )
+    
+    content = response.text || ''
+    if (content && content.length > 100) {
+      const generationDuration = Date.now() - generationStart
+      const contentLength = content.length
+      const wordCount = content.split(/\s+/).length
+      console.log(`[ThesisGeneration] Final fallback generation completed (${generationDuration}ms)`)
+      console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
+      console.log(`[ThesisGeneration] WARNING: Used gemini-2.5-flash as fallback - quality may be lower`)
+      return content
+    }
+  } catch (error) {
+    lastError = error
+    console.error('[ThesisGeneration] All generation attempts failed')
+  }
+  
+  // If all attempts failed, throw the last error
+  if (!content || content.length < 100) {
+    throw new Error(`Failed to generate thesis content after all retry attempts: ${lastError instanceof Error ? lastError.message : 'Unknown error'}`)
+  }
   
   return content
 }
@@ -1044,13 +1484,28 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
   console.log('='.repeat(80))
   
   try {
-    // Step 1: Generate search queries
+    // Step 1: Generate search queries (with retry)
     console.log('\n[PROCESS] ========== Step 1: Generate Search Queries ==========')
     const step1Start = Date.now()
-    const chapterQueries = await generateSearchQueries(thesisData)
-    const step1Duration = Date.now() - step1Start
-    console.log(`[PROCESS] Step 1 completed in ${step1Duration}ms`)
-    console.log(`[PROCESS] Generated queries for ${chapterQueries.length} chapters`)
+    let chapterQueries: any[] = []
+    try {
+      chapterQueries = await retryApiCall(
+        () => generateSearchQueries(thesisData),
+        'Generate search queries',
+        3,
+        2000
+      )
+      const step1Duration = Date.now() - step1Start
+      console.log(`[PROCESS] Step 1 completed in ${step1Duration}ms`)
+      console.log(`[PROCESS] Generated queries for ${chapterQueries.length} chapters`)
+    } catch (error) {
+      console.error('[PROCESS] ERROR generating search queries:', error)
+      throw new Error(`Failed to generate search queries: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+    
+    if (!chapterQueries || chapterQueries.length === 0) {
+      throw new Error('No search queries generated - cannot proceed with research')
+    }
 
     // Step 2 & 3: Query OpenAlex and Semantic Scholar
     console.log('\n[PROCESS] ========== Step 2-3: Query OpenAlex and Semantic Scholar ==========')
@@ -1059,7 +1514,9 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
     let totalQueries = 0
 
     for (const chapterQuery of chapterQueries) {
-      console.log(`[PROCESS] Processing chapter: ${(chapterQuery as any).chapterNumber || chapterQuery.chapter || 'N/A'}`)
+      const chapterNumber = (chapterQuery as any).chapterNumber || chapterQuery.chapter || 'N/A'
+      const chapterTitle = (chapterQuery as any).chapterTitle || 'N/A'
+      console.log(`[PROCESS] Processing chapter: ${chapterNumber} - ${chapterTitle}`)
       
       // Query in both languages
       const germanQueries = chapterQuery.queries?.german || []
@@ -1070,9 +1527,19 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
         totalQueries++
         console.log(`[PROCESS]   Query ${totalQueries}: "${query}" (German)`)
         const openAlexResults = await queryOpenAlex(query, 'german')
+        // Add chapter tracking to sources
+        openAlexResults.forEach(s => {
+          s.chapterNumber = chapterNumber
+          s.chapterTitle = chapterTitle
+        })
         allSources.push(...openAlexResults)
         
         const semanticResults = await querySemanticScholar(query)
+        // Add chapter tracking to sources
+        semanticResults.forEach(s => {
+          s.chapterNumber = chapterNumber
+          s.chapterTitle = chapterTitle
+        })
         allSources.push(...semanticResults)
         
         // Rate limiting
@@ -1083,9 +1550,19 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
         totalQueries++
         console.log(`[PROCESS]   Query ${totalQueries}: "${query}" (English)`)
         const openAlexResults = await queryOpenAlex(query, 'english')
+        // Add chapter tracking to sources
+        openAlexResults.forEach(s => {
+          s.chapterNumber = chapterNumber
+          s.chapterTitle = chapterTitle
+        })
         allSources.push(...openAlexResults)
         
         const semanticResults = await querySemanticScholar(query)
+        // Add chapter tracking to sources
+        semanticResults.forEach(s => {
+          s.chapterNumber = chapterNumber
+          s.chapterTitle = chapterTitle
+        })
         allSources.push(...semanticResults)
         
         // Rate limiting
@@ -1101,21 +1578,47 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
     const semanticCount = allSources.filter(s => s.source === 'semantic_scholar').length
     console.log(`[PROCESS]   OpenAlex: ${openAlexCount}, Semantic Scholar: ${semanticCount}`)
 
-    // Step 4: Deduplicate and enrich with Unpaywall
+    // Step 4: Deduplicate and enrich with Unpaywall (with retry)
     console.log('\n[PROCESS] ========== Step 4: Deduplicate and Enrich Sources ==========')
     const step4Start = Date.now()
-    const deduplicated = await deduplicateAndEnrichSources(allSources)
-    const step4Duration = Date.now() - step4Start
-    console.log(`[PROCESS] Step 4 completed in ${step4Duration}ms`)
-    console.log(`[PROCESS] ${deduplicated.length} sources after deduplication and enrichment`)
+    let deduplicated: Source[] = []
+    try {
+      deduplicated = await retryApiCall(
+        () => deduplicateAndEnrichSources(allSources),
+        'Deduplicate and enrich sources',
+        2, // Fewer retries for this step
+        1000
+      )
+      const step4Duration = Date.now() - step4Start
+      console.log(`[PROCESS] Step 4 completed in ${step4Duration}ms`)
+      console.log(`[PROCESS] ${deduplicated.length} sources after deduplication and enrichment`)
+    } catch (error) {
+      console.error('[PROCESS] ERROR in deduplication, using original sources:', error)
+      // Fallback: use original sources without enrichment
+      deduplicated = allSources
+      console.log(`[PROCESS] Using ${deduplicated.length} sources without enrichment as fallback`)
+    }
 
-    // Step 5: Rank by relevance
+    // Step 5: Rank by relevance (with retry)
     console.log('\n[PROCESS] ========== Step 5: Rank Sources by Relevance ==========')
     const step5Start = Date.now()
-    const ranked = await rankSourcesByRelevance(deduplicated, thesisData)
-    const step5Duration = Date.now() - step5Start
-    console.log(`[PROCESS] Step 5 completed in ${step5Duration}ms`)
-    console.log(`[PROCESS] Ranked ${ranked.length} sources`)
+    let ranked: Source[] = []
+    try {
+      ranked = await retryApiCall(
+        () => rankSourcesByRelevance(deduplicated, thesisData),
+        'Rank sources by relevance',
+        2, // Fewer retries (this is already batched internally)
+        3000 // Longer delay for ranking (it's a heavy operation)
+      )
+      const step5Duration = Date.now() - step5Start
+      console.log(`[PROCESS] Step 5 completed in ${step5Duration}ms`)
+      console.log(`[PROCESS] Ranked ${ranked.length} sources`)
+    } catch (error) {
+      console.error('[PROCESS] ERROR in ranking, using unranked sources:', error)
+      // Fallback: use deduplicated sources without ranking
+      ranked = deduplicated.map(s => ({ ...s, relevanceScore: 50 })) // Default score
+      console.log(`[PROCESS] Using ${ranked.length} unranked sources as fallback`)
+    }
 
     // If test mode, skip PDF uploads and return selected sources JSON
     if (testMode) {
@@ -1250,12 +1753,96 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
       }
     }
 
+    // Step 6: Download and upload PDFs using smart filtering (only in production mode)
+    console.log('\n[PROCESS] ========== Step 6: Download and Upload PDFs (Smart Filtering) ==========')
+    const step6Start = Date.now()
+    
+    // Use smart filtering to ensure at least 2 sources per chapter
+    const topSources = selectTopSourcesWithChapterGuarantee(ranked, 50, 2)
+    
+    console.log(`[PROCESS] Top sources to process: ${topSources.length} (with chapter guarantees)`)
+    const sourcesWithPdf = topSources.filter(s => s.pdfUrl).length
+    console.log(`[PROCESS] Sources with PDF URLs: ${sourcesWithPdf}`)
+    
+    let uploadedCount = 0
+    let failedCount = 0
+
+    // Track failed sources for potential retry
+    const failedSources: Source[] = []
+    
+    for (let i = 0; i < topSources.length; i++) {
+      const source = topSources[i]
+      console.log(`[PROCESS] Processing source ${i + 1}/${topSources.length}: "${source.title}"`)
+      console.log(`[PROCESS]   Chapter: ${source.chapterNumber || 'N/A'} - ${source.chapterTitle || 'N/A'}`)
+      
+      if (source.pdfUrl) {
+        try {
+          const success = await downloadAndUploadPDF(source, thesisData.fileSearchStoreId, thesisId)
+          if (success) {
+            uploadedCount++
+          } else {
+            failedCount++
+            failedSources.push(source) // Track for potential retry
+            console.log(`[PROCESS] Failed to upload source, will retry later if needed: "${source.title}"`)
+          }
+        } catch (error) {
+          failedCount++
+          failedSources.push(source)
+          console.error(`[PROCESS] Error uploading source: "${source.title}"`, error)
+        }
+        // Rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      } else {
+        console.log(`[PROCESS] Skipping source (no PDF URL): "${source.title}"`)
+      }
+    }
+    
+    // Retry failed uploads once (with exponential backoff)
+    if (failedSources.length > 0 && uploadedCount < 10) {
+      console.log(`[PROCESS] Retrying ${failedSources.length} failed PDF uploads...`)
+      await new Promise(resolve => setTimeout(resolve, 5000)) // Wait 5 seconds before retry
+      
+      for (const source of failedSources.slice(0, 10)) { // Limit retries to 10
+        try {
+          console.log(`[PROCESS] Retrying upload: "${source.title}"`)
+          const success = await downloadAndUploadPDF(source, thesisData.fileSearchStoreId, thesisId)
+          if (success) {
+            uploadedCount++
+            failedCount--
+            console.log(`[PROCESS] Retry successful: "${source.title}"`)
+          }
+          await new Promise(resolve => setTimeout(resolve, 2000)) // Longer delay for retries
+        } catch (error) {
+          console.error(`[PROCESS] Retry failed: "${source.title}"`, error)
+        }
+      }
+    }
+
+    const step6Duration = Date.now() - step6Start
+    console.log(`[PROCESS] Step 6 completed in ${step6Duration}ms`)
+    console.log(`[PROCESS] Uploaded ${uploadedCount} PDFs, ${failedCount} failed`)
+
     // Step 7: Generate thesis content (only in production mode)
+    // This step has built-in retries and fallbacks
     console.log('\n[PROCESS] ========== Step 7: Generate Thesis Content ==========')
     const step7Start = Date.now()
-    const thesisContent = await generateThesisContent(thesisData, ranked)
-    const step7Duration = Date.now() - step7Start
-    console.log(`[PROCESS] Step 7 completed in ${step7Duration}ms`)
+    
+    let thesisContent = ''
+    try {
+      thesisContent = await generateThesisContent(thesisData, ranked)
+      const step7Duration = Date.now() - step7Start
+      console.log(`[PROCESS] Step 7 completed in ${step7Duration}ms`)
+    } catch (error) {
+      console.error('[PROCESS] ERROR in thesis generation:', error)
+      // If generation fails completely, create a minimal placeholder
+      // This allows the process to complete and the user can regenerate later
+      thesisContent = `# ${thesisData.title}\n\n## Hinweis\n\nDie automatische Generierung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder kontaktieren Sie den Support.\n\nFehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`
+      console.log('[PROCESS] Created placeholder content due to generation failure')
+    }
+    
+    if (!thesisContent || thesisContent.length < 100) {
+      throw new Error('Thesis generation failed and no valid content was produced')
+    }
 
     // Update thesis in database
     console.log('[PROCESS] Updating thesis in database with generated content...')
@@ -1277,6 +1864,25 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
     )
     const dbUpdateDuration = Date.now() - dbUpdateStart
     console.log(`[PROCESS] Database updated in ${dbUpdateDuration}ms`)
+
+    // Step 8: Chunk thesis and store in vector DB
+    console.log('\n[PROCESS] ========== Step 8: Chunk Thesis and Store in Vector DB ==========')
+    const step8Start = Date.now()
+    try {
+      await chunkAndStoreThesis(thesisId, thesisContent, thesisData.outline)
+      const step8Duration = Date.now() - step8Start
+      console.log(`[PROCESS] Step 8 completed in ${step8Duration}ms`)
+    } catch (error) {
+      console.error('[PROCESS] ERROR chunking thesis:', error)
+      // Don't fail the whole process if chunking fails
+    }
+
+    // Step 9: Email notification
+    // The email is automatically sent via database trigger when status = 'completed'
+    // The trigger (005_thesis_completion_email_trigger.sql) handles everything
+    console.log('\n[PROCESS] ========== Step 9: Email Notification ==========')
+    console.log('[PROCESS] Email will be sent automatically via database trigger')
+    // No action needed - the status update above triggers the email automatically
 
     const processDuration = Date.now() - processStartTime
     console.log('\n[PROCESS] ========== Thesis Generation Complete ==========')
