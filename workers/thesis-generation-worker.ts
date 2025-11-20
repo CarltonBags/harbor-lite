@@ -45,6 +45,11 @@ if (!GEMINI_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const ai = new GoogleGenAI({ apiKey: GEMINI_KEY })
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+// Concurrency control: limit number of simultaneous thesis generations
+const MAX_CONCURRENT_JOBS = parseInt(process.env.MAX_CONCURRENT_JOBS || '3', 10)
+let activeJobs = 0
+const jobQueue: Array<{ thesisId: string; thesisData: ThesisData; resolve: () => void }> = []
+
 // Types
 interface ThesisData {
   title: string
@@ -1441,9 +1446,17 @@ ${sourceUsageGuidance}
 
 **Zitationsstil:**
 - Halte dich exakt an den vorgegebenen Zitationsstil (${citationStyleLabel}).
-- Der Zitationsstil MUSS ebenfalls im Fließtext berücksichtigt werden. Dort wo eine Quelle verwendet wird, ist dies im entsprechenden Zitationsstilzu kennzeichnen.
+- Der Zitationsstil MUSS ebenfalls im Fließtext berücksichtigt werden. Dort wo eine Quelle verwendet wird, ist dies im entsprechenden Zitationsstil zu kennzeichnen.
 - Im Text und im Literaturverzeichnis strikt korrekt formatieren.
 - Wenn der Stil Seitenzahlen verlangt, aber die Quelle keine liefert → Seitenzahl weglassen, niemals raten.
+${thesisData.citationStyle === 'deutsche-zitierweise' ? `
+**WICHTIG - Deutsche Zitierweise (Fußnoten):**
+- Verwende Fußnoten für alle Zitate und Quellenverweise.
+- Format: Im Text mit hochgestellter Zahl markieren (z.B. "Dies ist ein Zitat^1" oder "Dies ist ein Zitat[^1]").
+- Die Fußnote selbst am Ende der Seite oder im Text als "[^1]: Autor, Titel, Jahr, Seite" formatieren.
+- Jede Quelle bekommt eine fortlaufende Nummer (1, 2, 3, ...).
+- Die Fußnoten müssen vollständig sein und alle notwendigen Informationen enthalten (Autor, Titel, Jahr, Seitenzahl wenn verfügbar).
+- Stelle sicher, dass der Text vollständig ist und nicht abgebrochen wird - auch wenn viele Fußnoten verwendet werden.` : ''}
 
 **Literaturverzeichnis:**
 - Am Ende des Dokuments ein vollständiges, korrekt formatiertes Literaturverzeichnis ausgeben.
@@ -1512,12 +1525,29 @@ Erstelle eine vollständige, zitierfähige, wissenschaftlich fundierte Arbeit, d
       )
       
       content = response.text || ''
+      const contentLength = content.length
+      const wordCount = content.split(/\s+/).length
+      const expectedWordCount = thesisData.lengthUnit === 'words' 
+        ? thesisData.targetLength 
+        : thesisData.targetLength * 250 // ~250 words per page
+      
       if (content && content.length > 100) {
         const generationDuration = Date.now() - generationStart
-        const contentLength = content.length
-        const wordCount = content.split(/\s+/).length
         console.log(`[ThesisGeneration] ✓ Thesis generation completed successfully on attempt ${attempt} (${generationDuration}ms)`)
         console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
+        console.log(`[ThesisGeneration] Expected word count: ~${expectedWordCount} words`)
+        
+        // Warn if content is significantly shorter than expected
+        if (wordCount < expectedWordCount * 0.5) {
+          console.warn(`[ThesisGeneration] ⚠️ WARNING: Generated content is much shorter than expected!`)
+          console.warn(`[ThesisGeneration]   Expected: ~${expectedWordCount} words, Got: ~${wordCount} words`)
+          console.warn(`[ThesisGeneration]   This might indicate truncation or incomplete generation`)
+          console.warn(`[ThesisGeneration]   Citation style: ${thesisData.citationStyle}`)
+          if (thesisData.citationStyle === 'deutsche-zitierweise') {
+            console.warn(`[ThesisGeneration]   German footnotes might have caused issues - checking...`)
+          }
+        }
+        
         return content
       } else {
         console.warn(`[ThesisGeneration] Attempt ${attempt} returned invalid content (length: ${content.length})`)
@@ -1552,6 +1582,69 @@ Erstelle eine vollständige, zitierfähige, wissenschaftlich fundierte Arbeit, d
     `Last error: ${errorDetails}. ` +
     `FileSearchStore ID: ${thesisData.fileSearchStoreId}`
   )
+}
+
+/**
+ * Extract and process footnotes from German citation style text
+ * Returns content with footnote markers replaced and a footnotes object
+ */
+function extractAndProcessFootnotes(content: string): { content: string; footnotes: Record<number, string> } {
+  const footnotes: Record<number, string> = {}
+  let footnoteCounter = 1
+  
+  // Pattern 1: Markdown footnotes [^1]: citation text
+  // Pattern 2: Inline footnotes like "text^1" or "text[^1]"
+  // Pattern 3: Footnotes at end of line or paragraph
+  
+  // First, extract markdown-style footnotes [^N]: citation
+  const markdownFootnoteRegex = /\[\^(\d+)\]:\s*(.+?)(?=\n\[\^|\n\n|$)/gs
+  let processedContent = content.replace(markdownFootnoteRegex, (match, num, citation) => {
+    const footnoteNum = parseInt(num, 10)
+    footnotes[footnoteNum] = citation.trim()
+    return '' // Remove the footnote definition from content
+  })
+  
+  // Replace all footnote references in text with ^N format
+  // Handle both [^N] and ^N formats
+  processedContent = processedContent.replace(/\[\^(\d+)\]/g, '^$1')
+  
+  // If we have inline footnotes like "text^1" that aren't in our footnotes object,
+  // try to extract them from the text
+  const inlineFootnoteRegex = /\^(\d+)/g
+  const foundFootnotes = new Set<number>()
+  processedContent.replace(inlineFootnoteRegex, (match, num) => {
+    foundFootnotes.add(parseInt(num, 10))
+    return match
+  })
+  
+  // If we found footnote markers but no definitions, try to extract from common patterns
+  if (foundFootnotes.size > 0 && Object.keys(footnotes).length === 0) {
+    // Try to find footnotes in various formats at the end of paragraphs or lines
+    const footnotePatterns = [
+      /\n(\d+)\.\s+(.+?)(?=\n\d+\.|\n\n|$)/g, // Numbered list format
+      /\n\[(\d+)\]\s+(.+?)(?=\n\[\d+\]|\n\n|$)/g, // Bracket format
+    ]
+    
+    for (const pattern of footnotePatterns) {
+      processedContent.replace(pattern, (match, num, citation) => {
+        const footnoteNum = parseInt(num, 10)
+        if (foundFootnotes.has(footnoteNum) && !footnotes[footnoteNum]) {
+          footnotes[footnoteNum] = citation.trim()
+        }
+        return '' // Remove from content
+      })
+    }
+  }
+  
+  // Ensure all footnote markers have corresponding entries
+  // If a marker exists but no definition, create a placeholder
+  for (const num of foundFootnotes) {
+    if (!footnotes[num]) {
+      footnotes[num] = `[Fußnote ${num} - Zitation fehlt]`
+    }
+  }
+  
+  return { content: processedContent.trim(), footnotes }
 }
 
 /**
@@ -1709,8 +1802,24 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.log('\n[PROCESS] ========== Step 6: Download and Upload PDFs (Smart Filtering with Replacement) ==========')
     const step6Start = Date.now()
     
+    // Calculate target source count based on thesis length (reused in Step 7)
+    // Formula: ~1.25 sources per page, max 50 sources
+    let step6TargetPages = thesisData.targetLength
+    if (thesisData.lengthUnit === 'words') {
+      // Convert words to pages (assuming ~250 words per page)
+      step6TargetPages = Math.ceil(thesisData.targetLength / 250)
+    } else {
+      // For pages, use the average of min and max if available, otherwise use targetLength
+      step6TargetPages = thesisData.targetLength
+    }
+    
+    // Calculate target source count: 1.25 sources per page, max 50
+    const step6TargetSourceCount = Math.min(50, Math.max(10, Math.ceil(step6TargetPages * 1.25)))
+    console.log(`[PROCESS] Target thesis length: ${step6TargetPages} pages`)
+    console.log(`[PROCESS] Calculated target source count: ${step6TargetSourceCount} sources (1.25 per page, max 50)`)
+    
     // Use smart filtering to ensure at least 2 sources per chapter
-    const topSources = selectTopSourcesWithChapterGuarantee(ranked, 50, 2)
+    const topSources = selectTopSourcesWithChapterGuarantee(ranked, step6TargetSourceCount, 2)
     
     console.log(`[PROCESS] Top sources to process: ${topSources.length} (with chapter guarantees)`)
     const sourcesWithPdf = topSources.filter(s => s.pdfUrl).length
@@ -1733,11 +1842,11 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     const sourcesToProcess: Source[] = [...topSources]
     let sourceIndex = 0
     
-    while (sourceIndex < sourcesToProcess.length && successfullyUploaded.length < 50) {
+    while (sourceIndex < sourcesToProcess.length && successfullyUploaded.length < step6TargetSourceCount) {
       const source = sourcesToProcess[sourceIndex]
       console.log(`[PROCESS] Processing source ${sourceIndex + 1}/${sourcesToProcess.length}: "${source.title}"`)
       console.log(`[PROCESS]   Chapter: ${source.chapterNumber || 'N/A'} - ${source.chapterTitle || 'N/A'}`)
-      console.log(`[PROCESS]   Progress: ${successfullyUploaded.length}/50 uploaded`)
+      console.log(`[PROCESS]   Progress: ${successfullyUploaded.length}/${step6TargetSourceCount} uploaded`)
       
       if (source.pdfUrl) {
         try {
@@ -1861,22 +1970,9 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.log('\n[PROCESS] ========== Step 7: Generate Thesis Content ==========')
     const step7Start = Date.now()
     
-    // Calculate appropriate number of sources based on thesis length
-    // Formula: ~1.25 sources per page, max 50 sources
-    // Example: 20 pages = 25 sources, 40 pages = 50 sources (max)
-    let targetPages = thesisData.targetLength
-    if (thesisData.lengthUnit === 'words') {
-      // Convert words to pages (assuming ~250 words per page)
-      targetPages = Math.ceil(thesisData.targetLength / 250)
-    } else {
-      // Already in pages, use average of min/max if available, or target length
-      targetPages = thesisData.targetLength
-    }
-    
-    // Calculate target source count: 1.25 sources per page, max 50
-    const targetSourceCount = Math.min(50, Math.max(10, Math.ceil(targetPages * 1.25)))
-    console.log(`[PROCESS] Target thesis length: ${targetPages} pages`)
-    console.log(`[PROCESS] Calculated target source count: ${targetSourceCount} sources (1.25 per page, max 50)`)
+    // Reuse the target source count calculated in Step 6
+    const step7TargetSourceCount = step6TargetSourceCount
+    console.log(`[PROCESS] Using target source count: ${step7TargetSourceCount} sources (calculated in Step 6)`)
     
     // Use successfully uploaded sources, sorted by relevance score (highest first)
     const availableSources = successfullyUploaded.length > 0 
@@ -1884,8 +1980,8 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       : [...ranked].sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
     
     // Select top N sources by relevance score
-    const sourcesForGeneration = availableSources.slice(0, targetSourceCount)
-    console.log(`[PROCESS] Selected ${sourcesForGeneration.length} sources for thesis generation (top ${targetSourceCount} by relevance)`)
+    const sourcesForGeneration = availableSources.slice(0, step7TargetSourceCount)
+    console.log(`[PROCESS] Selected ${sourcesForGeneration.length} sources for thesis generation (top ${step7TargetSourceCount} by relevance)`)
     console.log(`[PROCESS]   ${successfullyUploaded.length} successfully uploaded available`)
     console.log(`[PROCESS]   Relevance scores: min=${Math.min(...sourcesForGeneration.map(s => s.relevanceScore || 0))}, max=${Math.max(...sourcesForGeneration.map(s => s.relevanceScore || 0))}`)
     
@@ -1906,18 +2002,47 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       throw new Error('Thesis generation failed and no valid content was produced')
     }
 
+    // Process footnotes for German citation style
+    let processedContent = thesisContent
+    let footnotes: Record<number, string> = {}
+    
+    if (thesisData.citationStyle === 'deutsche-zitierweise') {
+      console.log('[PROCESS] Processing German footnotes...')
+      const footnoteResult = extractAndProcessFootnotes(thesisContent)
+      processedContent = footnoteResult.content
+      footnotes = footnoteResult.footnotes
+      console.log(`[PROCESS] Extracted ${Object.keys(footnotes).length} footnotes`)
+    }
+
     // Update thesis in database
     console.log('[PROCESS] Updating thesis in database with generated content...')
     const dbUpdateStart = Date.now()
     await retryApiCall(
       async () => {
+        const updateData: any = {
+          latex_content: processedContent,
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+        }
+        
+        // Store footnotes in metadata if German citation style
+        if (thesisData.citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
+          const { data: existingThesis } = await supabase
+            .from('theses')
+            .select('metadata')
+            .eq('id', thesisId)
+            .single()
+          
+          const existingMetadata = existingThesis?.metadata || {}
+          updateData.metadata = {
+            ...existingMetadata,
+            footnotes: footnotes,
+          }
+        }
+        
         const result = await supabase
           .from('theses')
-          .update({
-            latex_content: thesisContent,
-            status: 'completed',
-            completed_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('id', thesisId)
         if (result.error) throw result.error
         return result
@@ -1999,19 +2124,56 @@ app.post('/jobs/thesis-generation', authenticate, async (req: Request, res: Resp
       return res.status(400).json({ error: 'Thesis ID and data are required' })
     }
 
+    // Check if we can start processing immediately or need to queue
+    let isQueued = false
+    if (activeJobs >= MAX_CONCURRENT_JOBS) {
+      console.log(`[API] Max concurrent jobs (${MAX_CONCURRENT_JOBS}) reached, queuing job...`)
+      console.log(`[API] Active jobs: ${activeJobs}, Queue length: ${jobQueue.length}`)
+      isQueued = true
+      
+      // Queue the job - wait for a slot to open
+      await new Promise<void>((resolve) => {
+        jobQueue.push({ thesisId, thesisData, resolve })
+      })
+    }
+
     // Start processing asynchronously
-    console.log('[API] Starting background job (async)...')
-    processThesisGeneration(thesisId, thesisData).catch(error => {
-      console.error('[API] Background job error:', error)
-    })
+    activeJobs++
+    console.log(`[API] Starting background job (async)... Active jobs: ${activeJobs}/${MAX_CONCURRENT_JOBS}`)
+    
+    const processJob = async () => {
+      try {
+        await processThesisGeneration(thesisId, thesisData)
+      } catch (error) {
+        console.error('[API] Background job error:', error)
+      } finally {
+        activeJobs--
+        console.log(`[API] Job completed. Active jobs: ${activeJobs}/${MAX_CONCURRENT_JOBS}`)
+        
+        // Process next job in queue if available
+        if (jobQueue.length > 0 && activeJobs < MAX_CONCURRENT_JOBS) {
+          const nextJob = jobQueue.shift()
+          if (nextJob) {
+            console.log(`[API] Processing queued job: ${nextJob.thesisId}`)
+            activeJobs++
+            nextJob.resolve() // Release the promise to start the job
+            processJob() // Recursively process the next job
+          }
+        }
+      }
+    }
+    
+    // Start processing (non-blocking)
+    processJob()
 
     // Return immediately
     const requestDuration = Date.now() - requestStart
-    console.log(`[API] Job started, returning immediately (${requestDuration}ms)`)
+    console.log(`[API] Job ${isQueued ? 'queued and ' : ''}started, returning immediately (${requestDuration}ms)`)
     return res.json({
       success: true,
       jobId: `job-${thesisId}-${Date.now()}`,
       message: 'Thesis generation job started',
+      queued: isQueued,
     })
   } catch (error) {
     const requestDuration = Date.now() - requestStart

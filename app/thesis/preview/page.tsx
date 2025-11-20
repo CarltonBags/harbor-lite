@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText } from 'lucide-react'
+import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen } from 'lucide-react'
 import { createSupabaseClient } from '@/lib/supabase/client'
 import { getThesisById } from '@/lib/supabase/theses'
 import Link from 'next/link'
@@ -40,6 +40,7 @@ export default function ThesisPreviewPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [userProfile, setUserProfile] = useState<any>(null)
+  const [showSourcesModal, setShowSourcesModal] = useState(false)
   
   const chatEndRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
@@ -400,6 +401,13 @@ export default function ThesisPreviewPage() {
               )}
               Speichern
             </button>
+            <button
+              onClick={() => setShowSourcesModal(true)}
+              className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              <BookOpen className="w-4 h-4 mr-2" />
+              Quellen
+            </button>
             <Link
               href="/thesis"
               className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
@@ -641,6 +649,88 @@ export default function ThesisPreviewPage() {
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeKatex]}
                     components={{
+                      // Custom text renderer to handle footnote markers ^1, ^2, etc.
+                      text: ({ node, children, ...props }: any) => {
+                        const text = String(children || '')
+                        const footnotes = thesis?.metadata?.footnotes || {}
+                        const citationStyle = thesis?.citation_style
+                        
+                        // Only process footnotes for German citation style
+                        if (citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
+                          // Split text by footnote markers (^1, ^2, etc.)
+                          const parts = text.split(/(\^\d+)/g)
+                          
+                          if (parts.length > 1) {
+                            return (
+                              <>
+                                {parts.map((part, idx) => {
+                                  const footnoteMatch = part.match(/^\^(\d+)$/)
+                                  if (footnoteMatch) {
+                                    const footnoteNum = parseInt(footnoteMatch[1], 10)
+                                    const footnoteText = footnotes[footnoteNum] || `[Fußnote ${footnoteNum}]`
+                                    return (
+                                      <span
+                                        key={idx}
+                                        style={{
+                                          position: 'relative',
+                                          display: 'inline-block',
+                                        }}
+                                      >
+                                        <sup
+                                          style={{
+                                            fontSize: '0.7em',
+                                            verticalAlign: 'super',
+                                            cursor: 'help',
+                                            color: '#0066cc',
+                                            textDecoration: 'underline',
+                                            textDecorationStyle: 'dotted',
+                                          }}
+                                          title={footnoteText}
+                                          onMouseEnter={(e) => {
+                                            // Create tooltip
+                                            const tooltip = document.createElement('div')
+                                            tooltip.id = `footnote-tooltip-${footnoteNum}`
+                                            tooltip.textContent = footnoteText
+                                            tooltip.style.cssText = `
+                                              position: absolute;
+                                              bottom: 100%;
+                                              left: 50%;
+                                              transform: translateX(-50%);
+                                              background: #333;
+                                              color: white;
+                                              padding: 8px 12px;
+                                              border-radius: 4px;
+                                              font-size: 11pt;
+                                              white-space: nowrap;
+                                              max-width: 400px;
+                                              white-space: normal;
+                                              z-index: 10000;
+                                              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                                              margin-bottom: 5px;
+                                            `
+                                            e.currentTarget.appendChild(tooltip)
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            const tooltip = document.getElementById(`footnote-tooltip-${footnoteNum}`)
+                                            if (tooltip) {
+                                              tooltip.remove()
+                                            }
+                                          }}
+                                        >
+                                          {footnoteNum}
+                                        </sup>
+                                      </span>
+                                    )
+                                  }
+                                  return <span key={idx}>{part}</span>
+                                })}
+                              </>
+                            )
+                          }
+                        }
+                        
+                        return <>{children}</>
+                      },
                       h1: ({ node, children, ...props }: any) => {
                         // Check if this is the first content heading after TOC
                         // We want to ensure it starts on a new page
@@ -917,6 +1007,136 @@ export default function ThesisPreviewPage() {
           )}
         </div>
       </div>
+
+      {/* Sources Modal */}
+      {showSourcesModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowSourcesModal(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                <BookOpen className="w-6 h-6 mr-2" />
+                Verwendete Quellen
+              </h2>
+              <button
+                onClick={() => setShowSourcesModal(false)}
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {thesis?.uploaded_sources && Array.isArray(thesis.uploaded_sources) && thesis.uploaded_sources.length > 0 ? (
+                <div className="space-y-4">
+                  {thesis.uploaded_sources.map((source: any, index: number) => (
+                    <div
+                      key={index}
+                      className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-lg text-gray-900 dark:text-white mb-2">
+                            {source.title || source.metadata?.title || 'Unbekannter Titel'}
+                          </h3>
+                          
+                          <div className="space-y-1 text-sm text-gray-600 dark:text-gray-300">
+                            {source.metadata?.authors && source.metadata.authors.length > 0 && (
+                              <p>
+                                <span className="font-medium">Autoren:</span>{' '}
+                                {Array.isArray(source.metadata.authors) 
+                                  ? source.metadata.authors.join(', ')
+                                  : source.metadata.authors}
+                              </p>
+                            )}
+                            
+                            {source.metadata?.year && (
+                              <p>
+                                <span className="font-medium">Jahr:</span> {source.metadata.year}
+                              </p>
+                            )}
+                            
+                            {source.metadata?.journal && (
+                              <p>
+                                <span className="font-medium">Journal:</span> {source.metadata.journal}
+                              </p>
+                            )}
+                            
+                            {source.doi && (
+                              <p>
+                                <span className="font-medium">DOI:</span>{' '}
+                                <a
+                                  href={`https://doi.org/${source.doi}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-purple-600 dark:text-purple-400 hover:underline"
+                                >
+                                  {source.doi}
+                                </a>
+                              </p>
+                            )}
+                            
+                            {source.metadata?.pages && (
+                              <p>
+                                <span className="font-medium">Seiten:</span> {source.metadata.pages}
+                              </p>
+                            )}
+                            
+                            {source.metadata?.pageStart && source.metadata?.pageEnd && (
+                              <p>
+                                <span className="font-medium">Seitenbereich:</span> {source.metadata.pageStart} - {source.metadata.pageEnd}
+                              </p>
+                            )}
+                            
+                            {source.sourceUrl && (
+                              <p>
+                                <span className="font-medium">URL:</span>{' '}
+                                <a
+                                  href={source.sourceUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-purple-600 dark:text-purple-400 hover:underline break-all"
+                                >
+                                  {source.sourceUrl.length > 60 ? `${source.sourceUrl.substring(0, 60)}...` : source.sourceUrl}
+                                </a>
+                              </p>
+                            )}
+                            
+                            {source.metadata?.abstract && (
+                              <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                <p className="font-medium mb-1">Abstract:</p>
+                                <p className="text-gray-600 dark:text-gray-400 italic text-xs line-clamp-3">
+                                  {source.metadata.abstract}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                  <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>Keine Quellen verfügbar</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+              <button
+                onClick={() => setShowSourcesModal(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Schließen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
