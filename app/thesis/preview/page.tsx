@@ -12,7 +12,6 @@ import rehypeKatex from 'rehype-katex'
 import remarkMath from 'remark-math'
 import 'katex/dist/katex.min.css'
 import './thesis-document.css'
-import { addPageNumbers } from './add-page-numbers'
 import { TableOfContents } from './table-of-contents'
 import type { OutlineChapter } from '@/lib/supabase/types'
 
@@ -35,17 +34,137 @@ export default function ThesisPreviewPage() {
   const [originalContent, setOriginalContent] = useState<string>('')
   const [isEditing, setIsEditing] = useState(false)
   const [selectedText, setSelectedText] = useState<string>('')
+  const [textAddedToChat, setTextAddedToChat] = useState<boolean>(false) // Track if text was explicitly added via button
+  const [selectionButtonPosition, setSelectionButtonPosition] = useState<{ top: number; left: number } | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [userProfile, setUserProfile] = useState<any>(null)
   const [showSourcesModal, setShowSourcesModal] = useState(false)
+  const [pendingEdit, setPendingEdit] = useState<{ oldText: string; newText: string; oldContent: string; newContent: string } | null>(null)
+  const [thesisVersions, setThesisVersions] = useState<any[]>([])
+  const [showVersionsModal, setShowVersionsModal] = useState(false)
+  const [highlightedPassages, setHighlightedPassages] = useState<Array<{ text: string; paragraphId: string }>>([])
+  const [selectionRange, setSelectionRange] = useState<Range | null>(null)
+  const [bibliographySources, setBibliographySources] = useState<any[]>([])
   
   const chatEndRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+
+  // Extract sources from bibliography section
+  const extractBibliographySources = (content: string, uploadedSources: any[]): any[] => {
+    if (!content || !uploadedSources || uploadedSources.length === 0) return []
+    
+    // Find bibliography section - look for "Literaturverzeichnis" or "Bibliography" heading
+    const bibliographyMarkers = [
+      /^##\s+Literaturverzeichnis\s*$/mi,
+      /^##\s+Bibliography\s*$/mi,
+      /^#\s+Literaturverzeichnis\s*$/mi,
+      /^#\s+Bibliography\s*$/mi,
+    ]
+    
+    let bibliographyStart = -1
+    for (const marker of bibliographyMarkers) {
+      const match = content.search(marker)
+      if (match >= 0) {
+        bibliographyStart = match
+        break
+      }
+    }
+    
+    if (bibliographyStart < 0) {
+      // If no explicit bibliography heading, look for common patterns at the end
+      const endPatterns = [
+        /Literaturverzeichnis/gi,
+        /Bibliography/gi,
+        /References/gi,
+      ]
+      for (const pattern of endPatterns) {
+        const match = content.search(pattern)
+        if (match >= 0 && match > content.length * 0.7) { // In last 30% of content
+          bibliographyStart = match
+          break
+        }
+      }
+    }
+    
+    if (bibliographyStart < 0) return []
+    
+    // Extract bibliography text (from marker to end or next major heading)
+    const bibliographyText = content.substring(bibliographyStart)
+    const nextMajorHeading = bibliographyText.search(/^##?\s+/m)
+    const bibliographyContent = nextMajorHeading > 0 
+      ? bibliographyText.substring(0, nextMajorHeading)
+      : bibliographyText
+    
+    // Match sources from bibliography with uploaded sources
+    const matchedSources: any[] = []
+    
+    for (const uploadedSource of uploadedSources) {
+      // Try to find this source in the bibliography by matching key identifiers
+      const sourceTitle = (uploadedSource.title || uploadedSource.metadata?.title || '').toLowerCase().trim()
+      const sourceAuthors = uploadedSource.metadata?.authors || []
+      const sourceDOI = uploadedSource.doi || ''
+      const sourceYear = uploadedSource.metadata?.year || uploadedSource.year || ''
+      
+      // Create search patterns
+      const searchPatterns: string[] = []
+      
+      // Add title (first 50 chars to avoid too long matches)
+      if (sourceTitle) {
+        const titleShort = sourceTitle.substring(0, 50)
+        searchPatterns.push(titleShort)
+      }
+      
+      // Add author names (first author)
+      if (Array.isArray(sourceAuthors) && sourceAuthors.length > 0) {
+        const firstAuthor = String(sourceAuthors[0]).toLowerCase().trim()
+        if (firstAuthor) {
+          // Extract last name (usually before comma or first word)
+          const lastName = firstAuthor.split(/[,\s]/)[0]
+          if (lastName && lastName.length > 2) {
+            searchPatterns.push(lastName)
+          }
+        }
+      } else if (typeof sourceAuthors === 'string') {
+        const lastName = sourceAuthors.toLowerCase().split(/[,\s]/)[0]
+        if (lastName && lastName.length > 2) {
+          searchPatterns.push(lastName)
+        }
+      }
+      
+      // Add DOI
+      if (sourceDOI) {
+        searchPatterns.push(sourceDOI)
+      }
+      
+      // Check if any pattern matches in bibliography
+      const bibliographyLower = bibliographyContent.toLowerCase()
+      const hasMatch = searchPatterns.some(pattern => {
+        if (pattern.length < 3) return false
+        return bibliographyLower.includes(pattern)
+      })
+      
+      // Also check for year if we have author/title match
+      if (hasMatch && sourceYear) {
+        const yearMatch = bibliographyContent.includes(String(sourceYear))
+        if (yearMatch) {
+          matchedSources.push(uploadedSource)
+        } else if (searchPatterns.length >= 2) {
+          // If we have multiple identifiers matching, include even without year
+          matchedSources.push(uploadedSource)
+        }
+      } else if (hasMatch && searchPatterns.length >= 2) {
+        // If we have multiple identifiers matching, include even without year
+        matchedSources.push(uploadedSource)
+      }
+    }
+    
+    return matchedSources
+  }
 
   useEffect(() => {
     if (!thesisId) {
@@ -60,85 +179,8 @@ export default function ThesisPreviewPage() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [chatMessages])
 
-  useEffect(() => {
-    // Debug: Log TOC format from raw content
-    if (content && content.includes('Inhaltsverzeichnis')) {
-      const tocIndex = content.indexOf('Inhaltsverzeichnis')
-      const tocSection = content.substring(tocIndex, Math.min(tocIndex + 1000, content.length))
-      console.log('[TOC Debug] Raw markdown TOC section:', tocSection)
-    }
-    
-    // Add page numbers after content is rendered - use multiple attempts
-    const tryAddPageNumbers = (attemptCount = 0) => {
-      const maxAttempts = 10
-      
-      console.log(`[PageNumbers useEffect] Attempt ${attemptCount + 1}/${maxAttempts}`, {
-        hasContent: !!content,
-        hasRef: !!contentRef.current,
-        contentLength: content?.length || 0,
-        childrenCount: contentRef.current?.children.length || 0
-      })
-      
-      if (!contentRef.current) {
-        if (attemptCount < maxAttempts) {
-          console.log('[PageNumbers] contentRef.current is null, retrying in 500ms...')
-          setTimeout(() => tryAddPageNumbers(attemptCount + 1), 500)
-        } else {
-          console.error('[PageNumbers] contentRef.current is still null after max attempts!')
-        }
-        return
-      }
-      
-      if (!content) {
-        if (attemptCount < maxAttempts) {
-          console.log('[PageNumbers] content is empty, retrying in 500ms...')
-          setTimeout(() => tryAddPageNumbers(attemptCount + 1), 500)
-        }
-        return
-      }
-      
-      // Check if ReactMarkdown has rendered content
-      const hasContent = contentRef.current.children.length > 0 || 
-                        contentRef.current.textContent?.trim().length > 0
-      
-      if (hasContent || attemptCount >= maxAttempts) {
-        console.log('[PageNumbers] Content ready, processing...', {
-          childrenCount: contentRef.current.children.length,
-          textLength: contentRef.current.textContent?.trim().length || 0
-        })
-        
-        // Add page numbers
-        console.log('[PageNumbers] Calling addPageNumbers')
-        addPageNumbers(contentRef.current)
-        
-        // Re-add page numbers after a delay to ensure they persist
-        if (attemptCount < maxAttempts - 1) {
-          setTimeout(() => {
-            if (contentRef.current) {
-              console.log('[PageNumbers] Re-adding page numbers')
-              addPageNumbers(contentRef.current)
-            }
-          }, 2000)
-        }
-      } else {
-        // Content not ready, try again
-        console.log('[PageNumbers] Content not ready yet, retrying in 1000ms...')
-        setTimeout(() => tryAddPageNumbers(attemptCount + 1), 1000)
-      }
-    }
-    
-    // Start trying after a short delay
-    if (content) {
-      console.log('useEffect triggered for page numbers, content length:', content.length)
-      const timeoutId = setTimeout(() => tryAddPageNumbers(), 500)
-      return () => clearTimeout(timeoutId)
-    } else {
-      console.log('Page numbers useEffect: contentRef or content missing', {
-        hasRef: !!contentRef.current,
-        hasContent: !!content
-      })
-    }
-  }, [content])
+  // Calculate word count
+  const wordCount = content ? content.split(/\s+/).filter(word => word.length > 0).length : 0
 
   const loadThesis = async () => {
     if (!thesisId) return
@@ -156,6 +198,11 @@ export default function ThesisPreviewPage() {
       const thesisContent = thesisData.latex_content || ''
       setContent(thesisContent)
       setOriginalContent(thesisContent)
+      
+      // Extract sources from bibliography
+      const uploadedSources = thesisData.uploaded_sources || []
+      const bibliographySources = extractBibliographySources(thesisContent, uploadedSources)
+      setBibliographySources(bibliographySources)
 
       // Load user profile for cover page
       const supabase = createSupabaseClient()
@@ -168,6 +215,16 @@ export default function ThesisPreviewPage() {
           .single()
         setUserProfile(profile)
       }
+
+      // Load versions on initial load
+      if (thesisId) {
+        const { data: versions } = await supabase
+          .from('thesis_versions')
+          .select('*')
+          .eq('thesis_id', thesisId)
+          .order('version_number', { ascending: false })
+        setThesisVersions(versions || [])
+      }
     } catch (error) {
       console.error('Error loading thesis:', error)
     } finally {
@@ -176,20 +233,63 @@ export default function ThesisPreviewPage() {
   }
 
   const handleTextSelection = () => {
-    const selection = window.getSelection()
-    if (selection && selection.toString().trim().length > 0) {
-      setSelectedText(selection.toString().trim())
-    } else {
-      setSelectedText('')
+    // Small delay to ensure selection is complete
+    setTimeout(() => {
+      const selection = window.getSelection()
+      if (selection && selection.toString().trim().length > 0) {
+        const selectedText = selection.toString().trim()
+        setSelectedText(selectedText)
+        setTextAddedToChat(false) // Reset - text not yet added to chat
+        
+        // Store the range to keep selection visible
+        const range = selection.getRangeAt(0)
+        setSelectionRange(range.cloneRange())
+        
+        // Get selection position for button placement
+        const rect = range.getBoundingClientRect()
+        
+        // Calculate position relative to viewport (fixed positioning)
+        const buttonTop = rect.top + window.scrollY - 45 // Above selection
+        const buttonLeft = rect.right + 10 // Right of selection
+        
+        setSelectionButtonPosition({
+          top: buttonTop,
+          left: buttonLeft,
+        })
+        
+        console.log('[Selection] Text selected:', {
+          selectedText: selectedText.substring(0, 50),
+          buttonTop,
+          buttonLeft,
+          rectTop: rect.top,
+          rectRight: rect.right,
+          scrollY: window.scrollY,
+          hasButton: true
+        })
+      } else {
+        // Only clear if user explicitly deselects
+        if (!selectedText) {
+          setSelectionButtonPosition(null)
+          setTextAddedToChat(false)
+        }
+      }
+    }, 100) // Delay to ensure selection is stable
+  }
+
+  const handleAddToChat = () => {
+    if (selectedText) {
+      // Mark that text has been added to chat
+      setTextAddedToChat(true)
+      // Hide the button
+      setSelectionButtonPosition(null)
+      // Don't clear the selection - keep it visible (blue highlight stays)
     }
   }
 
   const handleCopySelection = () => {
     if (selectedText) {
       setChatInput(`Bitte ändere folgenden Text:\n\n"${selectedText}"\n\n`)
-      // Clear selection
-      window.getSelection()?.removeAllRanges()
-      setSelectedText('')
+      // Don't clear selection - keep it visible
     }
   }
 
@@ -206,7 +306,7 @@ export default function ThesisPreviewPage() {
 
     setChatMessages(prev => [...prev, userMessage])
     setChatInput('')
-    setSelectedText('')
+    // Don't clear selectedText - keep it visible (blue highlight stays)
     setIsProcessing(true)
 
     try {
@@ -235,20 +335,58 @@ export default function ThesisPreviewPage() {
       }
 
       const data = await response.json()
-      const { editedContent, explanation } = data
-
-      // Update content
-      setContent(editedContent)
-      setHasUnsavedChanges(true)
+      
+      // Show diff preview instead of directly replacing
+      if (data.oldText && data.newText) {
+        setPendingEdit({
+          oldText: data.oldText,
+          newText: data.newText,
+          oldContent: content,
+          newContent: data.newContent,
+        })
+        
+        // Find related passages using semantic search
+        if (data.relatedPassages && Array.isArray(data.relatedPassages)) {
+          setHighlightedPassages(data.relatedPassages)
+        } else {
+          // Fallback: search for related passages
+          try {
+            const searchResponse = await fetch('/api/find-related-passages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                thesisId,
+                queryText: data.newText,
+                excludeText: data.oldText,
+              }),
+            })
+            
+            if (searchResponse.ok) {
+              const searchData = await searchResponse.json()
+              setHighlightedPassages(searchData.passages || [])
+            }
+          } catch (error) {
+            console.error('Error finding related passages:', error)
+          }
+        }
+      } else {
+        // Fallback: direct replacement if no diff provided
+        setContent(data.editedContent || data.newContent)
+        setHasUnsavedChanges(true)
+      }
 
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: explanation || 'Text wurde erfolgreich bearbeitet.',
+        content: data.explanation || 'Text wurde erfolgreich bearbeitet. Bitte überprüfe die Änderungen unten.',
         timestamp: new Date(),
       }
 
       setChatMessages(prev => [...prev, assistantMessage])
+      
+      // Don't clear selection - keep it visible
     } catch (error) {
       console.error('Error processing edit:', error)
       const errorMessage: ChatMessage = {
@@ -263,11 +401,62 @@ export default function ThesisPreviewPage() {
     }
   }
 
+  const handleApproveEdit = async () => {
+    if (pendingEdit) {
+      const oldContent = content
+      const newContent = pendingEdit.newContent
+      setContent(newContent)
+      setHasUnsavedChanges(true)
+      setPendingEdit(null)
+      
+      // Clear highlights after approval
+      setHighlightedPassages([])
+      
+      // Clear selection after approval
+      window.getSelection()?.removeAllRanges()
+      setSelectedText('')
+      setSelectionRange(null)
+      
+      // Update bibliography sources after content change
+      if (thesis?.uploaded_sources) {
+        const updatedSources = extractBibliographySources(newContent, thesis.uploaded_sources)
+        setBibliographySources(updatedSources)
+      }
+      
+      // Update vector store embeddings for changed paragraphs
+      if (thesisId) {
+        try {
+          await fetch('/api/update-thesis-embeddings', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              thesisId,
+              oldContent,
+              newContent,
+            }),
+          })
+        } catch (error) {
+          console.error('Error updating embeddings:', error)
+          // Don't block the user if embedding update fails
+        }
+      }
+    }
+  }
+
+  const handleRejectEdit = () => {
+    setPendingEdit(null)
+    setHighlightedPassages([])
+  }
+
   const handleSave = async () => {
     if (!thesisId || !hasUnsavedChanges) return
 
     try {
       setIsProcessing(true)
+      const oldContent = originalContent
+      
       const response = await fetch('/api/save-thesis', {
         method: 'POST',
         headers: {
@@ -283,14 +472,48 @@ export default function ThesisPreviewPage() {
         throw new Error('Failed to save thesis')
       }
 
+      const data = await response.json()
       setOriginalContent(content)
       setHasUnsavedChanges(false)
+      
+      // Update bibliography sources after save
+      if (thesis?.uploaded_sources) {
+        const updatedSources = extractBibliographySources(content, thesis.uploaded_sources)
+        setBibliographySources(updatedSources)
+      }
+      
+      // Update vector store embeddings for changed paragraphs
+      try {
+        await fetch('/api/update-thesis-embeddings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            thesisId,
+            oldContent,
+            newContent: content,
+          }),
+        })
+      } catch (error) {
+        console.error('Error updating embeddings:', error)
+        // Don't block the user if embedding update fails
+      }
+      
+      // Reload versions after save
+      const supabase = createSupabaseClient()
+      const { data: versions } = await supabase
+        .from('thesis_versions')
+        .select('*')
+        .eq('thesis_id', thesisId)
+        .order('version_number', { ascending: false })
+      setThesisVersions(versions || [])
       
       // Show success message
       const successMessage: ChatMessage = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: '✓ Änderungen wurden gespeichert.',
+        content: `✓ Änderungen wurden gespeichert (Version ${data.versionNumber || 'N/A'}).`,
         timestamp: new Date(),
       }
       setChatMessages(prev => [...prev, successMessage])
@@ -354,7 +577,7 @@ export default function ThesisPreviewPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col pt-16">
+    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex flex-col pt-16 overflow-hidden">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
@@ -408,6 +631,13 @@ export default function ThesisPreviewPage() {
               <BookOpen className="w-4 h-4 mr-2" />
               Quellen
             </button>
+            <button
+              onClick={() => setShowVersionsModal(true)}
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Versionen ({thesisVersions.length})
+            </button>
             <Link
               href="/thesis"
               className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
@@ -419,9 +649,9 @@ export default function ThesisPreviewPage() {
       </div>
 
       {/* Split View: Chat (Left) + Preview (Right) */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Chat Panel (Left) */}
-        <div className="w-96 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col">
+      <div className="flex-1 flex overflow-hidden h-full">
+        {/* Chat Panel (Left) - Fixed */}
+        <div className="w-96 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col h-full flex-shrink-0">
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
               <MessageSquare className="w-5 h-5 mr-2" />
@@ -479,20 +709,27 @@ export default function ThesisPreviewPage() {
 
           {/* Chat Input */}
           <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-            {selectedText && (
-              <div className="mb-2 p-2 bg-purple-50 dark:bg-purple-900/20 rounded text-sm text-purple-700 dark:text-purple-300">
-                <div className="flex items-center justify-between">
+            {/* Selected Text Display - Only show when explicitly added via button */}
+            {selectedText && textAddedToChat && (
+              <div className="mb-2 p-2 bg-purple-50 dark:bg-purple-900/20 rounded text-sm text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                <div className="flex items-center justify-between mb-1">
                   <span className="font-medium">Ausgewählter Text:</span>
                   <button
-                    onClick={handleCopySelection}
-                    className="text-purple-600 dark:text-purple-400 hover:underline"
+                    onClick={() => {
+                      window.getSelection()?.removeAllRanges()
+                      setSelectedText('')
+                      setSelectionRange(null)
+                      setTextAddedToChat(false)
+                    }}
+                    className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200"
                   >
-                    <Copy className="w-4 h-4" />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
-                <p className="mt-1 text-xs italic line-clamp-2">"{selectedText.substring(0, 100)}..."</p>
+                <p className="text-xs italic line-clamp-2">"{selectedText.substring(0, 150)}{selectedText.length > 150 ? '...' : ''}"</p>
               </div>
             )}
+            
             <div className="flex gap-2">
               <textarea
                 value={chatInput}
@@ -503,14 +740,15 @@ export default function ThesisPreviewPage() {
                     handleSendMessage()
                   }
                 }}
-                placeholder="Beschreibe die gewünschten Änderungen..."
+                placeholder={selectedText ? "Beschreibe die gewünschten Änderungen am markierten Text..." : "Markiere Text im Preview oder beschreibe allgemeine Änderungen..."}
                 className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
                 rows={3}
               />
               <button
                 onClick={handleSendMessage}
-                disabled={!chatInput.trim() || isProcessing}
+                disabled={!chatInput.trim() || isProcessing || !selectedText || !textAddedToChat}
                 className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title={!selectedText ? "Bitte markiere zuerst Text im Preview" : !textAddedToChat ? "Bitte klicke auf 'Zu Chat hinzufügen'" : ""}
               >
                 <Send className="w-5 h-5" />
               </button>
@@ -518,39 +756,73 @@ export default function ThesisPreviewPage() {
           </div>
         </div>
 
-        {/* Preview Panel (Right) - Document Style */}
-        <div className="flex-1 overflow-y-auto overflow-x-auto bg-gray-100 dark:bg-gray-800">
-          {isEditing ? (
-            <div className="p-8">
-              <textarea
-                ref={textareaRef}
-                value={content}
-                onChange={(e) => handleContentChange(e.target.value)}
-                className="w-full h-full min-h-[calc(100vh-200px)] font-mono text-sm border-none outline-none bg-transparent text-gray-900 dark:text-white resize-none"
-                style={{ fontFamily: 'monospace' }}
-              />
-            </div>
-          ) : (
-            <div className="flex justify-center py-8" style={{ overflowX: 'auto', width: '100%', overflowY: 'visible' }}>
-              <div
-                ref={previewRef}
-                onMouseUp={handleTextSelection}
-                className="thesis-document shadow-2xl"
-                style={{
-                  width: '210mm', // A4 width - fixed
-                  minWidth: '210mm', // Prevent shrinking
-                  minHeight: '297mm', // A4 height
-                  padding: '25mm 30mm',
-                  fontFamily: '"Times New Roman", "Times", serif',
-                  fontSize: '12pt',
-                  lineHeight: '1.5',
-                  color: '#000',
-                  backgroundColor: '#ffffff', // Always white, regardless of dark mode
-                  flexShrink: 0, // Prevent shrinking
-                  position: 'relative', // Ensure page numbers can position absolutely
-                  overflow: 'visible', // Allow page numbers to be visible
-                }}
-              >
+        {/* Preview Panel (Right) - Scrollable Container */}
+        <div className="flex-1 flex flex-col overflow-hidden bg-gray-100 dark:bg-gray-800">
+          {/* Scrollable Content Area */}
+          <div className="flex-1 overflow-y-auto overflow-x-auto">
+            {isEditing ? (
+              <div className="p-8">
+                <textarea
+                  ref={textareaRef}
+                  value={content}
+                  onChange={(e) => handleContentChange(e.target.value)}
+                  className="w-full h-full min-h-[calc(100vh-200px)] font-mono text-sm border-none outline-none bg-transparent text-gray-900 dark:text-white resize-none"
+                  style={{ fontFamily: 'monospace' }}
+                />
+              </div>
+            ) : (
+              <div className="flex justify-center py-8 relative" style={{ position: 'relative' }}>
+                {/* Selection Button - Appears when text is selected but not yet added */}
+                {selectionButtonPosition && selectedText && !textAddedToChat && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      handleAddToChat()
+                    }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                    }}
+                    className="fixed z-[9999] bg-purple-600 text-white px-3 py-1.5 rounded-lg shadow-lg hover:bg-purple-700 transition-colors text-sm font-medium flex items-center gap-1.5 whitespace-nowrap"
+                    style={{
+                      top: `${Math.max(0, selectionButtonPosition.top)}px`,
+                      left: `${Math.max(0, selectionButtonPosition.left)}px`,
+                      pointerEvents: 'auto',
+                      position: 'fixed',
+                    }}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Zu Chat hinzufügen
+                  </button>
+                )}
+                
+                {/* Debug info - remove in production */}
+                {process.env.NODE_ENV === 'development' && selectionButtonPosition && selectedText && !textAddedToChat && (
+                  <div className="fixed top-20 right-4 bg-yellow-100 p-2 rounded text-xs z-[10000]">
+                    <div>Button should be at: {selectionButtonPosition.top}, {selectionButtonPosition.left}</div>
+                    <div>Selected: {selectedText.substring(0, 30)}...</div>
+                  </div>
+                )}
+                
+                <div
+                  ref={previewRef}
+                  onMouseUp={handleTextSelection}
+                  className="thesis-document shadow-2xl"
+                  style={{
+                    width: '210mm', // A4 width - fixed
+                    minWidth: '210mm', // Prevent shrinking
+                    minHeight: '297mm', // A4 height
+                    padding: '25mm 30mm',
+                    fontFamily: '"Times New Roman", "Times", serif',
+                    fontSize: '12pt',
+                    lineHeight: '1.5',
+                    color: '#000',
+                    backgroundColor: '#ffffff', // Always white, regardless of dark mode
+                    flexShrink: 0, // Prevent shrinking
+                    position: 'relative',
+                  }}
+                >
                 {/* Cover Page */}
                 <div className="cover-page thesis-page" style={{ 
                   minHeight: '247mm', // Full page minus padding (297mm - 25mm top - 25mm bottom)
@@ -632,18 +904,14 @@ export default function ThesisPreviewPage() {
                 )}
 
                 {/* Document Content with Page Numbers */}
-                <div 
+                <div
                   ref={contentRef}
-                  className="thesis-content" 
-                  style={{ 
+                  className="thesis-content"
+                  style={{
                     position: 'relative',
-                    minHeight: '247mm',
-                    paddingBottom: '30mm', // Space for page numbers
-                    overflow: 'visible', // Allow page numbers to be visible
                   }}
                   data-thesis-content="true"
                   id="thesis-content-container"
-                  data-test="page-numbers-container"
                 >
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
@@ -700,6 +968,27 @@ export default function ThesisPreviewPage() {
                       p: ({ node, children, ...props }: any) => {
                         const footnotes = thesis?.metadata?.footnotes || {}
                         const citationStyle = thesis?.citation_style
+                        
+                        // Check if this paragraph should be highlighted (related passage)
+                        const getTextContent = (node: any): string => {
+                          if (typeof node === 'string') return node
+                          if (Array.isArray(node)) {
+                            return node.map(getTextContent).join('')
+                          }
+                          if (node?.props?.children) {
+                            return getTextContent(node.props.children)
+                          }
+                          return ''
+                        }
+                        
+                        const paragraphText = getTextContent(children)
+                        const isHighlighted = highlightedPassages.some(passage => 
+                          paragraphText.includes(passage.text.substring(0, 50)) || 
+                          passage.text.includes(paragraphText.substring(0, 50))
+                        )
+                        
+                        // Check if this paragraph contains the pending edit's old text
+                        const hasPendingEdit = pendingEdit && paragraphText.includes(pendingEdit.oldText)
                         
                         // For German citation style, process footnotes in paragraphs
                         if (citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
@@ -796,16 +1085,88 @@ export default function ThesisPreviewPage() {
                         }
                         
                         // TOC should be in lists, not paragraphs
-                        return (
-                          <p style={{
-                            marginBottom: '6mm',
-                            textAlign: 'justify',
-                            textIndent: '0mm',
-                            lineHeight: '1.6',
-                            fontSize: '12pt',
-                          }} {...props}>{children}</p>
-                        )
-                      },
+            // Apply yellow highlight if this is a related passage
+            const paragraphStyle: React.CSSProperties = {
+              marginBottom: '6mm',
+              textAlign: 'justify',
+              textIndent: '0mm',
+              lineHeight: '1.6',
+              fontSize: '12pt',
+            }
+            
+            if (isHighlighted) {
+              paragraphStyle.backgroundColor = '#fef3c7' // Light yellow
+              paragraphStyle.padding = '2mm 4mm'
+              paragraphStyle.borderRadius = '2px'
+              paragraphStyle.borderLeft = '3px solid #fbbf24' // Amber border
+            }
+            
+            // If this paragraph contains the pending edit, show diff inline
+            if (hasPendingEdit && pendingEdit) {
+              const oldTextIndex = paragraphText.indexOf(pendingEdit.oldText)
+              if (oldTextIndex >= 0) {
+                const beforeText = paragraphText.substring(0, oldTextIndex)
+                const afterText = paragraphText.substring(oldTextIndex + pendingEdit.oldText.length)
+                
+                return (
+                  <p style={paragraphStyle} {...props}>
+                    {beforeText}
+                    <span style={{
+                      backgroundColor: '#fee2e2',
+                      padding: '2px 4px',
+                      borderRadius: '2px',
+                      textDecoration: 'line-through',
+                    }}>
+                      {pendingEdit.oldText}
+                    </span>
+                    <span style={{
+                      backgroundColor: '#dcfce7',
+                      padding: '2px 4px',
+                      borderRadius: '2px',
+                      marginLeft: '4px',
+                    }}>
+                      {pendingEdit.newText}
+                    </span>
+                    {afterText}
+                    <div style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={handleApproveEdit}
+                        style={{
+                          padding: '4px 12px',
+                          backgroundColor: '#16a34a',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '11pt',
+                        }}
+                      >
+                        ✓ Übernehmen
+                      </button>
+                      <button
+                        onClick={handleRejectEdit}
+                        style={{
+                          padding: '4px 12px',
+                          backgroundColor: '#6b7280',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '11pt',
+                        }}
+                      >
+                        ✗ Ablehnen
+                      </button>
+                    </div>
+                  </p>
+                )
+              }
+            }
+            
+            return (
+              <p style={paragraphStyle} {...props}>{children}</p>
+            )
+          },
                       ul: ({ node, children, ...props }: any) => {
                         // Check if this is TOC by examining children
                         const childrenArray = Array.isArray(children) ? children : [children]
@@ -1022,8 +1383,20 @@ export default function ThesisPreviewPage() {
                   
                 </div>
               </div>
+              
             </div>
           )}
+          </div>
+          
+          {/* Word Counter Footer - Fixed at bottom */}
+          <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-6 py-3 flex items-center justify-between flex-shrink-0">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              <span className="font-medium">Wörter:</span> {wordCount.toLocaleString()}
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              <span className="font-medium">Zeichen:</span> {content.length.toLocaleString()}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1047,9 +1420,9 @@ export default function ThesisPreviewPage() {
 
             {/* Modal Content */}
             <div className="flex-1 overflow-y-auto p-6">
-              {thesis?.uploaded_sources && Array.isArray(thesis.uploaded_sources) && thesis.uploaded_sources.length > 0 ? (
+              {bibliographySources && bibliographySources.length > 0 ? (
                 <div className="space-y-4">
-                  {thesis.uploaded_sources.map((source: any, index: number) => (
+                  {bibliographySources.map((source: any, index: number) => (
                     <div
                       key={index}
                       className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
@@ -1148,6 +1521,106 @@ export default function ThesisPreviewPage() {
             <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
               <button
                 onClick={() => setShowSourcesModal(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Schließen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Versions Modal */}
+      {showVersionsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowVersionsModal(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                <FileText className="w-6 h-6 mr-2" />
+                Versionsverlauf
+              </h2>
+              <button
+                onClick={() => setShowVersionsModal(false)}
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {thesisVersions.length > 0 ? (
+                <div className="space-y-4">
+                  {thesisVersions.map((version) => (
+                    <div
+                      key={version.id}
+                      className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <h3 className="font-semibold text-gray-900 dark:text-white">
+                            Version {version.version_number}
+                          </h3>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {version.change_description || `Erstellt am ${new Date(version.created_at).toLocaleString('de-DE')}`}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              try {
+                                const response = await fetch('/api/rollback-thesis', {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                  },
+                                  body: JSON.stringify({
+                                    thesisId,
+                                    versionNumber: version.version_number,
+                                  }),
+                                })
+                                
+                                if (response.ok) {
+                                  await loadThesis()
+                                  setShowVersionsModal(false)
+                                  const successMessage: ChatMessage = {
+                                    id: Date.now().toString(),
+                                    role: 'assistant',
+                                    content: `✓ Zur Version ${version.version_number} zurückgesetzt.`,
+                                    timestamp: new Date(),
+                                  }
+                                  setChatMessages(prev => [...prev, successMessage])
+                                }
+                              } catch (error) {
+                                console.error('Error rolling back:', error)
+                                alert('Fehler beim Zurücksetzen')
+                              }
+                            }}
+                            className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                          >
+                            Wiederherstellen
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                        {new Date(version.created_at).toLocaleString('de-DE')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                  <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>Noch keine Versionen vorhanden</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+              <button
+                onClick={() => setShowVersionsModal(false)}
                 className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
               >
                 Schließen
