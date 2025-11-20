@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen } from 'lucide-react'
 import { createSupabaseClient } from '@/lib/supabase/client'
@@ -649,86 +649,8 @@ export default function ThesisPreviewPage() {
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeKatex]}
                     components={{
-                      // Custom text renderer to handle footnote markers ^1, ^2, etc.
+                      // Text component - footnotes are handled at paragraph level to avoid double processing
                       text: ({ node, children, ...props }: any) => {
-                        const text = String(children || '')
-                        const footnotes = thesis?.metadata?.footnotes || {}
-                        const citationStyle = thesis?.citation_style
-                        
-                        // Only process footnotes for German citation style
-                        if (citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
-                          // Split text by footnote markers (^1, ^2, etc.)
-                          const parts = text.split(/(\^\d+)/g)
-                          
-                          if (parts.length > 1) {
-                            return (
-                              <>
-                                {parts.map((part, idx) => {
-                                  const footnoteMatch = part.match(/^\^(\d+)$/)
-                                  if (footnoteMatch) {
-                                    const footnoteNum = parseInt(footnoteMatch[1], 10)
-                                    const footnoteText = footnotes[footnoteNum] || `[Fußnote ${footnoteNum}]`
-                                    return (
-                                      <span
-                                        key={idx}
-                                        style={{
-                                          position: 'relative',
-                                          display: 'inline-block',
-                                        }}
-                                      >
-                                        <sup
-                                          style={{
-                                            fontSize: '0.7em',
-                                            verticalAlign: 'super',
-                                            cursor: 'help',
-                                            color: '#0066cc',
-                                            textDecoration: 'underline',
-                                            textDecorationStyle: 'dotted',
-                                          }}
-                                          title={footnoteText}
-                                          onMouseEnter={(e) => {
-                                            // Create tooltip
-                                            const tooltip = document.createElement('div')
-                                            tooltip.id = `footnote-tooltip-${footnoteNum}`
-                                            tooltip.textContent = footnoteText
-                                            tooltip.style.cssText = `
-                                              position: absolute;
-                                              bottom: 100%;
-                                              left: 50%;
-                                              transform: translateX(-50%);
-                                              background: #333;
-                                              color: white;
-                                              padding: 8px 12px;
-                                              border-radius: 4px;
-                                              font-size: 11pt;
-                                              white-space: nowrap;
-                                              max-width: 400px;
-                                              white-space: normal;
-                                              z-index: 10000;
-                                              box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                                              margin-bottom: 5px;
-                                            `
-                                            e.currentTarget.appendChild(tooltip)
-                                          }}
-                                          onMouseLeave={(e) => {
-                                            const tooltip = document.getElementById(`footnote-tooltip-${footnoteNum}`)
-                                            if (tooltip) {
-                                              tooltip.remove()
-                                            }
-                                          }}
-                                        >
-                                          {footnoteNum}
-                                        </sup>
-                                      </span>
-                                    )
-                                  }
-                                  return <span key={idx}>{part}</span>
-                                })}
-                              </>
-                            )
-                          }
-                        }
-                        
                         return <>{children}</>
                       },
                       h1: ({ node, children, ...props }: any) => {
@@ -776,6 +698,103 @@ export default function ThesisPreviewPage() {
                         }} {...props} />
                       ),
                       p: ({ node, children, ...props }: any) => {
+                        const footnotes = thesis?.metadata?.footnotes || {}
+                        const citationStyle = thesis?.citation_style
+                        
+                        // For German citation style, process footnotes in paragraphs
+                        if (citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
+                          // Convert entire paragraph content to string for processing
+                          const getTextContent = (node: any): string => {
+                            if (typeof node === 'string') return node
+                            if (Array.isArray(node)) {
+                              return node.map(getTextContent).join('')
+                            }
+                            if (node?.props?.children) {
+                              return getTextContent(node.props.children)
+                            }
+                            return ''
+                          }
+                          
+                          const paragraphText = getTextContent(children)
+                          
+                          // Check if paragraph contains footnotes
+                          if (paragraphText.includes('^')) {
+                            // Split by footnote pattern and rebuild with React elements
+                            const parts = paragraphText.split(/(\^\d+)/g)
+                            
+                            if (parts.length > 1) {
+                              const processedParts: any[] = []
+                              parts.forEach((part, idx) => {
+                                const footnoteMatch = part.match(/^\^(\d+)$/)
+                                if (footnoteMatch) {
+                                  const footnoteNum = parseInt(footnoteMatch[1], 10)
+                                  const footnoteText = footnotes[footnoteNum] || `[Fußnote ${footnoteNum}]`
+                                  processedParts.push(
+                                    <sup
+                                      key={`fn-${idx}`}
+                                      style={{
+                                        fontSize: '0.75em',
+                                        verticalAlign: 'super',
+                                        lineHeight: 0,
+                                        cursor: 'help',
+                                        color: '#0066cc',
+                                        textDecoration: 'underline',
+                                        textDecorationStyle: 'dotted',
+                                        fontWeight: 'normal',
+                                        marginLeft: '1px',
+                                      }}
+                                      title={footnoteText}
+                                      onMouseEnter={(e) => {
+                                        const tooltip = document.createElement('div')
+                                        tooltip.id = `footnote-tooltip-${footnoteNum}`
+                                        tooltip.textContent = footnoteText
+                                        tooltip.style.cssText = `
+                                          position: fixed;
+                                          background: #333;
+                                          color: white;
+                                          padding: 8px 12px;
+                                          border-radius: 4px;
+                                          font-size: 11pt;
+                                          max-width: 400px;
+                                          white-space: normal;
+                                          z-index: 10000;
+                                          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                                          pointer-events: none;
+                                        `
+                                        document.body.appendChild(tooltip)
+                                        const rect = e.currentTarget.getBoundingClientRect()
+                                        tooltip.style.left = `${rect.left + rect.width / 2}px`
+                                        tooltip.style.top = `${rect.top - tooltip.offsetHeight - 5}px`
+                                        tooltip.style.transform = 'translateX(-50%)'
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        const tooltip = document.getElementById(`footnote-tooltip-${footnoteNum}`)
+                                        if (tooltip) {
+                                          tooltip.remove()
+                                        }
+                                      }}
+                                    >
+                                      {footnoteNum}
+                                    </sup>
+                                  )
+                                } else if (part) {
+                                  processedParts.push(part)
+                                }
+                              })
+                              
+                              return (
+                                <p style={{
+                                  marginBottom: '6mm',
+                                  textAlign: 'justify',
+                                  textIndent: '0mm',
+                                  lineHeight: '1.6',
+                                  fontSize: '12pt',
+                                }} {...props}>{processedParts}</p>
+                              )
+                            }
+                          }
+                        }
+                        
                         // TOC should be in lists, not paragraphs
                         return (
                           <p style={{

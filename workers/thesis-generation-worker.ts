@@ -1450,13 +1450,42 @@ ${sourceUsageGuidance}
 - Im Text und im Literaturverzeichnis strikt korrekt formatieren.
 - Wenn der Stil Seitenzahlen verlangt, aber die Quelle keine liefert → Seitenzahl weglassen, niemals raten.
 ${thesisData.citationStyle === 'deutsche-zitierweise' ? `
-**WICHTIG - Deutsche Zitierweise (Fußnoten):**
-- Verwende Fußnoten für alle Zitate und Quellenverweise.
-- Format: Im Text mit hochgestellter Zahl markieren (z.B. "Dies ist ein Zitat^1" oder "Dies ist ein Zitat[^1]").
-- Die Fußnote selbst am Ende der Seite oder im Text als "[^1]: Autor, Titel, Jahr, Seite" formatieren.
-- Jede Quelle bekommt eine fortlaufende Nummer (1, 2, 3, ...).
-- Die Fußnoten müssen vollständig sein und alle notwendigen Informationen enthalten (Autor, Titel, Jahr, Seitenzahl wenn verfügbar).
-- Stelle sicher, dass der Text vollständig ist und nicht abgebrochen wird - auch wenn viele Fußnoten verwendet werden.` : ''}
+**KRITISCH - Deutsche Zitierweise (Fußnoten) - ABSOLUT WICHTIG:**
+
+**WANN Fußnoten verwenden:**
+- JEDE Verwendung einer Quelle im Text MUSS sofort mit einer Fußnote markiert werden.
+- JEDE Information, die aus einer Quelle stammt, MUSS eine Fußnote haben - auch indirekte Zitate, Paraphrasen, Fakten, Statistiken, Definitionen.
+- JEDE Quelle, die im Literaturverzeichnis steht, MUSS mindestens einmal im Text mit einer Fußnote zitiert werden.
+- Wenn du Informationen aus mehreren Quellen kombinierst, verwende mehrere Fußnoten: "Text^1^2" oder "Text^1,^2".
+- Wenn du 8 Quellen im Literaturverzeichnis hast, müssen ALLE 8 Quellen auch im Text mit Fußnoten zitiert werden.
+- Jede Stelle im Text, wo Informationen aus einer Quelle verwendet werden, MUSS eine Fußnote haben - KEINE Ausnahmen.
+
+**FORMAT - Exakt befolgen:**
+- Im Text: Verwende IMMER das Format "^N" direkt nach dem Wort/Satz, wo die Quelle verwendet wird.
+  Beispiel: "Künstliche Intelligenz wird zunehmend eingesetzt^1. Die Technologie ermöglicht^2..."
+  NICHT: "Künstliche Intelligenz wird zunehmend eingesetzt [^1]" oder "Künstliche Intelligenz wird zunehmend eingesetzt (^1)"
+  RICHTIG: "Künstliche Intelligenz wird zunehmend eingesetzt^1"
+  
+- Fußnoten-Definitionen: Am Ende des Dokuments (vor dem Literaturverzeichnis) oder am Ende jedes Absatzes als:
+  [^1]: Autor, Vorname. Titel. Ort: Verlag, Jahr, S. XX.
+  [^2]: Autor, Vorname. "Artikel-Titel." Zeitschrift, Jahr, S. XX-YY.
+  
+- Jede Quelle bekommt eine fortlaufende Nummer (1, 2, 3, 4, ...) in der Reihenfolge, wie sie im Text erscheinen.
+- Die Fußnoten müssen vollständig sein: Autor, Titel, Jahr, Seitenzahl (wenn verfügbar), Verlag/Journal.
+
+**BEISPIEL für korrektes Format:**
+Text: "Die Forschung zeigt^1, dass KI-Systeme^2 in der Medizin^3 zunehmend eingesetzt werden^4."
+
+Fußnoten:
+[^1]: Müller, J. (2023). KI in der Medizin. Berlin: Verlag, S. 45.
+[^2]: Schmidt, A. (2022). "KI-Systeme." Journal, 12(3), S. 67-89.
+[^3]: Weber, M. (2024). Medizinische Anwendungen. München: Verlag, S. 12.
+[^4]: Becker, K. (2023). "Einsatz von KI." Zeitschrift, 5(2), S. 23-34.
+
+**WICHTIG:**
+- Stelle sicher, dass der Text vollständig ist und nicht abgebrochen wird - auch wenn viele Fußnoten verwendet werden.
+- Jede Quelle im Literaturverzeichnis MUSS mindestens eine Fußnote im Text haben.
+- Wenn du Informationen aus einer Quelle verwendest, MUSS sofort eine Fußnote folgen.` : ''}
 
 **Literaturverzeichnis:**
 - Am Ende des Dokuments ein vollständiges, korrekt formatiertes Literaturverzeichnis ausgeben.
