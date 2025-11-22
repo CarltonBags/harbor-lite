@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen } from 'lucide-react'
+import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen, Download, Shield } from 'lucide-react'
 import { createSupabaseClient } from '@/lib/supabase/client'
 import { getThesisById } from '@/lib/supabase/theses'
 import Link from 'next/link'
@@ -45,6 +45,7 @@ export default function ThesisPreviewPage() {
   const [pendingEdit, setPendingEdit] = useState<{ oldText: string; newText: string; oldContent: string; newContent: string } | null>(null)
   const [thesisVersions, setThesisVersions] = useState<any[]>([])
   const [showVersionsModal, setShowVersionsModal] = useState(false)
+  const [showZeroGptModal, setShowZeroGptModal] = useState(false)
   const [highlightedPassages, setHighlightedPassages] = useState<Array<{ text: string; paragraphId: string }>>([])
   const [selectionRange, setSelectionRange] = useState<Range | null>(null)
   const [bibliographySources, setBibliographySources] = useState<any[]>([])
@@ -450,6 +451,106 @@ export default function ThesisPreviewPage() {
     setHighlightedPassages([])
   }
 
+  const handleExportDoc = async () => {
+    if (!thesisId) return
+
+    try {
+      setIsProcessing(true)
+      const response = await fetch('/api/export-thesis-doc', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ thesisId }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to export thesis')
+      }
+
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition')
+      const filename = contentDisposition
+        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '') || 'thesis.docx'
+        : 'thesis.docx'
+
+      // Create blob and download
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      // Show success message
+      const successMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: '✓ Thesis wurde als Word-Dokument exportiert.',
+        timestamp: new Date(),
+      }
+      setChatMessages(prev => [...prev, successMessage])
+    } catch (error) {
+      console.error('Error exporting thesis:', error)
+      alert('Fehler beim Exportieren der Thesis')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleExportLaTeX = async () => {
+    if (!thesisId) return
+
+    try {
+      setIsProcessing(true)
+      const response = await fetch('/api/export-thesis-latex', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ thesisId }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to export thesis')
+      }
+
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition')
+      const filename = contentDisposition
+        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '') || 'thesis.tex'
+        : 'thesis.tex'
+
+      // Create blob and download
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      // Show success message
+      const successMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: '✓ Thesis wurde als LaTeX-Datei exportiert.',
+        timestamp: new Date(),
+      }
+      setChatMessages(prev => [...prev, successMessage])
+    } catch (error) {
+      console.error('Error exporting thesis:', error)
+      alert('Fehler beim Exportieren der Thesis')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
   const handleSave = async () => {
     if (!thesisId || !hasUnsavedChanges) return
 
@@ -598,46 +699,82 @@ export default function ThesisPreviewPage() {
             {!isEditing ? (
               <button
                 onClick={handleManualEdit}
-                className="inline-flex items-center px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                className="inline-flex items-center px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
-                <Edit2 className="w-4 h-4 mr-2" />
-                Manuell bearbeiten
+                <Edit2 className="w-3 h-3 mr-1" />
+                Bearbeiten
               </button>
             ) : (
               <button
                 onClick={handleCancelEdit}
-                className="inline-flex items-center px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                className="inline-flex items-center px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
-                <X className="w-4 h-4 mr-2" />
+                <X className="w-3 h-3 mr-1" />
                 Abbrechen
               </button>
             )}
             <button
               onClick={handleSave}
               disabled={!hasUnsavedChanges || isProcessing}
-              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {isProcessing ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
               ) : (
-                <Save className="w-4 h-4 mr-2" />
+                <Save className="w-3 h-3 mr-1" />
               )}
               Speichern
             </button>
             <button
               onClick={() => setShowSourcesModal(true)}
-              className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              className="inline-flex items-center px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
             >
-              <BookOpen className="w-4 h-4 mr-2" />
+              <BookOpen className="w-3 h-3 mr-1" />
               Quellen
             </button>
             <button
               onClick={() => setShowVersionsModal(true)}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
             >
-              <FileText className="w-4 h-4 mr-2" />
+              <FileText className="w-3 h-3 mr-1" />
               Versionen ({thesisVersions.length})
             </button>
+            <button
+              onClick={() => setShowZeroGptModal(true)}
+              className="inline-flex items-center px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors"
+              title="ZeroGPT AI-Erkennungsergebnis anzeigen"
+            >
+              <Shield className="w-3 h-3 mr-1" />
+              ZeroGPT
+            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleExportDoc}
+                disabled={isProcessing}
+                className="inline-flex items-center px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Als Word-Dokument exportieren"
+              >
+                {isProcessing ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                ) : (
+                  <Download className="w-3 h-3 mr-1" />
+                )}
+                DOC
+              </button>
+              <button
+                onClick={handleExportLaTeX}
+                disabled={isProcessing}
+                className="inline-flex items-center px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Als LaTeX-Datei exportieren"
+              >
+                {isProcessing ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                ) : (
+                  <Download className="w-3 h-3 mr-1" />
+                )}
+                LaTeX
+              </button>
+            </div>
             <Link
               href="/thesis"
               className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
@@ -1621,6 +1758,107 @@ export default function ThesisPreviewPage() {
             <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
               <button
                 onClick={() => setShowVersionsModal(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Schließen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ZeroGPT Modal */}
+      {showZeroGptModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowZeroGptModal(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                <Shield className="w-6 h-6 mr-2" />
+                ZeroGPT AI-Erkennung
+              </h2>
+              <button
+                onClick={() => setShowZeroGptModal(false)}
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {thesis?.metadata?.zeroGptResult ? (
+                <div className="space-y-6">
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      Erkennungsergebnis
+                    </h3>
+                    
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                        <div className="text-sm text-green-700 dark:text-green-300 font-medium mb-1">
+                          Menschlich geschrieben
+                        </div>
+                        <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+                          {thesis.metadata.zeroGptResult.isHumanWritten}%
+                        </div>
+                      </div>
+                      
+                      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                        <div className="text-sm text-red-700 dark:text-red-300 font-medium mb-1">
+                          KI-generiert
+                        </div>
+                        <div className="text-3xl font-bold text-red-600 dark:text-red-400">
+                          {thesis.metadata.zeroGptResult.isGptGenerated}%
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                      <div>
+                        <span className="font-medium">Wörter geprüft:</span>{' '}
+                        {thesis.metadata.zeroGptResult.wordsCount?.toLocaleString() || 'N/A'}
+                      </div>
+                      {thesis.metadata.zeroGptResult.checkedAt && (
+                        <div>
+                          <span className="font-medium">Geprüft am:</span>{' '}
+                          {new Date(thesis.metadata.zeroGptResult.checkedAt).toLocaleString('de-DE')}
+                        </div>
+                      )}
+                      {thesis.metadata.zeroGptResult.feedbackMessage && (
+                        <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+                          <span className="font-medium text-blue-700 dark:text-blue-300">Hinweis:</span>{' '}
+                          <span className="text-blue-600 dark:text-blue-400">
+                            {thesis.metadata.zeroGptResult.feedbackMessage}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                      <strong>Hinweis:</strong> Diese Ergebnisse werden nach der Humanisierung automatisch generiert. 
+                      Die Erkennungsgenauigkeit kann variieren und sollte nur als Indikator verwendet werden.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                  <Shield className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium mb-2">Kein ZeroGPT-Ergebnis verfügbar</p>
+                  <p className="text-sm">
+                    Das ZeroGPT-Ergebnis wird automatisch nach der Humanisierung generiert.
+                    {thesis?.status === 'completed' && ' Bitte warten Sie, bis die Generierung abgeschlossen ist.'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+              <button
+                onClick={() => setShowZeroGptModal(false)}
                 className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
               >
                 Schließen
