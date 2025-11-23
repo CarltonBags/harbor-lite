@@ -1396,7 +1396,9 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   console.log(`[ThesisGeneration] Available sources: ${rankedSources.length}`)
   console.log(`[ThesisGeneration] Using top ${rankedSources.length} sources by relevance for RAG context`)
 
-  const prompt = `Du bist ein wissenschaftlicher Assistent, der akademische Texte ausschließlich auf Basis der bereitgestellten, indexierten Quellen (RAG / File Search) schreibt.
+  const isGerman = thesisData.language === 'german'
+  
+  const prompt = isGerman ? `Du bist ein wissenschaftlicher Assistent, der akademische Texte ausschließlich auf Basis der bereitgestellten, indexierten Quellen (RAG / File Search) schreibt.
 
 **WICHTIG - Forschungs- und Quellenkontext:**
 - Du hast die Quellen SELBST recherchiert und ausgewählt - du bist sowohl Autor als auch Forscher dieser Thesis.
@@ -1436,10 +1438,53 @@ ${sourceUsageGuidance}
 - Die Quellenanzahl muss zur Länge der Arbeit passen. Eine kurze Hausarbeit sollte nicht wie eine Dissertation zitiert werden.
 - Im Literaturverzeichnis NUR die tatsächlich im Text zitierten Quellen aufführen (maximal ${recommendedSourceCount}).
 
-**Menschlicher Stil:**
-- Verwende einen menschlichen, natürlichen Ton.
-- Achte darauf, dass nicht zu häufig wiederholende Formulierungen verwendet werden. Sei Facettenreich in deiner Formulierung.
-- Der Text darf NICHT als maschinell formuliert erkannt werden.
+**MENSCHLICHER STIL UND AI-ERKENNUNGS-VERMEIDUNG (KRITISCH):**
+
+Der Text muss von Anfang an wie von einem menschlichen Autor geschrieben klingen und darf nicht als KI-generiert erkannt werden.
+
+**1. Satz-Burstiness (SEHR WICHTIG):**
+- Mische aktiv kurze (5-10 Wörter), mittlere (15-20 Wörter) und lange (25-35 Wörter) Sätze.
+- Vermeide gleichmäßige Satzlängen - menschliche Autoren haben unregelmäßige Muster.
+- Beginne manche Sätze mit Subjekt, andere mit Adverbial, wieder andere mit Partizipialkonstruktionen.
+- Beispiel: "Die Forschung zeigt klare Ergebnisse. Während frühere Studien noch Unsicherheiten aufwiesen, lassen sich heute präzise Aussagen treffen. Dies gilt insbesondere für den medizinischen Bereich."
+
+**2. Perplexität und Variation:**
+- Vermeide übermäßig vorhersehbare Formulierungen.
+- Verwende unterschiedliche Synonyme statt immer derselben Wörter.
+- Variiere Satzanfänge stark (nicht immer "Die", "Es", "Dies", "Diese").
+- Vermeide perfekt glatte, "polierte" LLM-Phrasen.
+- Beispiel: Statt immer "zeigt" → variiere mit "demonstriert", "belegt", "verdeutlicht", "legt nahe", "weist nach".
+
+**3. Syntax-Variation:**
+- Wechsle zwischen einfachen, zusammengesetzten und komplexen Satzstrukturen.
+- Verwende manchmal Nebensätze, manchmal Hauptsätze.
+- Variiere die Position von Nebensätzen (vor/nach Hauptsatz).
+- Beispiel: "Obwohl die Ergebnisse vielversprechend sind, bleiben Fragen offen." vs. "Die Ergebnisse sind vielversprechend. Dennoch bleiben Fragen offen."
+
+**4. Natürliche Abschwächungen:**
+- Verwende verschiedene Formulierungen: "möglicherweise", "lässt sich vermuten", "zum Teil", "unter Umständen", "in gewissem Maße", "tendenziell", "vermutlich", "anscheinend".
+- Variiere zwischen direkter und vorsichtiger Formulierung.
+
+**5. KI-Diskursmarker VERMEIDEN:**
+- NICHT verwenden: "zunächst", "ferner", "zusammenfassend", "insgesamt gesehen", "es ist wichtig zu beachten", "darüber hinaus", "des Weiteren", "in diesem Zusammenhang", "zudem", "außerdem".
+- Stattdessen: natürlichere Übergänge wie "In diesem Kontext", "Vor diesem Hintergrund", "Dabei zeigt sich", "Hierbei", "In diesem Rahmen", "In der Folge", "Dementsprechend".
+
+**6. Asymmetrien einbauen:**
+- Leicht unregelmäßige Taktung (nicht perfekt rhythmisch).
+- Nicht-uniforme Übergänge zwischen Absätzen.
+- Variierte Absatzeröffnungen (nicht immer derselbe Stil).
+- Manchmal direkte Sprache, manchmal umschreibende Formulierungen.
+
+**7. Natürliche Variation:**
+- Variiere zwischen aktiver und passiver Sprache (aber nicht zu viel Passiv).
+- Verwende manchmal direkte Aussagen, manchmal indirekte Formulierungen.
+- Sei facettenreich in deiner Formulierung - keine monotonen Wiederholungen.
+
+**8. Wissenschaftlicher Ton beibehalten:**
+- Objektiv, präzise, sachlich.
+- Keine Meinungen, kein Marketing, keine Füllsätze.
+- Klare Struktur, klarer roter Faden.
+- Saubere Definitionen, methodische Klarheit, kritische Reflexion.
 
 **Wissenschaftlicher Stil (${thesisData.language === 'german' ? 'deutsch' : 'englisch'}):**
 - Objektiv, präzise, sachlich.
@@ -1526,7 +1571,145 @@ Fußnoten:
 - BEGINNE direkt mit dem ersten Kapitel - KEIN Inhaltsverzeichnis.
 
 **Ziel:**
-Erstelle eine vollständige, zitierfähige, wissenschaftlich fundierte Arbeit, die logisch aufgebaut ist, den Zitationsstil korrekt umsetzt, ausschließlich validierte Quellen nutzt und die vorgegebene Länge einhält.`
+Erstelle eine vollständige, zitierfähige, wissenschaftlich fundierte Arbeit, die logisch aufgebaut ist, den Zitationsstil korrekt umsetzt, ausschließlich validierte Quellen nutzt und die vorgegebene Länge einhält. Der Text muss von Anfang an natürlich und menschlich klingen, nicht wie KI-generiert.`
+
+    : `You are a scientific assistant who writes academic texts exclusively based on the provided, indexed sources (RAG / File Search).
+
+**IMPORTANT - Research and Source Context:**
+- You have researched and selected the sources YOURSELF - you are both author and researcher of this thesis.
+- The provided sources are the result of your own literature research and have been evaluated by you as relevant and sufficient for this thesis.
+- It is NOT appropriate to mention in the text that "the provided sources are insufficient" or that "additional sources are needed".
+- If certain aspects cannot be fully covered, formulate this scientifically neutrally (e.g., "Further research would be desirable" or "This aspect requires further investigation"), but NEVER as criticism of your own source selection.
+- You write as a researcher who has selected his sources himself - therefore, the existing sources are by definition sufficient for the thesis.
+
+**Thesis Information:**
+- Title/Topic: ${thesisData.title}
+- Field: ${thesisData.field}
+- Type: ${thesisData.thesisType}
+- Research Question: ${thesisData.researchQuestion}
+- Citation Style: ${citationStyleLabel}
+- Target Length: ${thesisData.targetLength} ${thesisData.lengthUnit} (approx. ${targetPages} pages)
+- Language: ${thesisData.language}
+
+**Outline:**
+${JSON.stringify(thesisData.outline, null, 2)}
+
+**Source Usage (CRITICAL - strictly follow):**
+- Use exclusively the sources provided in the context (File Search / RAG).
+- Use only information that is clearly contained in these sources.
+- No invented page numbers, no invented quotes, no invented sources.
+- If page numbers are missing → use only author + year.
+- If certain aspects are not fully covered in the sources, formulate this scientifically neutrally (e.g., "This aspect requires further investigation" or "Further research would be desirable"), but NEVER as criticism of your own source selection or as a hint about "insufficient sources".
+
+**SOURCE COUNT - ABSOLUTELY IMPORTANT:**
+${thesisData.language === 'german' ? sourceUsageGuidance : sourceUsageGuidance.replace(/Sehr kurze Arbeit \((\d+) Seiten\): Verwende nur (\d+)-(\d+) hochwertige|Kurze Arbeit \((\d+) Seiten\): Verwende (\d+)-(\d+) sorgfältig|Mittlere Arbeit \((\d+) Seiten\): Verwende (\d+)-(\d+) relevante|Längere Arbeit \((\d+) Seiten\): Verwende (\d+)-(\d+) Quellen/g, (match) => {
+  if (match.includes('Sehr kurze')) return `Very short thesis (${targetPages} pages): Use only ${recommendedSourceCount}-${recommendedSourceCount + 2} high-quality`
+  if (match.includes('Kurze')) return `Short thesis (${targetPages} pages): Use ${recommendedSourceCount}-${recommendedSourceCount + 3} carefully selected`
+  if (match.includes('Mittlere')) return `Medium thesis (${targetPages} pages): Use ${recommendedSourceCount}-${recommendedSourceCount + 5} relevant`
+  if (match.includes('Längere')) return `Longer thesis (${targetPages} pages): Use ${recommendedSourceCount}-${recommendedSourceCount + 10} sources`
+  return match
+})}
+
+**Concrete Instructions for Source Usage:**
+- Use a maximum of ${recommendedSourceCount} sources in the entire text.
+- Each source must make a clear, essential contribution.
+- No "filler sources" - no sources just to increase the count.
+- For short theses: Less is more. ${targetPages < 15 ? `A ${targetPages}-page thesis with 30+ sources looks unprofessional and excessive.` : ''}
+- Quality over quantity: Better 10 high-quality, relevant sources than 30 superficial ones.
+- The number of sources must match the length of the thesis. A short paper should not be cited like a dissertation.
+- In the bibliography, list ONLY the sources actually cited in the text (maximum ${recommendedSourceCount}).
+
+**HUMAN STYLE AND AI DETECTION AVOIDANCE (CRITICAL):**
+
+The text must sound like written by a human author from the start and must not be recognized as AI-generated.
+
+**1. Sentence Burstiness (VERY IMPORTANT):**
+- Actively mix short (5-10 words), medium (15-20 words), and long (25-35 words) sentences.
+- Avoid uniform sentence lengths - human authors have irregular patterns.
+- Start some sentences with subject, others with adverbial, others with participial constructions.
+- Example: "Research shows clear results. While earlier studies still showed uncertainties, precise statements can be made today. This applies particularly to the medical field."
+
+**2. Perplexity and Variation:**
+- Avoid overly predictable wording.
+- Use different synonyms instead of always the same words.
+- Vary sentence beginnings strongly (not always "The", "It", "This", "These").
+- Avoid perfectly smooth, "polished" LLM phrases.
+- Example: Instead of always "shows" → vary with "demonstrates", "proves", "clarifies", "suggests", "establishes".
+
+**3. Syntax Variation:**
+- Alternate between simple, compound, and complex sentence structures.
+- Sometimes use subordinate clauses, sometimes main clauses.
+- Vary the position of subordinate clauses (before/after main clause).
+- Example: "Although the results are promising, questions remain." vs. "The results are promising. However, questions remain."
+
+**4. Natural Hedging:**
+- Use various formulations: "possibly", "it can be assumed", "to some extent", "under certain circumstances", "to a certain degree", "tendentially", "presumably", "apparently".
+- Vary between direct and cautious formulations.
+
+**5. AVOID AI Discourse Markers:**
+- DO NOT use: "firstly", "furthermore", "in conclusion", "overall", "it is important to note", "additionally", "moreover", "in this context", "also", "in addition".
+- Instead: more natural transitions like "In this context", "Against this background", "Here it becomes apparent", "In this regard", "In this framework", "As a result", "Accordingly".
+
+**6. Introduce Asymmetries:**
+- Slightly irregular pacing (not perfectly rhythmic).
+- Non-uniform transitions between paragraphs.
+- Varied paragraph openings (not always the same style).
+- Sometimes direct language, sometimes paraphrasing.
+
+**7. Natural Variation:**
+- Vary between active and passive voice (but not too much passive).
+- Sometimes use direct statements, sometimes indirect formulations.
+- Be multifaceted in your formulation - no monotonous repetitions.
+
+**8. Maintain Scientific Tone:**
+- Objective, precise, factual.
+- No opinions, no marketing, no filler sentences.
+- Clear structure, clear red thread.
+- Clean definitions, methodological clarity, critical reflection.
+
+**Structure:**
+- Use the provided outline.
+- Make only minimal adjustments if they improve the logical structure.
+- Each section must serve a clear scientific purpose.
+
+**Citation Style:**
+- Strictly adhere to the specified citation style (${citationStyleLabel}).
+- The citation style MUST also be considered in the running text. Where a source is used, this must be marked in the corresponding citation style.
+- Format strictly correctly in the text and in the bibliography.
+- If the style requires page numbers but the source does not provide them → omit page number, never guess.
+
+**Bibliography:**
+- At the end of the document, output a complete, correctly formatted bibliography.
+- Include only actually cited sources.
+- Alphabetically sorted.
+- Format according to the citation style (${citationStyleLabel}).
+- Use DOI, URL and journal metadata if available.
+- No duplicate entries.
+
+**RAG Usage:**
+- Actively use the contents of the provided sources (File Search / Embeddings).
+- Extract relevant statements and process them scientifically.
+- No content outside the provided data except generally accepted basic knowledge (definitions, methodology).
+
+**IMPORTANT - Table of Contents:**
+- DO NOT CREATE a table of contents (Table of Contents / Inhaltsverzeichnis) in the generated text.
+- The table of contents is automatically generated from the outline and displayed separately.
+- Start directly with the first chapter (e.g., "## Introduction" or "## 1. Introduction").
+- No heading "Table of Contents" or "Inhaltsverzeichnis" in the text.
+
+**Output Format:**
+- Output the complete thesis in Markdown with clear headings.
+- Structure example:
+  # Title
+  ## Abstract
+  ## Introduction
+  ...
+  ## Conclusion
+  ## Bibliography
+- START directly with the first chapter - NO table of contents.
+
+**Goal:**
+Create a complete, citable, scientifically sound thesis that is logically structured, correctly implements the citation style, uses exclusively validated sources, and meets the specified length. The text must sound natural and human from the start, not like AI-generated.`
 
   console.log('[ThesisGeneration] Calling Gemini Pro to generate thesis content...')
   console.log('[ThesisGeneration] Using FileSearchStore for RAG context')
@@ -1631,6 +1814,25 @@ async function humanizeThesisContent(content: string, thesisData: ThesisData): P
   
   const language = thesisData.language || 'german'
   const isGerman = language === 'german'
+  const citationStyle = thesisData.citationStyle || 'apa'
+  
+  // Extract all citations before humanization to verify they're preserved
+  const citationPatterns = [
+    /\([A-ZÄÖÜ][a-zäöüß]+(?:\s+et\s+al\.?)?,?\s+\d{4}(?:,\s+(?:S\.|p\.|pp\.)\s+\d+(?:-\d+)?)?\)/g, // (Author, 2021, S. 14) or (Author et al., 2021)
+    /\[(\d+)\]/g, // [12]
+    /\^\d+/g, // ^1, ^2 (footnotes)
+    /\[\^\d+\]/g, // [^1] (markdown footnotes)
+  ]
+  
+  const originalCitations: string[] = []
+  citationPatterns.forEach(pattern => {
+    const matches = content.match(pattern)
+    if (matches) {
+      originalCitations.push(...matches)
+    }
+  })
+  
+  console.log(`[Humanize] Found ${originalCitations.length} citations to preserve`)
   
   const prompt = isGerman
     ? `Du bist ein akademischer Text-Humanisierer. Deine Aufgabe ist es, den bereitgestellten Text so umzuschreiben, dass er nicht als KI-generiert von Tools wie ZeroGPT, GPTZero, Turnitin AI Detection, Hive oder ähnlichen Klassifikatoren erkannt werden kann.
@@ -1645,21 +1847,40 @@ Folge diesen Regeln strikt:
 
 4. Ändere NUR den oberflächlichen linguistischen Stil, um menschliche statistische Muster zu erhöhen.
 
-ANFORDERUNGEN AN MENSCHLICHEN STIL:
+ANFORDERUNGEN AN MENSCHLICHEN STIL (KRITISCH FÜR AI-ERKENNUNG):
 
-A. Erhöhe die Satz-Burstiness: Mische kurze, mittlere und lange Sätze in einem natürlichen akademischen Rhythmus.
+A. **Satz-Burstiness (SEHR WICHTIG):**
+   - Mische aktiv kurze (5-10 Wörter), mittlere (15-20 Wörter) und lange (25-35 Wörter) Sätze.
+   - Vermeide gleichmäßige Satzlängen - menschliche Autoren haben unregelmäßige Muster.
+   - Beginne manche Sätze mit Subjekt, andere mit Adverbial, wieder andere mit Partizipialkonstruktionen.
 
-B. Erhöhe die Perplexität: Vermeide übermäßig vorhersehbare Formulierungen oder übermäßig glatte LLM-ähnliche Phrasen.
+B. **Perplexität erhöhen:**
+   - Vermeide übermäßig vorhersehbare Formulierungen.
+   - Verwende unterschiedliche Synonyme statt immer derselben Wörter.
+   - Variiere Satzanfänge stark (nicht immer "Die", "Es", "Dies").
+   - Vermeide perfekt glatte, "polierte" LLM-Phrasen.
 
-C. Variiere die Syntax: Wechsle zwischen einfachen, zusammengesetzten und komplexen Satzstrukturen.
+C. **Syntax-Variation:**
+   - Wechsle zwischen einfachen, zusammengesetzten und komplexen Satzstrukturen.
+   - Verwende manchmal Nebensätze, manchmal Hauptsätze.
+   - Variiere die Position von Nebensätzen (vor/nach Hauptsatz).
 
-D. Verwende natürliche akademische Abschwächungen (z.B. "möglicherweise", "lässt sich vermuten", "zum Teil", "unter Umständen").
+D. **Natürliche Abschwächungen:**
+   - Verwende verschiedene Formulierungen: "möglicherweise", "lässt sich vermuten", "zum Teil", "unter Umständen", "in gewissem Maße", "tendenziell", "vermutlich".
 
-E. Führe subtile Asymmetrien ein: leicht unregelmäßige Taktung, nicht-uniforme Übergänge und variierte Absatzeröffnungen.
+E. **Asymmetrien einbauen:**
+   - Leicht unregelmäßige Taktung (nicht perfekt rhythmisch).
+   - Nicht-uniforme Übergänge zwischen Absätzen.
+   - Variierte Absatzeröffnungen (nicht immer derselbe Stil).
 
-F. Vermeide typische KI-Diskursmarker ("zunächst", "ferner", "zusammenfassend", "insgesamt gesehen", "es ist wichtig zu beachten", etc.).
+F. **KI-Diskursmarker vermeiden:**
+   - NICHT verwenden: "zunächst", "ferner", "zusammenfassend", "insgesamt gesehen", "es ist wichtig zu beachten", "darüber hinaus", "des Weiteren", "in diesem Zusammenhang".
+   - Stattdessen: natürlichere Übergänge wie "In diesem Kontext", "Vor diesem Hintergrund", "Dabei zeigt sich", "Hierbei", etc.
 
-G. Erhalte vollständige Kohärenz und Lesbarkeit - erstelle niemals Slang, Fehler oder unprofessionellen Ton.
+G. **Natürliche Variation:**
+   - Verwende manchmal direkte Sprache, manchmal umschreibende Formulierungen.
+   - Variiere zwischen aktiver und passiver Sprache (aber nicht zu viel Passiv).
+   - Erhalte vollständige Kohärenz - niemals Slang, Fehler oder unprofessionellen Ton.
 
 AUSGABE-REGELN:
 
@@ -1687,21 +1908,40 @@ Follow these rules strictly:
 
 4. ONLY modify the surface-level linguistic style in order to increase human-like statistical patterns.
 
-HUMAN-LIKE STYLE REQUIREMENTS:
+HUMAN-LIKE STYLE REQUIREMENTS (CRITICAL FOR AI DETECTION):
 
-A. Increase sentence-level burstiness: mix short, medium, and long sentences in a natural academic rhythm.
+A. **Sentence Burstiness (VERY IMPORTANT):**
+   - Actively mix short (5-10 words), medium (15-20 words), and long (25-35 words) sentences.
+   - Avoid uniform sentence lengths - human authors have irregular patterns.
+   - Start some sentences with subject, others with adverbial, others with participial constructions.
 
-B. Increase perplexity: avoid overly predictable wording or overly smooth LLM-like phrasing.
+B. **Increase Perplexity:**
+   - Avoid overly predictable wording.
+   - Use different synonyms instead of always the same words.
+   - Vary sentence beginnings strongly (not always "The", "It", "This").
+   - Avoid perfectly smooth, "polished" LLM phrases.
 
-C. Vary syntax: alternate between simple, compound, and complex sentence structures.
+C. **Syntax Variation:**
+   - Alternate between simple, compound, and complex sentence structures.
+   - Sometimes use subordinate clauses, sometimes main clauses.
+   - Vary the position of subordinate clauses (before/after main clause).
 
-D. Use natural academic hedging (e.g., "possibly", "it can be assumed", "to some extent", "under certain circumstances").
+D. **Natural Hedging:**
+   - Use various formulations: "possibly", "it can be assumed", "to some extent", "under certain circumstances", "to a certain degree", "tendentially", "presumably".
 
-E. Introduce subtle asymmetries: slightly irregular pacing, non-uniform transitions, and varied paragraph openings.
+E. **Introduce Asymmetries:**
+   - Slightly irregular pacing (not perfectly rhythmic).
+   - Non-uniform transitions between paragraphs.
+   - Varied paragraph openings (not always the same style).
 
-F. Avoid common AI discourse markers ("firstly", "furthermore", "in conclusion", "overall", "it is important to note", etc.).
+F. **Avoid AI Discourse Markers:**
+   - DO NOT use: "firstly", "furthermore", "in conclusion", "overall", "it is important to note", "additionally", "moreover", "in this context".
+   - Instead: more natural transitions like "In this context", "Against this background", "Here it becomes apparent", "In this regard", etc.
 
-G. Maintain full coherence and readability—never create slang, errors, or unprofessional tone.
+G. **Natural Variation:**
+   - Sometimes use direct language, sometimes paraphrasing.
+   - Vary between active and passive voice (but not too much passive).
+   - Maintain full coherence - never create slang, errors, or unprofessional tone.
 
 OUTPUT RULES:
 
@@ -1753,9 +1993,33 @@ Your goal is to produce text that reads like it was written by a competent human
       return content
     }
     
+    // Verify citations are preserved
+    const humanizedCitations: string[] = []
+    citationPatterns.forEach(pattern => {
+      const matches = humanizedContent.match(pattern)
+      if (matches) {
+        humanizedCitations.push(...matches)
+      }
+    })
+    
+    if (originalCitations.length > 0 && humanizedCitations.length < originalCitations.length * 0.9) {
+      console.warn(`[Humanize] Citation count mismatch (original: ${originalCitations.length}, humanized: ${humanizedCitations.length}), using original`)
+      console.warn(`[Humanize] Missing citations: ${originalCitations.length - humanizedCitations.length}`)
+      return content
+    }
+    
+    // Check if specific citations are missing
+    const missingCitations = originalCitations.filter(citation => !humanizedContent.includes(citation))
+    if (missingCitations.length > 0) {
+      console.warn(`[Humanize] Missing specific citations: ${missingCitations.slice(0, 5).join(', ')}${missingCitations.length > 5 ? '...' : ''}`)
+      console.warn(`[Humanize] Using original content to preserve citations`)
+      return content
+    }
+    
     console.log(`[Humanize] Humanization successful - length: ${humanizedContent.length} characters`)
     console.log(`[Humanize] Footnotes preserved: ${originalFootnotes}`)
     console.log(`[Humanize] Headings preserved: ${originalHeadings}`)
+    console.log(`[Humanize] Citations preserved: ${originalCitations.length} → ${humanizedCitations.length}`)
     
     return humanizedContent
   } catch (error) {
