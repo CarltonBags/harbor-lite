@@ -2184,6 +2184,59 @@ function extractAndProcessFootnotes(content: string): { content: string; footnot
 }
 
 /**
+ * Check if FileSearchStore already has documents uploaded
+ * Returns true if documents exist, false otherwise
+ */
+async function checkFileSearchStoreHasDocuments(fileSearchStoreId: string): Promise<boolean> {
+  try {
+    console.log(`[CheckStore] Checking if FileSearchStore has documents: ${fileSearchStoreId}`)
+    const store = await ai.fileSearchStores.get({
+      name: fileSearchStoreId,
+    })
+    
+    const activeCount = parseInt(store.activeDocumentsCount || '0', 10)
+    const pendingCount = parseInt(store.pendingDocumentsCount || '0', 10)
+    const totalCount = activeCount + pendingCount
+    
+    console.log(`[CheckStore] FileSearchStore status:`)
+    console.log(`[CheckStore]   Active documents: ${activeCount}`)
+    console.log(`[CheckStore]   Pending documents: ${pendingCount}`)
+    console.log(`[CheckStore]   Total documents: ${totalCount}`)
+    
+    return totalCount > 0
+  } catch (error) {
+    console.error('[CheckStore] Error checking FileSearchStore:', error)
+    // If we can't check, assume no documents (safer to re-research)
+    return false
+  }
+}
+
+/**
+ * Convert uploaded_sources from database to Source[] format
+ */
+function convertUploadedSourcesToSources(uploadedSources: any[]): Source[] {
+  return uploadedSources.map((uploaded: any) => {
+    const metadata = uploaded.metadata || {}
+    return {
+      title: uploaded.title || metadata.title || 'Untitled',
+      authors: metadata.authors || [],
+      year: metadata.year ? parseInt(metadata.year, 10) : null,
+      doi: uploaded.doi || metadata.doi || null,
+      url: uploaded.sourceUrl || null,
+      pdfUrl: uploaded.sourceUrl || null, // uploaded_sources should have sourceUrl for PDFs
+      abstract: metadata.abstract || null,
+      journal: metadata.journal || null,
+      publisher: metadata.publisher || null,
+      citationCount: null,
+      relevanceScore: 70, // Default relevance score for existing sources
+      source: 'openalex' as const, // Default to openalex (we don't track this in uploaded_sources)
+      chapterNumber: metadata.chapterNumber || null,
+      chapterTitle: metadata.chapterTitle || null,
+    }
+  })
+}
+
+/**
  * Main job handler - always runs full thesis generation
  */
 async function processThesisGeneration(thesisId: string, thesisData: ThesisData) {
@@ -2197,7 +2250,65 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
   console.log('='.repeat(80))
   
   try {
-    // Step 1: Generate search queries (with retry)
+    // Check if FileSearchStore already has documents
+    console.log('\n[PROCESS] ========== Pre-check: FileSearchStore Status ==========')
+    const hasDocuments = await checkFileSearchStoreHasDocuments(thesisData.fileSearchStoreId)
+    
+    // Also check database for uploaded_sources
+    const { data: thesis } = await supabase
+      .from('theses')
+      .select('uploaded_sources')
+      .eq('id', thesisId)
+      .single()
+    
+    const uploadedSources = (thesis?.uploaded_sources as any[]) || []
+    const hasUploadedSources = uploadedSources.length > 0
+    
+    // Calculate required source count based on thesis length
+    let requiredPages = thesisData.targetLength
+    if (thesisData.lengthUnit === 'words') {
+      requiredPages = Math.ceil(thesisData.targetLength / 250)
+    }
+    const requiredSourceCount = Math.min(50, Math.max(10, Math.ceil(requiredPages * 1.25)))
+    
+    console.log(`[PROCESS] FileSearchStore has documents: ${hasDocuments}`)
+    console.log(`[PROCESS] Database has uploaded_sources: ${hasUploadedSources} (${uploadedSources.length} sources)`)
+    console.log(`[PROCESS] Required source count for ${requiredPages} pages: ${requiredSourceCount} sources`)
+    console.log(`[PROCESS] Existing sources: ${uploadedSources.length}, Required: ${requiredSourceCount}`)
+    
+    let sourcesForGeneration: Source[] = []
+    let step6TargetSourceCount = requiredSourceCount
+    let successfullyUploaded: Source[] = []
+    
+    // Only skip research if we have enough sources
+    const hasEnoughSources = hasDocuments && hasUploadedSources && uploadedSources.length >= requiredSourceCount
+    
+    if (hasEnoughSources) {
+      // Skip research - use existing sources
+      console.log('\n[PROCESS] ========== SKIPPING RESEARCH - Using Existing Sources ==========')
+      console.log(`[PROCESS] FileSearchStore already contains ${uploadedSources.length} documents`)
+      console.log(`[PROCESS] Required: ${requiredSourceCount}, Available: ${uploadedSources.length} - SUFFICIENT`)
+      console.log(`[PROCESS] Skipping Steps 1-6 (research, ranking, downloading, uploading)`)
+      
+      // Convert uploaded_sources to Source[] format
+      successfullyUploaded = convertUploadedSourcesToSources(uploadedSources)
+      console.log(`[PROCESS] Converted ${successfullyUploaded.length} sources from database`)
+      
+      // Use all available sources (they're already uploaded)
+      sourcesForGeneration = successfullyUploaded.slice(0, step6TargetSourceCount)
+      console.log(`[PROCESS] Using ${sourcesForGeneration.length} existing sources for generation`)
+      console.log(`[PROCESS] Skipping to Step 7: Generate Thesis Content`)
+    } else {
+      // Normal flow: do research (either no documents or insufficient count)
+      console.log('\n[PROCESS] ========== Starting Research Process ==========')
+      if (!hasDocuments || !hasUploadedSources) {
+        console.log(`[PROCESS] No existing documents found - proceeding with full research`)
+      } else {
+        console.log(`[PROCESS] Existing sources (${uploadedSources.length}) insufficient for required count (${requiredSourceCount})`)
+        console.log(`[PROCESS] Proceeding with research to find additional sources`)
+      }
+      
+      // Step 1: Generate search queries (with retry)
     console.log('\n[PROCESS] ========== Step 1: Generate Search Queries ==========')
     const step1Start = Date.now()
     let chapterQueries: any[] = []
@@ -2349,8 +2460,8 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       step6TargetPages = thesisData.targetLength
     }
     
-    // Calculate target source count: 1.25 sources per page, max 50
-    const step6TargetSourceCount = Math.min(50, Math.max(10, Math.ceil(step6TargetPages * 1.25)))
+      // Calculate target source count: 1.25 sources per page, max 50
+      step6TargetSourceCount = Math.min(50, Math.max(10, Math.ceil(step6TargetPages * 1.25)))
     console.log(`[PROCESS] Target thesis length: ${step6TargetPages} pages`)
     console.log(`[PROCESS] Calculated target source count: ${step6TargetSourceCount} sources (1.25 per page, max 50)`)
     
@@ -2497,29 +2608,37 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.log(`[PROCESS]   Replaced: ${replacedCount}`)
     console.log(`[PROCESS]   Total processed: ${sourceIndex}`)
 
-    const step6Duration = Date.now() - step6Start
-    console.log(`[PROCESS] Step 6 completed in ${step6Duration}ms`)
-    console.log(`[PROCESS] Uploaded ${uploadedCount} PDFs, ${failedCount} failed`)
+      const step6Duration = Date.now() - step6Start
+      console.log(`[PROCESS] Step 6 completed in ${step6Duration}ms`)
+      console.log(`[PROCESS] Uploaded ${uploadedCount} PDFs, ${failedCount} failed`)
+      
+      // Calculate target source count for Step 7 (if not already set)
+      if (step6TargetSourceCount === 0) {
+        let step6TargetPages = thesisData.targetLength
+        if (thesisData.lengthUnit === 'words') {
+          step6TargetPages = Math.ceil(thesisData.targetLength / 250)
+        }
+        step6TargetSourceCount = Math.min(50, Math.max(10, Math.ceil(step6TargetPages * 1.25)))
+      }
+      
+      // Use successfully uploaded sources, sorted by relevance score (highest first)
+      const availableSources = successfullyUploaded.length > 0 
+        ? [...successfullyUploaded].sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
+        : [...ranked].sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
+      
+      // Select top N sources by relevance score
+      sourcesForGeneration = availableSources.slice(0, step6TargetSourceCount)
+      console.log(`[PROCESS] Selected ${sourcesForGeneration.length} sources for thesis generation (top ${step6TargetSourceCount} by relevance)`)
+      console.log(`[PROCESS]   ${successfullyUploaded.length} successfully uploaded available`)
+      console.log(`[PROCESS]   Relevance scores: min=${Math.min(...sourcesForGeneration.map(s => s.relevanceScore || 0))}, max=${Math.max(...sourcesForGeneration.map(s => s.relevanceScore || 0))}`)
+    }
 
     // Step 7: Generate thesis content using successfully uploaded sources
     // This step has built-in retries and fallbacks
     console.log('\n[PROCESS] ========== Step 7: Generate Thesis Content ==========')
     const step7Start = Date.now()
     
-    // Reuse the target source count calculated in Step 6
-    const step7TargetSourceCount = step6TargetSourceCount
-    console.log(`[PROCESS] Using target source count: ${step7TargetSourceCount} sources (calculated in Step 6)`)
-    
-    // Use successfully uploaded sources, sorted by relevance score (highest first)
-    const availableSources = successfullyUploaded.length > 0 
-      ? [...successfullyUploaded].sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
-      : [...ranked].sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
-    
-    // Select top N sources by relevance score
-    const sourcesForGeneration = availableSources.slice(0, step7TargetSourceCount)
-    console.log(`[PROCESS] Selected ${sourcesForGeneration.length} sources for thesis generation (top ${step7TargetSourceCount} by relevance)`)
-    console.log(`[PROCESS]   ${successfullyUploaded.length} successfully uploaded available`)
-    console.log(`[PROCESS]   Relevance scores: min=${Math.min(...sourcesForGeneration.map(s => s.relevanceScore || 0))}, max=${Math.max(...sourcesForGeneration.map(s => s.relevanceScore || 0))}`)
+    console.log(`[PROCESS] Using ${sourcesForGeneration.length} sources for thesis generation`)
     
     let thesisContent = ''
     try {
