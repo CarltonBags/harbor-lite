@@ -257,9 +257,12 @@ function convertMarkdownToLaTeX(
   const lines = content.split('\n')
   let latex = ''
   let inCodeBlock = false
+  let inMathBlock = false
   let inList = false
   let listLevel = 0
   let listIsOrdered = false
+  let inTable = false
+  let tableRows: string[][] = []
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
@@ -270,6 +273,54 @@ function convertMarkdownToLaTeX(
       while (i < lines.length - 1 && !lines[i + 1].match(/^##?\s+/)) {
         i++
       }
+      continue
+    }
+
+    // Handle math blocks (display math: $$...$$ or \[...\])
+    // Check for single-line math blocks first ($$...$$ on same line)
+    if (trimmedLine.match(/^\$\$.+\$\$$/) || trimmedLine.match(/^\\\[.+\\\]$/)) {
+      // Single-line display math
+      const mathContent = trimmedLine.replace(/^\$\$|\$\$$|^\\\[|\\\]$/g, '').trim()
+      latex += `\\[${mathContent}\\]\n\n`
+      continue
+    }
+    
+    // Check for opening math block
+    if (trimmedLine.match(/^\$\$/) || trimmedLine.match(/^\\\[/)) {
+      latex += '\\[\n'
+      inMathBlock = true
+      // Check if closing marker is on same line
+      const mathContent = trimmedLine.replace(/^\$\$|^\\\[/, '').trim()
+      if (mathContent.match(/\$\$$|\\\]$/)) {
+        // Closing on same line
+        const content = mathContent.replace(/\$\$$|\\\]$/, '').trim()
+        if (content) {
+          latex += content + '\n'
+        }
+        latex += '\\]\n'
+        inMathBlock = false
+      } else if (mathContent) {
+        latex += mathContent + '\n'
+      }
+      continue
+    }
+    
+    // Check for closing math block
+    if (trimmedLine.match(/\$\$$/) || trimmedLine.match(/\\\]$/)) {
+      if (inMathBlock) {
+        const mathContent = trimmedLine.replace(/\$\$$|\\\]$/, '').trim()
+        if (mathContent) {
+          latex += mathContent + '\n'
+        }
+        latex += '\\]\n'
+        inMathBlock = false
+      }
+      continue
+    }
+    
+    if (inMathBlock) {
+      // Inside math block - don't escape, just output
+      latex += line + '\n'
       continue
     }
 
@@ -289,41 +340,73 @@ function convertMarkdownToLaTeX(
       continue
     }
 
-    // Handle headings - remove numbers since LaTeX auto-numbers
-    if (trimmedLine.startsWith('# ')) {
+    // Handle headings - match any number of # followed by optional space and text
+    // This handles both standard markdown (## Heading) and edge cases (##Heading)
+    const headingMatch = trimmedLine.match(/^(#{1,6})\s*(.+)$/)
+    if (headingMatch) {
       if (inList) {
         latex += (listIsOrdered ? '\\end{enumerate}\n' : '\\end{itemize}\n')
         inList = false
         listIsOrdered = false
       }
-      // Keep the full heading text with number (e.g., "1. Einleitung") - use section* to avoid LaTeX auto-numbering
-      const headingText = trimmedLine.substring(2).trim()
-      // Add page break before new chapter (H1)
-      latex += '\\newpage\n'
-      latex += `\\section*{${escapeLaTeX(headingText)}}\n`
-      latex += `\\addcontentsline{toc}{section}{${escapeLaTeX(headingText)}}\n\n`
+      
+      const hashCount = headingMatch[1].length
+      const headingText = headingMatch[2].trim()
+      
+      // Skip empty headings
+      if (!headingText) {
+        continue
+      }
+      
+      // Skip TOC heading (already generated from outline)
+      if (headingText.match(/^(Inhaltsverzeichnis|Table of Contents)$/i)) {
+        continue
+      }
+      
+      // Map heading levels to LaTeX commands
+      if (hashCount === 1) {
+        // H1: Main chapter - add page break
+        latex += '\\newpage\n'
+        latex += `\\section*{${escapeLaTeX(headingText)}}\n`
+        latex += `\\addcontentsline{toc}{section}{${escapeLaTeX(headingText)}}\n\n`
+      } else if (hashCount === 2) {
+        // H2: Section
+        latex += `\\subsection*{${escapeLaTeX(headingText)}}\n`
+        latex += `\\addcontentsline{toc}{subsection}{${escapeLaTeX(headingText)}}\n\n`
+      } else if (hashCount === 3) {
+        // H3: Subsection
+        latex += `\\subsubsection*{${escapeLaTeX(headingText)}}\n`
+        latex += `\\addcontentsline{toc}{subsubsection}{${escapeLaTeX(headingText)}}\n\n`
+      } else {
+        // H4-H6: Use paragraph style (smaller)
+        latex += `\\paragraph*{${escapeLaTeX(headingText)}}\n\n`
+      }
       continue
-    } else if (trimmedLine.startsWith('## ')) {
-      if (inList) {
-        latex += (listIsOrdered ? '\\end{enumerate}\n' : '\\end{itemize}\n')
-        inList = false
-        listIsOrdered = false
+    }
+    
+    // Also handle lines that start with # but might be malformed
+    // This catches cases like "##" on its own, or "##Heading" without space
+    if (trimmedLine.match(/^#{1,6}$/) || (trimmedLine.match(/^#{2,}/) && !trimmedLine.match(/^#{1,6}\s+/))) {
+      // This looks like a malformed heading or just hashes
+      // If it's just hashes with no text, skip it
+      if (trimmedLine.match(/^#{1,6}$/)) {
+        // Just hashes, no text - skip this line
+        continue
       }
-      // Keep the full heading text with number (e.g., "1.1 Problemstellung")
-      const headingText = trimmedLine.substring(3).trim()
-      latex += `\\subsection*{${escapeLaTeX(headingText)}}\n`
-      latex += `\\addcontentsline{toc}{subsection}{${escapeLaTeX(headingText)}}\n\n`
-      continue
-    } else if (trimmedLine.startsWith('### ')) {
-      if (inList) {
-        latex += (listIsOrdered ? '\\end{enumerate}\n' : '\\end{itemize}\n')
-        inList = false
-        listIsOrdered = false
+      // Try to extract text after hashes
+      const textAfterHashes = trimmedLine.replace(/^#+\s*/, '').trim()
+      if (textAfterHashes) {
+        // Treat as H2 (most common case for malformed headings)
+        if (inList) {
+          latex += (listIsOrdered ? '\\end{enumerate}\n' : '\\end{itemize}\n')
+          inList = false
+          listIsOrdered = false
+        }
+        latex += `\\subsection*{${escapeLaTeX(textAfterHashes)}}\n\n`
+      } else {
+        // No text after hashes - skip this line to avoid LaTeX errors
+        continue
       }
-      // Keep the full heading text with number (e.g., "1.1.1 Untertitel")
-      const headingText = trimmedLine.substring(4).trim()
-      latex += `\\subsubsection*{${escapeLaTeX(headingText)}}\n`
-      latex += `\\addcontentsline{toc}{subsubsection}{${escapeLaTeX(headingText)}}\n\n`
       continue
     }
 
@@ -368,6 +451,30 @@ function convertMarkdownToLaTeX(
       continue
     }
 
+    // Handle tables (markdown format: | col1 | col2 |)
+    if (trimmedLine.includes('|') && trimmedLine.match(/^\|.+\|$/)) {
+      if (!inTable) {
+        // Start of table
+        inTable = true
+        tableRows = []
+      }
+      // Skip separator row (|---|---|)
+      if (trimmedLine.match(/^\|[\s\-:|]+\|$/)) {
+        continue
+      }
+      // Parse table row
+      const cells = trimmedLine.split('|').map(cell => cell.trim()).filter(cell => cell.length > 0)
+      tableRows.push(cells)
+      continue
+    } else if (inTable) {
+      // End of table - convert to LaTeX
+      if (tableRows.length > 0) {
+        latex += convertTableToLaTeX(tableRows, citationStyle, footnotes)
+        tableRows = []
+      }
+      inTable = false
+    }
+
     // Handle empty lines
     if (trimmedLine.length === 0) {
       if (inList) {
@@ -376,11 +483,18 @@ function convertMarkdownToLaTeX(
         listLevel = 0
         listIsOrdered = false
       }
+      if (inTable && tableRows.length > 0) {
+        // Empty line might be end of table
+        latex += convertTableToLaTeX(tableRows, citationStyle, footnotes)
+        tableRows = []
+        inTable = false
+      }
       latex += '\n'
       continue
     }
 
     // Regular text - process footnotes and formatting
+    // Note: Any # characters in regular text will be escaped by processFootnotesInText -> escapeLaTeX
     const processedText = processFootnotesInText(line, citationStyle, footnotes)
     latex += processedText + '\n\n'
   }
@@ -390,6 +504,46 @@ function convertMarkdownToLaTeX(
     latex += (listIsOrdered ? '\\end{enumerate}\n' : '\\end{itemize}\n')
   }
 
+  // Close any open table
+  if (inTable && tableRows.length > 0) {
+    latex += convertTableToLaTeX(tableRows, citationStyle, footnotes)
+  }
+
+  return latex
+}
+
+function convertTableToLaTeX(rows: string[][], citationStyle: string, footnotes: Record<number, string>): string {
+  if (rows.length === 0) return ''
+  
+  const numCols = Math.max(...rows.map(row => row.length))
+  if (numCols === 0) return ''
+  
+  let latex = '\n\\begin{table}[h]\n\\centering\n'
+  latex += `\\begin{tabular}{|${'l|'.repeat(numCols)}}\n`
+  latex += '\\hline\n'
+  
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]
+    const cells: string[] = []
+    
+    for (let j = 0; j < numCols; j++) {
+      const cell = row[j] || ''
+      // Process cell content (HTML tags, footnotes, etc.)
+      const processedCell = processFootnotesInText(cell, citationStyle, footnotes)
+      cells.push(processedCell)
+    }
+    
+    latex += cells.join(' & ') + ' \\\\\n'
+    if (i === 0) {
+      // Add horizontal line after header row
+      latex += '\\hline\n'
+    }
+  }
+  
+  latex += '\\hline\n'
+  latex += '\\end{tabular}\n'
+  latex += '\\end{table}\n\n'
+  
   return latex
 }
 
@@ -398,11 +552,29 @@ function processFootnotesInText(
   citationStyle: string,
   footnotes: Record<number, string>
 ): string {
-  let processed = text
+  // First, protect math expressions from being processed
+  const mathPlaceholders: string[] = []
+  let placeholderIndex = 0
+  
+  // Replace inline math ($...$) with placeholders
+  let processed = text.replace(/(?<!\$)\$(?!\$)((?:(?!\$).)+?)\$(?!\$)/g, (match) => {
+    const placeholder = `__MATH_PLACEHOLDER_${placeholderIndex}__`
+    mathPlaceholders[placeholderIndex] = match // Store original math
+    placeholderIndex++
+    return placeholder
+  })
+  
+  // Replace display math ($$...$$) with placeholders
+  processed = processed.replace(/\$\$([^$]+)\$\$/g, (match) => {
+    const placeholder = `__MATH_PLACEHOLDER_${placeholderIndex}__`
+    mathPlaceholders[placeholderIndex] = match // Store original math
+    placeholderIndex++
+    return placeholder
+  })
 
   // Handle German citation style footnotes (^1, ^2, etc.)
+  // But not if they're inside math (which we've already protected)
   if (citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
-    // Replace ^N with \footnote{...}
     processed = processed.replace(/\^(\d+)/g, (match, num) => {
       const footnoteNum = parseInt(num, 10)
       const footnoteText = footnotes[footnoteNum]
@@ -413,7 +585,23 @@ function processFootnotesInText(
     })
   }
 
-  // Handle markdown formatting
+  // Handle HTML tags (convert to LaTeX before markdown processing)
+  // <sub>text</sub> -> \textsubscript{text}
+  processed = processed.replace(/<sub>(.+?)<\/sub>/gi, '\\textsubscript{$1}')
+  // <sup>text</sup> -> \textsuperscript{text}
+  processed = processed.replace(/<sup>(.+?)<\/sup>/gi, '\\textsuperscript{$1}')
+  // <b>text</b> or <strong>text</strong> -> \textbf{text}
+  processed = processed.replace(/<(b|strong)>(.+?)<\/(b|strong)>/gi, '\\textbf{$2}')
+  // <i>text</i> or <em>text</em> -> \textit{text}
+  processed = processed.replace(/<(i|em)>(.+?)<\/(i|em)>/gi, '\\textit{$2}')
+  // <u>text</u> -> \underline{text}
+  processed = processed.replace(/<u>(.+?)<\/u>/gi, '\\underline{$1}')
+  // <br> or <br/> -> line break
+  processed = processed.replace(/<br\s*\/?>/gi, '\\\\\n')
+  // Remove any remaining HTML tags (safety measure)
+  processed = processed.replace(/<[^>]+>/g, '')
+
+  // Handle markdown formatting (but not inside math)
   // Bold: **text** -> \textbf{text}
   processed = processed.replace(/\*\*(.+?)\*\*/g, '\\textbf{$1}')
   
@@ -425,8 +613,87 @@ function processFootnotesInText(
   
   // Links: [text](url) -> \href{url}{text}
   processed = processed.replace(/\[(.+?)\]\((.+?)\)/g, '\\href{$2}{$1}')
+  
+  // Protect LaTeX commands from being escaped
+  const latexCommandPlaceholders: string[] = []
+  let commandIndex = 0
+  
+  // Protect LaTeX commands (e.g., \textbf{...}, \textit{...}, \texttt{...}, \href{...}{...}, \footnote{...})
+  // Match commands with one or two arguments
+  processed = processed.replace(/\\(?:textbf|textit|texttt|underline|textsubscript|textsuperscript|footnote)\{([^}]*)\}/g, (match) => {
+    const placeholder = `__LATEX_CMD_${commandIndex}__`
+    latexCommandPlaceholders[commandIndex] = match
+    commandIndex++
+    return placeholder
+  })
+  
+  // Protect \href{url}{text} (two arguments)
+  processed = processed.replace(/\\href\{([^}]*)\}\{([^}]*)\}/g, (match) => {
+    const placeholder = `__LATEX_CMD_${commandIndex}__`
+    latexCommandPlaceholders[commandIndex] = match
+    commandIndex++
+    return placeholder
+  })
+  
+  // Escape LaTeX special characters (but not the protected commands)
+  processed = escapeLaTeXForText(processed)
+  
+  // Restore LaTeX commands
+  for (let i = 0; i < latexCommandPlaceholders.length; i++) {
+    const placeholder = `__LATEX_CMD_${i}__`
+    processed = processed.replace(placeholder, latexCommandPlaceholders[i])
+  }
+  
+  // Restore math expressions (convert to LaTeX format)
+  for (let i = 0; i < mathPlaceholders.length; i++) {
+    const placeholder = `__MATH_PLACEHOLDER_${i}__`
+    const mathExpr = mathPlaceholders[i]
+    
+    // Convert to LaTeX math format
+    let latexMath = mathExpr
+    if (mathExpr.startsWith('$$') && mathExpr.endsWith('$$')) {
+      // Display math: $$...$$ -> \[...\]
+      const content = mathExpr.slice(2, -2).trim()
+      latexMath = `\\[${content}\\]`
+    } else if (mathExpr.startsWith('$') && mathExpr.endsWith('$') && !mathExpr.startsWith('$$')) {
+      // Inline math: $...$ -> $...$ (keep as-is)
+      // Content is already correct
+      latexMath = mathExpr
+    }
+    
+    processed = processed.replace(placeholder, latexMath)
+  }
 
   return processed
+}
+
+// Escape LaTeX for text (but preserve $ for math mode - math is handled separately)
+function escapeLaTeXForText(text: string): string {
+  if (!text) return ''
+  
+  // First, normalize the string
+  let normalized = text
+    .replace(/^\uFEFF/, '')
+    .replace(/\u0000/g, '')
+    .replace(/[\uFFFE\uFFFF]/g, '')
+  
+  // Escape LaTeX special characters
+  // Note: $ is NOT escaped here because math expressions are handled separately
+  return normalized
+    .replace(/\\/g, '\\textbackslash{}')
+    .replace(/{/g, '\\{')
+    .replace(/}/g, '\\}')
+    // Don't escape $ - it's handled in processFootnotesInText for math
+    .replace(/%/g, '\\%')
+    .replace(/&/g, '\\&')
+    .replace(/#/g, '\\#')
+    .replace(/\^/g, '\\textasciicircum{}')
+    .replace(/_/g, '\\_')
+    .replace(/~/g, '\\textasciitilde{}')
+    .replace(/</g, '\\textless{}')
+    .replace(/>/g, '\\textgreater{}')
+    .replace(/\|/g, '\\textbar{}')
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
 }
 
 function escapeLaTeX(text: string): string {

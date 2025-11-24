@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /thesis/preview
+Disallow: /thesis/generate
+Disallow: /thesis/new
+Disallow: /auth/
+
+# Sitemap
+Sitemap: https://unilord.com/sitemap.xml
+

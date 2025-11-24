@@ -47,17 +47,17 @@ export function HowItWorks() {
             const Icon = step.icon
             return (
               <div key={index} className="relative">
-                <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-2xl p-8 h-full">
+                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-8 h-full shadow-lg">
                   <div className="flex items-center justify-between mb-6">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-                      <Icon className="w-8 h-8 text-white" />
+                    <div className="w-16 h-16 rounded-full bg-black dark:bg-white flex items-center justify-center">
+                      <Icon className="w-8 h-8 text-white dark:text-black" />
                     </div>
-                    <span className="text-6xl font-bold text-purple-200 dark:text-purple-800">
+                    <span className="text-6xl font-bold text-gray-200 dark:text-gray-700">
                       {step.number}
                     </span>
                   </div>
                   
-                  <h3 className="text-xl font-bold mb-3 text-gray-900 dark:text-white">
+                  <h3 className="text-xl font-bold mb-3 text-black dark:text-white">
                     {step.title}
                   </h3>
                   <p className="text-gray-600 dark:text-gray-400">
@@ -67,7 +67,7 @@ export function HowItWorks() {
                 
                 {index < steps.length - 1 && (
                   <div className="hidden lg:block absolute top-1/2 -right-4 transform -translate-y-1/2">
-                    <div className="w-8 h-0.5 bg-gradient-to-r from-purple-600 to-blue-600" />
+                    <div className="w-8 h-0.5 bg-yellow-600 dark:bg-yellow-500" />
                   </div>
                 )}
               </div>

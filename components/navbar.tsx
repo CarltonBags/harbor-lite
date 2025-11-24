@@ -83,20 +83,26 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <div className="flex items-center space-x-2">
-            <FileText className="w-8 h-8 text-purple-600 dark:text-purple-400" />
-            <span className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 dark:from-purple-400 dark:to-blue-400 bg-clip-text text-transparent">
-              UniLord
+          <Link href="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
+            <FileText className="w-8 h-8 text-black dark:text-white" />
+            <span className="text-2xl font-bold text-black dark:text-white">
+              Uni<span className="text-yellow-600 dark:text-yellow-500">Lord</span>
             </span>
-          </div>
+          </Link>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
+            <Link
+              href="/"
+              className="text-gray-700 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors font-medium"
+            >
+              Startseite
+            </Link>
             {navItems.map((item) => (
               <a
                 key={item.name}
                 href={item.href}
-                className="text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 transition-colors font-medium"
+                className="text-gray-700 dark:text-gray-300 hover:text-yellow-600 dark:hover:text-yellow-500 transition-colors font-medium"
               >
                 {item.name}
               </a>
@@ -210,12 +216,19 @@ export function Navbar() {
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
           <div className="md:hidden py-4 border-t border-gray-200 dark:border-gray-800">
+            <Link
+              href="/"
+              onClick={() => setMobileMenuOpen(false)}
+              className="block py-2 text-gray-700 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+            >
+              Startseite
+            </Link>
             {navItems.map((item) => (
               <a
                 key={item.name}
                 href={item.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className="block py-2 text-gray-700 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
+                className="block py-2 text-gray-700 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors"
               >
                 {item.name}
               </a>

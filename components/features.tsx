@@ -56,8 +56,8 @@ export function Features() {
                 key={index}
                 className="bg-white dark:bg-gray-900 rounded-xl p-6 shadow-lg hover:shadow-xl transition-shadow"
               >
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center mb-4">
-                  <Icon className="w-6 h-6 text-white" />
+                <div className="w-12 h-12 rounded-lg bg-black dark:bg-white flex items-center justify-center mb-4">
+                  <Icon className="w-6 h-6 text-white dark:text-black" />
                 </div>
                 <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">
                   {feature.title}

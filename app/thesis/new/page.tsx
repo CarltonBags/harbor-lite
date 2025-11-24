@@ -1189,7 +1189,7 @@ export default function NewThesisPage() {
         <div className="mb-8">
           <Link
             href="/"
-            className="inline-flex items-center text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 mb-4"
+            className="inline-flex items-center text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 mb-4 transition-colors"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Zurück zur Startseite
@@ -1210,7 +1210,7 @@ export default function NewThesisPage() {
                 key={s}
                 className={`flex-1 h-2 mx-1 rounded-full ${
                   s <= step
-                    ? 'bg-purple-600 dark:bg-purple-400'
+                    ? 'bg-red-600 dark:bg-red-500'
                     : 'bg-gray-200 dark:bg-gray-700'
                 }`}
               />
@@ -1222,7 +1222,7 @@ export default function NewThesisPage() {
         {step === 1 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
             <div className="flex items-center mb-6">
-              <FileText className="w-8 h-8 text-purple-600 dark:text-purple-400 mr-3" />
+              <FileText className="w-8 h-8 text-red-600 dark:text-red-500 mr-3" />
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                 In welcher Sprache schreibst Du Deine Thesis?
               </h2>
@@ -1233,8 +1233,8 @@ export default function NewThesisPage() {
                 onClick={() => setFormData({ ...formData, language: 'german' })}
                 className={`p-6 rounded-lg border-2 text-left transition-all ${
                   formData.language === 'german'
-                    ? 'border-purple-600 dark:border-purple-400 bg-purple-50 dark:bg-purple-900/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600'
+                    ? 'border-red-600 dark:border-red-500 bg-red-50 dark:bg-red-900/20'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-red-400 dark:hover:border-red-500'
                 }`}
               >
                 <div className="font-semibold text-lg text-gray-900 dark:text-white mb-2">
@@ -1249,8 +1249,8 @@ export default function NewThesisPage() {
                 onClick={() => setFormData({ ...formData, language: 'english' })}
                 className={`p-6 rounded-lg border-2 text-left transition-all ${
                   formData.language === 'english'
-                    ? 'border-purple-600 dark:border-purple-400 bg-purple-50 dark:bg-purple-900/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600'
+                    ? 'border-red-600 dark:border-red-500 bg-red-50 dark:bg-red-900/20'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-red-400 dark:hover:border-red-500'
                 }`}
               >
                 <div className="font-semibold text-lg text-gray-900 dark:text-white mb-2">
@@ -1268,7 +1268,7 @@ export default function NewThesisPage() {
         {step === 2 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
             <div className="flex items-center mb-6">
-              <FileText className="w-8 h-8 text-purple-600 dark:text-purple-400 mr-3" />
+              <FileText className="w-8 h-8 text-red-600 dark:text-red-500 mr-3" />
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                 Welche Art von Thesis schreibst Du?
               </h2>
@@ -1301,7 +1301,7 @@ export default function NewThesisPage() {
         {step === 3 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
             <div className="flex items-center mb-6">
-              <BookOpen className="w-8 h-8 text-purple-600 dark:text-purple-400 mr-3" />
+              <BookOpen className="w-8 h-8 text-red-600 dark:text-red-500 mr-3" />
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                 Dein Thema und Umfang
               </h2>
@@ -1482,7 +1482,7 @@ export default function NewThesisPage() {
         {step === 4 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
             <div className="flex items-center mb-6">
-              <Target className="w-8 h-8 text-purple-600 dark:text-purple-400 mr-3" />
+              <Target className="w-8 h-8 text-red-600 dark:text-red-500 mr-3" />
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                 Forschungsfrage
               </h2>
@@ -1536,7 +1536,7 @@ export default function NewThesisPage() {
                 <div>
                   {loadingSuggestions ? (
                     <div className="flex items-center justify-center py-8">
-                      <Loader2 className="w-8 h-8 animate-spin text-purple-600 dark:text-purple-400" />
+                      <Loader2 className="w-8 h-8 animate-spin text-red-600 dark:text-red-500" />
                       <span className="ml-3 text-gray-600 dark:text-gray-400">
                         KI generiert Vorschläge...
                       </span>
@@ -1591,7 +1591,7 @@ export default function NewThesisPage() {
         {step === 5 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
             <div className="flex items-center mb-6">
-              <CheckCircle className="w-8 h-8 text-purple-600 dark:text-purple-400 mr-3" />
+              <CheckCircle className="w-8 h-8 text-red-600 dark:text-red-500 mr-3" />
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                 Übersicht
               </h2>
@@ -1649,7 +1649,7 @@ export default function NewThesisPage() {
               <button
                 onClick={handleStartGeneration}
                 disabled={loadingOutline}
-                className="w-full py-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold text-lg hover:from-purple-700 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-4 bg-black dark:bg-white text-white dark:text-black rounded-lg font-semibold text-lg hover:bg-blue-600 dark:hover:bg-blue-500 transition-all shadow-lg hover:shadow-xl flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Weiter zur Gliederung
                 <ArrowRight className="w-5 h-5 ml-2" />
@@ -1662,7 +1662,7 @@ export default function NewThesisPage() {
         {step === 6 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
             <div className="flex items-center mb-6">
-              <List className="w-8 h-8 text-purple-600 dark:text-purple-400 mr-3" />
+              <List className="w-8 h-8 text-red-600 dark:text-red-500 mr-3" />
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                 Thesis-Gliederung
               </h2>
@@ -1777,7 +1777,7 @@ export default function NewThesisPage() {
                       }
                     }}
                     disabled={loadingOutline || (formData.hasOwnOutline === true && !formData.uploadedOutline)}
-                    className="w-full py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-semibold hover:bg-blue-600 dark:hover:bg-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {loadingOutline ? (
                       <>
@@ -1794,7 +1794,7 @@ export default function NewThesisPage() {
             
             {loadingOutline && outline.length === 0 ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-purple-600 dark:text-purple-400" />
+                <Loader2 className="w-8 h-8 animate-spin text-red-600 dark:text-red-500" />
                 <span className="ml-3 text-gray-600 dark:text-gray-400">
                   {formData.hasOwnOutline === true ? 'KI verarbeitet Gliederung...' : 'KI generiert Gliederung...'}
                 </span>
@@ -1812,14 +1812,14 @@ export default function NewThesisPage() {
                   >
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3 flex-1">
-                        <span className="text-lg font-bold text-purple-600 dark:text-purple-400 min-w-[2rem]">
+                        <span className="text-lg font-bold text-red-600 dark:text-red-500 min-w-[2rem]">
                           {chapter.number}.
                         </span>
                         <input
                           type="text"
                           value={chapter.title}
                           onChange={(e) => handleChapterTitleChange(chapterIndex, e.target.value)}
-                          className="flex-1 text-lg font-semibold bg-transparent border-b-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-purple-500 dark:focus:border-purple-400 focus:outline-none px-2 py-1 text-gray-900 dark:text-white"
+                          className="flex-1 text-lg font-semibold bg-transparent border-b-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-red-500 dark:focus:border-red-400 focus:outline-none px-2 py-1 text-gray-900 dark:text-white"
                           placeholder="Kapitelname"
                         />
                       </div>
@@ -1835,24 +1835,24 @@ export default function NewThesisPage() {
                     {/* Sections */}
                     <div className="ml-8 space-y-3 mt-4">
                       {chapter.sections.map((section, sectionIndex) => (
-                        <div key={sectionIndex} className="border-l-2 border-purple-200 dark:border-purple-800 pl-4">
+                        <div key={sectionIndex} className="border-l-2 border-red-200 dark:border-red-800 pl-4">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-2 flex-1">
-                              <span className="text-sm font-semibold text-purple-600 dark:text-purple-400 min-w-[3rem]">
+                              <span className="text-sm font-semibold text-red-600 dark:text-red-500 min-w-[3rem]">
                                 {section.number}
                               </span>
                               <input
                                 type="text"
                                 value={section.title}
                                 onChange={(e) => handleSectionTitleChange(chapterIndex, sectionIndex, e.target.value)}
-                                className="flex-1 text-base font-medium bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-purple-500 dark:focus:border-purple-400 focus:outline-none px-2 py-1 text-gray-800 dark:text-gray-200"
+                                className="flex-1 text-base font-medium bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-red-500 dark:focus:border-red-400 focus:outline-none px-2 py-1 text-gray-800 dark:text-gray-200"
                                 placeholder="Abschnittsname"
                               />
                             </div>
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => addSubsection(chapterIndex, sectionIndex)}
-                                className="p-1 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded transition-colors"
+                                className="p-1 text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
                                 title="Unterabschnitt hinzufügen"
                               >
                                 <Plus className="w-4 h-4" />
@@ -1880,7 +1880,7 @@ export default function NewThesisPage() {
                                       type="text"
                                       value={subsection.title}
                                       onChange={(e) => handleSubsectionTitleChange(chapterIndex, sectionIndex, subsectionIndex, e.target.value)}
-                                      className="flex-1 text-sm bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-purple-500 dark:focus:border-purple-400 focus:outline-none px-2 py-1 text-gray-700 dark:text-gray-300"
+                                      className="flex-1 text-sm bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-red-500 dark:focus:border-red-400 focus:outline-none px-2 py-1 text-gray-700 dark:text-gray-300"
                                       placeholder="Unterabschnittsname"
                                     />
                                   </div>
@@ -1899,7 +1899,7 @@ export default function NewThesisPage() {
                       ))}
                       <button
                         onClick={() => addSection(chapterIndex)}
-                        className="flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 mt-2 ml-4"
+                        className="flex items-center gap-2 text-sm text-red-600 dark:text-red-500 hover:text-red-700 dark:hover:text-red-400 mt-2 ml-4"
                       >
                         <Plus className="w-4 h-4" />
                         Abschnitt hinzufügen
@@ -1910,7 +1910,7 @@ export default function NewThesisPage() {
                 
                 <button
                   onClick={addChapter}
-                  className="w-full py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-purple-500 dark:hover:border-purple-400 hover:text-purple-600 dark:hover:text-purple-400 transition-all flex items-center justify-center"
+                  className="w-full py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-red-500 dark:hover:border-red-400 hover:text-red-600 dark:hover:text-red-500 transition-all flex items-center justify-center"
                 >
                   <Plus className="w-5 h-5 mr-2" />
                   Neues Kapitel hinzufügen
@@ -1924,7 +1924,7 @@ export default function NewThesisPage() {
         {step === 7 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
             <div className="flex items-center mb-6">
-              <Upload className="w-8 h-8 text-purple-600 dark:text-purple-400 mr-3" />
+              <Upload className="w-8 h-8 text-red-600 dark:text-red-500 mr-3" />
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                 Literatur hochladen
               </h2>
@@ -1944,7 +1944,7 @@ export default function NewThesisPage() {
                   handleFiles(Array.from(e.dataTransfer.files))
                 }}
                 onDragOver={(e) => e.preventDefault()}
-                className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-12 text-center hover:border-purple-500 dark:hover:border-purple-400 transition-colors cursor-pointer"
+                className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-12 text-center hover:border-red-500 dark:hover:border-red-400 transition-colors cursor-pointer"
               >
                 <Upload className="w-12 h-12 text-gray-400 dark:text-gray-500 mx-auto mb-4" />
                 <p className="text-lg font-medium text-gray-900 dark:text-white mb-2">
@@ -1969,15 +1969,15 @@ export default function NewThesisPage() {
 
               {/* FileSearchStore Information */}
               {fileSearchStoreId && (
-                <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-6">
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-purple-900 dark:text-purple-300">
+                    <h3 className="text-lg font-semibold text-red-900 dark:text-red-300">
                       FileSearchStore Status
                     </h3>
                     <button
                       onClick={() => fetchStoreInfo(fileSearchStoreId)}
                       disabled={loadingStoreInfo}
-                      className="text-sm text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 disabled:opacity-50"
+                      className="text-sm text-red-600 dark:text-red-500 hover:text-red-700 dark:hover:text-red-400 disabled:opacity-50"
                     >
                       {loadingStoreInfo ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -2024,7 +2024,7 @@ export default function NewThesisPage() {
                   )}
                   
                   {storeInfo && (
-                    <div className="mt-4 pt-4 border-t border-purple-200 dark:border-purple-700">
+                    <div className="mt-4 pt-4 border-t border-red-200 dark:border-red-700">
                       <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
                         <div><strong>Store Name:</strong> {storeInfo.displayName || storeInfo.name}</div>
                         {storeInfo.createTime && (
@@ -2039,10 +2039,10 @@ export default function NewThesisPage() {
                   
                   <div className="mt-4 pt-4 border-t border-purple-200 dark:border-purple-700">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-purple-900 dark:text-purple-300">
+                      <span className="text-sm font-medium text-red-900 dark:text-red-300">
                         Dokumente in Datenbank:
                       </span>
-                      <span className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                      <span className="text-lg font-bold text-red-600 dark:text-red-500">
                         {uploadedCount}
                       </span>
                     </div>
@@ -2081,7 +2081,7 @@ export default function NewThesisPage() {
                 <button
                   onClick={handleUploadAll}
                   disabled={uploadedFiles.some(f => f.uploadStatus === 'uploading')}
-                  className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  className="w-full py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-semibold hover:bg-blue-600 dark:hover:bg-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
                   {uploadedFiles.some(f => f.uploadStatus === 'uploading') ? (
                     <>
@@ -2104,7 +2104,7 @@ export default function NewThesisPage() {
         {step === 8 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8">
             <div className="flex items-center mb-6">
-              <Search className="w-8 h-8 text-purple-600 dark:text-purple-400 mr-3" />
+              <Search className="w-8 h-8 text-red-600 dark:text-red-500 mr-3" />
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                 Recherche-Anfragen generieren
               </h2>
@@ -2118,7 +2118,7 @@ export default function NewThesisPage() {
 
               {loadingQueries ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-purple-600 dark:text-purple-400 mr-3" />
+                  <Loader2 className="w-8 h-8 animate-spin text-red-600 dark:text-red-500 mr-3" />
                   <span className="text-gray-600 dark:text-gray-400">Generiere Suchanfragen...</span>
                 </div>
               ) : searchQueries.length > 0 ? (

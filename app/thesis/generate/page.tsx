@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Loader2, CheckCircle2, AlertCircle, Mail } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, Mail, Home, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
 export default function GeneratePage() {
@@ -85,7 +85,7 @@ export default function GeneratePage() {
       <div className="min-h-screen bg-white dark:bg-gray-900 pt-16">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-purple-600 dark:text-purple-400" />
+            <Loader2 className="w-8 h-8 animate-spin text-red-600 dark:text-red-500" />
             <span className="ml-3 text-gray-600 dark:text-gray-400">
               Lade Status...
             </span>
@@ -147,8 +147,17 @@ export default function GeneratePage() {
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900 pt-16">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="mb-6">
+          <Link
+            href="/"
+            className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+          >
+            <Home className="w-4 h-4 mr-2" />
+            Startseite
+          </Link>
+        </div>
         <div className="text-center">
-          <Loader2 className="w-16 h-16 animate-spin text-purple-600 dark:text-purple-400 mx-auto mb-6" />
+          <Loader2 className="w-16 h-16 animate-spin text-red-600 dark:text-red-500 mx-auto mb-6" />
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
             Generierung läuft
           </h1>
@@ -156,12 +165,12 @@ export default function GeneratePage() {
             Ihre Thesis wird im Hintergrund generiert. Dies kann einige Minuten dauern.
           </p>
           
-          <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-6 mb-6">
-            <div className="flex items-center justify-center gap-2 text-purple-700 dark:text-purple-300 mb-2">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 mb-6">
+            <div className="flex items-center justify-center gap-2 text-red-700 dark:text-red-300 mb-2">
               <Mail className="w-5 h-5" />
               <span className="font-semibold">E-Mail-Benachrichtigung</span>
             </div>
-            <p className="text-sm text-purple-600 dark:text-purple-400">
+            <p className="text-sm text-red-600 dark:text-red-400">
               Sie erhalten eine E-Mail, sobald Ihre Thesis fertig ist. Diese Seite aktualisiert sich automatisch.
             </p>
           </div>
@@ -171,11 +180,19 @@ export default function GeneratePage() {
             <p>Die Generierung läuft im Hintergrund weiter.</p>
           </div>
 
-          <div className="mt-8">
+          <div className="mt-8 flex gap-4 justify-center">
+            <Link
+              href="/"
+              className="inline-flex items-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg hover:bg-blue-600 dark:hover:bg-blue-500 transition-colors"
+            >
+              <Home className="w-4 h-4 mr-2" />
+              Startseite
+            </Link>
             <Link
               href="/thesis"
-              className="inline-block px-6 py-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              className="inline-flex items-center px-6 py-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
             >
+              <ArrowLeft className="w-4 h-4 mr-2" />
               Zurück zu Meine Theses
             </Link>
           </div>

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen, Download, Shield } from 'lucide-react'
+import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen, Download, Shield, Home } from 'lucide-react'
 import { createSupabaseClient } from '@/lib/supabase/client'
 import { getThesisById } from '@/lib/supabase/theses'
 import Link from 'next/link'
@@ -46,6 +46,7 @@ export default function ThesisPreviewPage() {
   const [thesisVersions, setThesisVersions] = useState<any[]>([])
   const [showVersionsModal, setShowVersionsModal] = useState(false)
   const [showZeroGptModal, setShowZeroGptModal] = useState(false)
+  const [isCheckingZeroGpt, setIsCheckingZeroGpt] = useState(false)
   const [highlightedPassages, setHighlightedPassages] = useState<Array<{ text: string; paragraphId: string }>>([])
   const [selectionRange, setSelectionRange] = useState<Range | null>(null)
   const [bibliographySources, setBibliographySources] = useState<any[]>([])
@@ -182,6 +183,43 @@ export default function ThesisPreviewPage() {
 
   // Calculate word count
   const wordCount = content ? content.split(/\s+/).filter(word => word.length > 0).length : 0
+
+  const handleCheckZeroGpt = async () => {
+    if (!thesisId) return
+
+    try {
+      setIsCheckingZeroGpt(true)
+      const response = await fetch('/api/check-zerogpt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ thesisId }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        const errorMessage = error.error || 'Failed to check ZeroGPT'
+        const errorDetails = error.details ? `\n\nDetails: ${typeof error.details === 'string' ? error.details : JSON.stringify(error.details)}` : ''
+        throw new Error(errorMessage + errorDetails)
+      }
+
+      const data = await response.json()
+      
+      // Reload thesis to get updated metadata
+      await loadThesis()
+      
+      // Show success message or update UI
+      console.log('ZeroGPT check completed:', data.result)
+    } catch (error) {
+      console.error('Error checking ZeroGPT:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Fehler beim ZeroGPT-Check'
+      console.error('Full error:', error)
+      alert(errorMessage)
+    } finally {
+      setIsCheckingZeroGpt(false)
+    }
+  }
 
   const loadThesis = async () => {
     if (!thesisId) return
@@ -655,7 +693,7 @@ export default function ThesisPreviewPage() {
     return (
       <div className="min-h-screen bg-white dark:bg-gray-900 pt-16">
         <div className="flex items-center justify-center h-screen">
-          <Loader2 className="w-8 h-8 animate-spin text-purple-600 dark:text-purple-400" />
+          <Loader2 className="w-8 h-8 animate-spin text-red-600 dark:text-red-500" />
           <span className="ml-3 text-gray-600 dark:text-gray-400">Lade Thesis...</span>
         </div>
       </div>
@@ -669,7 +707,7 @@ export default function ThesisPreviewPage() {
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
             Thesis nicht gefunden
           </h1>
-          <Link href="/thesis" className="text-purple-600 dark:text-purple-400 hover:underline">
+          <Link href="/thesis" className="text-red-600 dark:text-red-500 hover:underline">
             Zurück zu Meine Theses
           </Link>
         </div>
@@ -682,13 +720,23 @@ export default function ThesisPreviewPage() {
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              {thesis.topic || 'Thesis Preview'}
-            </h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              {thesis.field} • {thesis.thesis_type}
-            </p>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+            >
+              <Home className="w-4 h-4 mr-1" />
+              Startseite
+            </Link>
+            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                {thesis.topic || 'Thesis Preview'}
+              </h1>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                {thesis.field} • {thesis.thesis_type}
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             {hasUnsavedChanges && (
@@ -716,7 +764,7 @@ export default function ThesisPreviewPage() {
             <button
               onClick={handleSave}
               disabled={!hasUnsavedChanges || isProcessing}
-              className="inline-flex items-center px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center px-2 py-1 text-xs bg-black dark:bg-white text-white dark:text-black rounded hover:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {isProcessing ? (
                 <Loader2 className="w-3 h-3 mr-1 animate-spin" />
@@ -818,7 +866,7 @@ export default function ThesisPreviewPage() {
                 <div
                   className={`max-w-[80%] rounded-lg p-3 ${
                     message.role === 'user'
-                      ? 'bg-purple-600 text-white'
+                      ? 'bg-black dark:bg-white text-white dark:text-black'
                       : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
                   }`}
                 >
@@ -837,7 +885,7 @@ export default function ThesisPreviewPage() {
             {isProcessing && (
               <div className="flex justify-start">
                 <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-3">
-                  <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
+                  <Loader2 className="w-4 h-4 animate-spin text-red-600 dark:text-red-500" />
                 </div>
               </div>
             )}
@@ -858,7 +906,7 @@ export default function ThesisPreviewPage() {
                       setSelectionRange(null)
                       setTextAddedToChat(false)
                     }}
-                    className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200"
+                    className="text-red-600 dark:text-red-500 hover:text-red-800 dark:hover:text-red-300"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -884,7 +932,7 @@ export default function ThesisPreviewPage() {
               <button
                 onClick={handleSendMessage}
                 disabled={!chatInput.trim() || isProcessing || !selectedText || !textAddedToChat}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="px-4 py-2 bg-black dark:bg-white text-white dark:text-black rounded-lg hover:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 title={!selectedText ? "Bitte markiere zuerst Text im Preview" : !textAddedToChat ? "Bitte klicke auf 'Zu Chat hinzufügen'" : ""}
               >
                 <Send className="w-5 h-5" />
@@ -921,7 +969,7 @@ export default function ThesisPreviewPage() {
                       e.stopPropagation()
                       e.preventDefault()
                     }}
-                    className="fixed z-[9999] bg-purple-600 text-white px-3 py-1.5 rounded-lg shadow-lg hover:bg-purple-700 transition-colors text-sm font-medium flex items-center gap-1.5 whitespace-nowrap"
+                    className="fixed z-[9999] bg-black dark:bg-white text-white dark:text-black px-3 py-1.5 rounded-lg shadow-lg hover:bg-blue-600 dark:hover:bg-blue-500 transition-colors text-sm font-medium flex items-center gap-1.5 whitespace-nowrap"
                     style={{
                       top: `${Math.max(0, selectionButtonPosition.top)}px`,
                       left: `${Math.max(0, selectionButtonPosition.left)}px`,
@@ -1608,7 +1656,7 @@ export default function ThesisPreviewPage() {
                                   href={`https://doi.org/${source.doi}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-purple-600 dark:text-purple-400 hover:underline"
+                                  className="text-red-600 dark:text-red-500 hover:underline"
                                 >
                                   {source.doi}
                                 </a>
@@ -1847,19 +1895,51 @@ export default function ThesisPreviewPage() {
                   
                   <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                     <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                      <strong>Hinweis:</strong> Diese Ergebnisse werden nach der Humanisierung automatisch generiert. 
-                      Die Erkennungsgenauigkeit kann variieren und sollte nur als Indikator verwendet werden.
+                      <strong>Hinweis:</strong> Die Erkennungsgenauigkeit kann variieren und sollte nur als Indikator verwendet werden.
                     </p>
                   </div>
+                  <button
+                    onClick={handleCheckZeroGpt}
+                    disabled={isCheckingZeroGpt}
+                    className="w-full mt-4 inline-flex items-center justify-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isCheckingZeroGpt ? (
+                      <>
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        Prüfe erneut...
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="w-5 h-5 mr-2" />
+                        Erneut prüfen
+                      </>
+                    )}
+                  </button>
                 </div>
               ) : (
                 <div className="text-center py-12 text-gray-500 dark:text-gray-400">
                   <Shield className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p className="text-lg font-medium mb-2">Kein ZeroGPT-Ergebnis verfügbar</p>
-                  <p className="text-sm">
-                    Das ZeroGPT-Ergebnis wird automatisch nach der Humanisierung generiert.
-                    {thesis?.status === 'completed' && ' Bitte warten Sie, bis die Generierung abgeschlossen ist.'}
+                  <p className="text-sm mb-6">
+                    Prüfe deine Thesis auf KI-Erkennung mit ZeroGPT.
                   </p>
+                  <button
+                    onClick={handleCheckZeroGpt}
+                    disabled={isCheckingZeroGpt || !thesis?.latex_content}
+                    className="inline-flex items-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isCheckingZeroGpt ? (
+                      <>
+                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                        Prüfe...
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="w-5 h-5 mr-2" />
+                        ZeroGPT-Check starten
+                      </>
+                    )}
+                  </button>
                 </div>
               )}
             </div>

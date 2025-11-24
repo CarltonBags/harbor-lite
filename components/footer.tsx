@@ -37,9 +37,9 @@ export function Footer() {
           {/* Brand */}
           <div className="lg:col-span-2">
             <div className="flex items-center space-x-2 mb-4">
-              <FileText className="w-8 h-8 text-purple-400" />
-              <span className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                UniLord
+              <FileText className="w-8 h-8 text-white" />
+              <span className="text-2xl font-bold text-white">
+                Uni<span className="text-yellow-600 dark:text-yellow-500">Lord</span>
               </span>
             </div>
             <p className="text-gray-400 mb-4">

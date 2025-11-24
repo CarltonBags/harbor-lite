@@ -1,69 +1,80 @@
 'use client'
 
-import { ArrowRight, Sparkles, FileText, Zap } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { ArrowRight } from 'lucide-react'
+
+const thesisTypes = ['Hausarbeit', 'Bachelorarbeit', 'Masterarbeit', 'Dissertation']
 
 export function Hero() {
+  const [currentTypeIndex, setCurrentTypeIndex] = useState(0)
+  const [displayText, setDisplayText] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  useEffect(() => {
+    const currentType = thesisTypes[currentTypeIndex]
+    const targetText = currentType
+
+    if (!isDeleting && displayText === targetText) {
+      // Wait before starting to delete
+      const timeout = setTimeout(() => {
+        setIsDeleting(true)
+      }, 2000)
+      return () => clearTimeout(timeout)
+    }
+
+    if (isDeleting && displayText === '') {
+      // Move to next type
+      setIsDeleting(false)
+      setCurrentTypeIndex((prev) => (prev + 1) % thesisTypes.length)
+      return
+    }
+
+    const timeout = setTimeout(() => {
+      if (isDeleting) {
+        setDisplayText((prev) => prev.slice(0, -1))
+      } else {
+        setDisplayText((prev) => targetText.slice(0, prev.length + 1))
+      }
+    }, isDeleting ? 50 : 100)
+
+    return () => clearTimeout(timeout)
+  }, [displayText, isDeleting, currentTypeIndex])
+
   return (
-    <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800">
-      <div className="max-w-7xl mx-auto">
+    <section className="pt-24 md:pt-32 pb-20 md:pb-28 px-4 sm:px-6 lg:px-8 bg-white dark:bg-gray-900">
+      <div className="max-w-5xl mx-auto">
         <div className="text-center">
-          <div className="inline-flex items-center px-4 py-2 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 mb-8">
-            <Sparkles className="w-4 h-4 mr-2" />
-            <span className="text-sm font-medium">KI-gestütztes Thesis-Schreiben</span>
-          </div>
-          
-          <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6">
-            <span className="bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 dark:from-purple-400 dark:via-pink-400 dark:to-blue-400 bg-clip-text text-transparent">
-              Schreibe Deine Thesis
+          {/* Main Hook - Elegant and Stylish */}
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-8 md:mb-12 leading-tight">
+            <span className="text-gray-900 dark:text-gray-100 block mb-2 md:mb-3 font-normal">
+              Immer noch nicht mit deiner
             </span>
-            <br />
-            <span className="text-gray-900 dark:text-white">Mit KI-Präzision</span>
+            <span className="font-mono text-yellow-600 dark:text-yellow-500 inline-block min-h-[1.2em] mb-2 md:mb-3 font-semibold tracking-tight">
+              {displayText}
+              <span className="inline-block w-0.5 h-[0.9em] bg-yellow-600 dark:bg-yellow-500 ml-1.5 animate-pulse align-middle" />
+            </span>
+            <span className="text-gray-900 dark:text-gray-100 block font-normal">
+              angefangen?
+            </span>
           </h1>
-          
-          <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-300 mb-12 max-w-3xl mx-auto">
-            Verwandele Deine Forschung in eine polierte, publikationsreife Thesis. 
-            Angetrieben von moderner KI, LaTeX-Formatierung und akademischer Exzellenz.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
+
+          {/* CTA - Refined and Professional */}
+          <div className="mb-10 md:mb-12">
             <a
               href="/thesis/new"
-              className="group px-8 py-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-semibold text-lg hover:from-purple-700 hover:to-blue-700 transition-all shadow-lg hover:shadow-2xl flex items-center"
+              className="group inline-flex items-center px-8 py-3.5 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium text-base md:text-lg hover:bg-blue-600 dark:hover:bg-blue-500 transition-all shadow-md hover:shadow-lg"
             >
-              Kostenlos starten
+              Dann lass uns loslegen
               <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </a>
-            <a
-              href="#how-it-works"
-              className="px-8 py-4 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-xl font-semibold text-lg border-2 border-gray-200 dark:border-gray-700 hover:border-purple-300 dark:hover:border-purple-600 transition-all"
-            >
-              So funktioniert's
-            </a>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg">
-              <FileText className="w-10 h-10 text-purple-600 dark:text-purple-400 mb-4 mx-auto" />
-              <h3 className="font-semibold text-lg mb-2">LaTeX-Ready</h3>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                Professionell formatierte Dokumente, bereit zur Einreichung
-              </p>
-            </div>
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg">
-              <Zap className="w-10 h-10 text-purple-600 dark:text-purple-400 mb-4 mx-auto" />
-              <h3 className="font-semibold text-lg mb-2">KI-gestützt</h3>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                Moderne KI hilft bei Strukturierung und Verfeinerung Deiner Forschung
-              </p>
-            </div>
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg">
-              <Sparkles className="w-10 h-10 text-purple-600 dark:text-purple-400 mb-4 mx-auto" />
-              <h3 className="font-semibold text-lg mb-2">Zeitsparend</h3>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                Konzentriere Dich auf die Forschung, während die KI Formatierung und Struktur übernimmt
-              </p>
-            </div>
-          </div>
+
+          {/* Clarifier - Subtle and Professional */}
+          <p className="text-lg md:text-xl lg:text-2xl text-gray-600 dark:text-gray-400 font-light leading-relaxed max-w-2xl mx-auto">
+            Vom Thema zum Entwurf in{' '}
+            <span className="text-yellow-600 dark:text-yellow-500 font-medium">Minuten</span> statt{' '}
+            <span className="text-gray-400 dark:text-gray-500 line-through">Wochen</span>
+          </p>
         </div>
       </div>
     </section>

@@ -84,15 +84,15 @@ export function Pricing() {
           {plans.map((plan) => (
             <div
               key={plan.name}
-              className={`relative rounded-2xl p-8 ${
+              className={`relative rounded-2xl p-8 border-2 ${
                 plan.popular
-                  ? 'bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-2xl scale-105'
-                  : 'bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white shadow-lg'
+                  ? 'bg-yellow-600 dark:bg-yellow-700 text-black shadow-2xl scale-105 border-yellow-700 dark:border-yellow-800'
+                  : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-lg border-gray-200 dark:border-gray-700'
               }`}
             >
               {plan.popular && (
                 <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                  <span className="bg-yellow-400 text-gray-900 px-4 py-1 rounded-full text-sm font-semibold flex items-center">
+                  <span className="bg-yellow-500 text-black px-4 py-1 rounded-full text-sm font-semibold flex items-center border-2 border-black">
                     <Sparkles className="w-4 h-4 mr-1" />
                     Beliebtester
                   </span>
@@ -101,13 +101,13 @@ export function Pricing() {
               
               <div className="mb-6">
                 <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
-                <p className={`text-sm mb-4 ${plan.popular ? 'text-purple-100' : 'text-gray-600 dark:text-gray-400'}`}>
+                <p className={`text-sm mb-4 ${plan.popular ? 'text-yellow-100' : 'text-gray-600 dark:text-gray-400'}`}>
                   {plan.description}
                 </p>
                 <div className="flex items-baseline">
                   <span className="text-5xl font-bold">{plan.price}</span>
                   {plan.period && (
-                    <span className={`ml-2 text-lg ${plan.popular ? 'text-purple-100' : 'text-gray-600 dark:text-gray-400'}`}>
+                    <span className={`ml-2 text-lg ${plan.popular ? 'text-yellow-100' : 'text-gray-600 dark:text-gray-400'}`}>
                       {plan.period}
                     </span>
                   )}
@@ -117,8 +117,8 @@ export function Pricing() {
               <ul className="space-y-4 mb-8">
                 {plan.features.map((feature, index) => (
                   <li key={index} className="flex items-start">
-                    <Check className={`w-5 h-5 mr-3 flex-shrink-0 ${plan.popular ? 'text-white' : 'text-purple-600 dark:text-purple-400'}`} />
-                    <span className={plan.popular ? 'text-purple-50' : 'text-gray-700 dark:text-gray-300'}>
+                    <Check className={`w-5 h-5 mr-3 flex-shrink-0 ${plan.popular ? 'text-black' : 'text-yellow-600 dark:text-yellow-500'}`} />
+                    <span className={plan.popular ? 'text-yellow-50' : 'text-gray-700 dark:text-gray-300'}>
                       {feature}
                     </span>
                   </li>
@@ -128,8 +128,8 @@ export function Pricing() {
               <button
                 className={`w-full py-3 rounded-lg font-semibold transition-all ${
                   plan.popular
-                    ? 'bg-white text-purple-600 hover:bg-purple-50'
-                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                    ? 'bg-black dark:bg-white text-white dark:text-black hover:bg-blue-600 dark:hover:bg-blue-500'
+                    : 'bg-black dark:bg-white text-white dark:text-black hover:bg-blue-600 dark:hover:bg-blue-500'
                 }`}
               >
                 Loslegen

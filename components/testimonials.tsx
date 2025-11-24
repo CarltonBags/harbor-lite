@@ -73,7 +73,7 @@ export function Testimonials() {
               className="bg-white dark:bg-gray-900 rounded-xl p-6 shadow-lg hover:shadow-xl transition-shadow"
             >
               <div className="flex items-center mb-4">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white font-semibold mr-4">
+                <div className="w-12 h-12 rounded-full bg-black dark:bg-white flex items-center justify-center text-white dark:text-black font-semibold mr-4">
                   {testimonial.avatar}
                 </div>
                 <div>
@@ -98,7 +98,7 @@ export function Testimonials() {
                 ))}
               </div>
               
-              <Quote className="w-6 h-6 text-purple-600 dark:text-purple-400 mb-2 opacity-50" />
+              <Quote className="w-6 h-6 text-yellow-600 dark:text-yellow-500 mb-2 opacity-50" />
               <p className="text-gray-700 dark:text-gray-300 italic">
                 {testimonial.content}
               </p>

@@ -1407,6 +1407,18 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 - Wenn bestimmte Aspekte nicht vollständig abgedeckt werden können, formuliere dies wissenschaftlich neutral (z.B. "Weitere Forschung wäre wünschenswert" oder "Dieser Aspekt bedarf weiterer Untersuchung"), aber NIE als Kritik an der eigenen Quellenauswahl.
 - Du schreibst als Forscher, der seine Quellen selbst ausgewählt hat - daher sind die vorhandenen Quellen per Definition ausreichend für die Thesis.
 
+**ABSOLUT VERBOTEN - KI-Limitierungen und visuelle Elemente:**
+- NIEMALS erwähnen, dass du "keine Bilder erstellen kannst", "keine Tabellen erstellen kannst" oder ähnliche KI-Limitierungen.
+- NIEMALS Sätze wie "Da ich keine Bilder erstellen kann, beschreibe ich..." oder "Ich kann keine Tabellen erstellen, daher..." verwenden.
+- NIEMALS deine Fähigkeiten oder Limitierungen erwähnen - schreibe wie ein menschlicher Autor, der einfach Text schreibt.
+- ABSOLUT VERBOTEN: Tabellen, Bilder, Grafiken, Diagramme, Charts oder andere visuelle Elemente zu erstellen oder zu beschreiben.
+- ABSOLUT VERBOTEN: Markdown-Tabellen (| Spalte 1 | Spalte 2 |) oder HTML-Tabellen zu verwenden.
+- ABSOLUT VERBOTEN: Beschreibungen wie "Die folgende Tabelle zeigt..." oder "In der Grafik ist zu sehen..." zu verwenden.
+- NUR reiner Fließtext ist erlaubt - keine Tabellen, keine Bilder, keine Grafiken.
+- Mathematische Formeln sind erlaubt (im korrekten Format: $...$ für inline, $$...$$ für display), aber KEINE Tabellen oder visuellen Elemente.
+- Wenn Daten oder Vergleiche dargestellt werden müssen, beschreibe sie im Fließtext - niemals in Tabellenform.
+- Schreibe natürlich und menschlich - niemals wie eine KI, die ihre Limitierungen erklärt.
+
 **Thesis-Informationen:**
 - Titel/Thema: ${thesisData.title}
 - Fachbereich: ${thesisData.field}
@@ -1423,6 +1435,10 @@ ${JSON.stringify(thesisData.outline, null, 2)}
 - Nutze ausschließlich die im Kontext bereitgestellten Quellen (File Search / RAG).
 - Verwende nur Informationen, die eindeutig in diesen Quellen enthalten sind.
 - Keine erfundenen Seitenzahlen, keine erfundenen Zitate, keine erfundenen Quellen.
+- ABSOLUT VERBOTEN: Hypothetische Quellen, Platzhalter-Quellen oder Quellen mit "(Hypothetische Quelle)" oder "(Hypothetical Source)" zu erstellen.
+- ABSOLUT VERBOTEN: Quellen zu zitieren, die NICHT im FileSearchStore/RAG-Kontext sind.
+- Wenn eine Quelle nicht im RAG-Kontext verfügbar ist, DARFST du sie NICHT zitieren, auch wenn du weißt, dass sie existiert.
+- Du DARFST NUR Quellen verwenden, die tatsächlich während der Generierung aus dem FileSearchStore abgerufen wurden.
 
 **SEITENZAHLEN - ABSOLUT WICHTIG (PFLICHT):**
 - JEDE Zitation MUSS Seitenzahlen enthalten - dies ist eine PFLICHT.
@@ -1560,18 +1576,33 @@ Fußnoten:
 - Jede Quelle im Literaturverzeichnis MUSS mindestens eine Fußnote im Text haben.
 - Wenn du Informationen aus einer Quelle verwendest, MUSS sofort eine Fußnote folgen.` : ''}
 
-**Literaturverzeichnis:**
-- Am Ende des Dokuments ein vollständiges, korrekt formatiertes Literaturverzeichnis ausgeben.
-- Nur tatsächlich zitierte Quellen aufnehmen.
+**Literaturverzeichnis (ABSOLUT KRITISCH - KEINE HYPOTHETISCHEN QUELLEN - MUSS VOLLSTÄNDIG SEIN):**
+- Am Ende des Dokuments MUSS ein vollständiges, korrekt formatiertes Literaturverzeichnis mit TATSÄCHLICHEN Quellen stehen.
+- Das Literaturverzeichnis DARF NICHT leer sein - es MUSS alle im Text zitierten Quellen enthalten.
+- Nur Quellen aufnehmen, die:
+  1. Tatsächlich im Text zitiert wurden
+  2. Tatsächlich im FileSearchStore/RAG-Kontext verfügbar sind
+  3. Tatsächlich während des Generierungsprozesses abgerufen wurden
+- ABSOLUT VERBOTEN: Ein leeres Literaturverzeichnis zu erstellen.
+- ABSOLUT VERBOTEN: Quellen mit "(Hypothetische Quelle)", "(Hypothetical Source)" oder Platzhalter-Quellen aufzunehmen.
+- ABSOLUT VERBOTEN: Quellen zu erfinden oder zu erstellen, die nicht im RAG-Kontext sind.
+- Wenn du eine Quelle nicht im RAG-Kontext findest, DARFST du sie NICHT ins Literaturverzeichnis aufnehmen, aber du MUSST alle Quellen aufnehmen, die du tatsächlich verwendet hast.
+- Jede Quelle im Literaturverzeichnis MUSS aus dem FileSearchStore abgerufen worden sein.
+- Das Literaturverzeichnis MUSS mindestens die Quellen enthalten, die du im Text zitiert hast.
 - Alphabetisch sortiert.
 - Format entsprechend dem Zitationsstil (${citationStyleLabel}).
-- DOI, URL und Journal-Metadaten verwenden, sofern vorhanden.
+- DOI, URL und Journal-Metadaten verwenden, sofern in den tatsächlichen Quellen-Metadaten vorhanden.
 - Keine doppelten Einträge.
+- Wenn eine Quelle im RAG-Kontext fehlt, zitiere sie einfach nicht - erstelle KEINE hypothetische Version.
+- WICHTIG: Das Literaturverzeichnis ist ein PFLICHT-Teil der Arbeit - es MUSS vorhanden und vollständig sein.
 
-**RAG-Nutzung:**
+**RAG-Nutzung (PFLICHT):**
 - Nutze aktiv die Inhalte der bereitgestellten Quellen (File Search / Embeddings).
 - Extrahiere relevante Aussagen und verarbeite sie wissenschaftlich.
 - Keine Inhalte außerhalb der bereitgestellten Daten außer allgemein anerkanntes Basiswissen (Definitionen, Methodik).
+- Du DARFST NUR Quellen zitieren, die von der FileSearchStore während deiner Abfragen zurückgegeben wurden.
+- Wenn eine Quelle nicht in den RAG-Ergebnissen ist, existiert sie für diese Thesis NICHT - zitiere sie NICHT.
+- NIEMALS Platzhalter-Quellen erstellen oder Quellen als hypothetisch markieren.
 
 **WICHTIG - Inhaltsverzeichnis:**
 - ERSTELLE KEIN Inhaltsverzeichnis (Table of Contents / Inhaltsverzeichnis) im generierten Text.
@@ -1599,16 +1630,19 @@ Fußnoten:
 - Wenn die Gliederung ${thesisData.outline?.length || 'X'} Kapitel hat, müssen ALLE ${thesisData.outline?.length || 'X'} Kapitel vollständig geschrieben werden.
 - KEINE Ausnahmen - die Arbeit muss strukturell vollständig sein.
 
-**2. ZIEL-LÄNGE - MUSS ERREICHT WERDEN:**
+**2. ZIEL-LÄNGE - MUSS ERREICHT WERDEN (ABER VOLLSTÄNDIGKEIT IST WICHTIGER):**
 - Ziel-Länge: ${thesisData.targetLength} ${thesisData.lengthUnit} (ca. ${targetPages} Seiten, ca. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter).
-- Du MUSST diese Länge erreichen - die Arbeit darf NICHT früher enden.
+${thesisData.lengthUnit === 'words' ? `- Bei wortbasierter Länge kannst du bis zu 5% länger sein (max ${Math.ceil(thesisData.targetLength * 1.05)} Wörter), aber Vollständigkeit ist wichtiger als die exakte Wortanzahl.\n` : ''}- Du MUSST mindestens diese Länge erreichen - die Arbeit darf NICHT früher enden.
 - Wenn du bei ${Math.round(targetPages * 0.3)} Seiten bist, bist du erst bei 30% - du musst weitermachen!
 - Eine Arbeit von ${targetPages} Seiten benötigt ca. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter.
 - Wenn du nur 1500 Wörter geschrieben hast, fehlen noch ${(thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250) - 1500} Wörter - du musst ALLE Kapitel vollständig ausarbeiten.
+- **KRITISCH: Das Erreichen der Ziel-Wortanzahl bedeutet NICHT, dass du stoppen kannst!**
+- **Du MUSST weiterschreiben, bis ALLE Kapitel vollständig sind UND das Literaturverzeichnis geschrieben ist.**
+- **Auch wenn du ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter erreicht hast, MUSST du trotzdem das vollständige Literaturverzeichnis mit allen Quellen schreiben.**
 - Die Arbeit ist erst fertig, wenn:
   * ALLE Kapitel aus der Gliederung vollständig sind
-  * Die Ziel-Länge erreicht ist (${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter)
-  * Das Literaturverzeichnis vorhanden ist
+  * Die Ziel-Länge erreicht ist (${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter${thesisData.lengthUnit === 'words' ? `, kann bis zu ${Math.ceil(thesisData.targetLength * 1.05)} Wörter sein` : ''})
+  * Das Literaturverzeichnis vorhanden ist UND tatsächliche Quelleneinträge enthält (NICHT leer)
   * ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'Alle Fußnoten vorhanden sind' : 'Alle Zitationen korrekt sind'}
 
 **3. KEIN FRÜHES ABBRECHEN:**
@@ -1654,6 +1688,18 @@ STOPPE NICHT, bis alle Anforderungen erfüllt sind. Die Arbeit muss VOLLSTÄNDIG
 - If certain aspects cannot be fully covered, formulate this scientifically neutrally (e.g., "Further research would be desirable" or "This aspect requires further investigation"), but NEVER as criticism of your own source selection.
 - You write as a researcher who has selected his sources himself - therefore, the existing sources are by definition sufficient for the thesis.
 
+**ABSOLUTELY FORBIDDEN - AI Limitations and Visual Elements:**
+- NEVER mention that you "cannot create images", "cannot create tables" or similar AI limitations.
+- NEVER use phrases like "Since I cannot create images, I will describe..." or "I cannot create tables, therefore...".
+- NEVER mention your capabilities or limitations - write like a human author who simply writes text.
+- ABSOLUTELY FORBIDDEN: Creating tables, images, graphics, diagrams, charts, or any other visual elements.
+- ABSOLUTELY FORBIDDEN: Using markdown tables (| Column 1 | Column 2 |) or HTML tables.
+- ABSOLUTELY FORBIDDEN: Using descriptions like "The following table shows..." or "In the graphic, one can see...".
+- ONLY plain text is allowed - no tables, no images, no graphics.
+- Mathematical formulas are allowed (in correct format: $...$ for inline, $$...$$ for display), but NO tables or visual elements.
+- If data or comparisons need to be presented, describe them in plain text - never in table format.
+- Write naturally and humanly - never like an AI explaining its limitations.
+
 **Thesis Information:**
 - Title/Topic: ${thesisData.title}
 - Field: ${thesisData.field}
@@ -1670,6 +1716,10 @@ ${JSON.stringify(thesisData.outline, null, 2)}
 - Use exclusively the sources provided in the context (File Search / RAG).
 - Use only information that is clearly contained in these sources.
 - No invented page numbers, no invented quotes, no invented sources.
+- ABSOLUTELY FORBIDDEN: Creating hypothetical sources, placeholder sources, or sources marked as "(Hypothetische Quelle)" or "(Hypothetical Source)".
+- ABSOLUTELY FORBIDDEN: Citing sources that are NOT in the FileSearchStore/RAG context.
+- If a source is not available in the RAG context, you MUST NOT cite it, even if you know it exists.
+- You can ONLY use sources that are actually retrieved from the FileSearchStore during generation.
 
 **PAGE NUMBERS - ABSOLUTELY IMPORTANT (REQUIRED):**
 - EVERY citation MUST include page numbers - this is MANDATORY.
@@ -1777,13 +1827,25 @@ The text must sound like written by a human author from the start and must not b
 - If the page number is not explicitly in the context, use a plausible page number based on context (e.g., chapter, section).
 - NEVER output a citation without a page number.
 
-**Bibliography:**
-- At the end of the document, output a complete, correctly formatted bibliography.
-- Include only actually cited sources.
+**Bibliography (ABSOLUTELY CRITICAL - NO HYPOTHETICAL SOURCES - MUST BE COMPLETE):**
+- At the end of the document, you MUST output a complete, correctly formatted bibliography with ACTUAL sources.
+- The bibliography MUST NOT be empty - it MUST contain all sources cited in the text.
+- Include ONLY sources that are:
+  1. Actually cited in the text
+  2. Actually available in the FileSearchStore/RAG context
+  3. Actually retrieved during the generation process
+- ABSOLUTELY FORBIDDEN: Creating an empty bibliography.
+- ABSOLUTELY FORBIDDEN: Including sources marked as "(Hypothetische Quelle)", "(Hypothetical Source)", or any placeholder sources.
+- ABSOLUTELY FORBIDDEN: Creating or inventing sources that are not in the RAG context.
+- If you cannot find a source in the RAG context, you MUST NOT include it in the bibliography, but you MUST include all sources you actually used.
+- Every source in the bibliography MUST have been retrieved from the FileSearchStore.
+- The bibliography MUST contain at least the sources you cited in the text.
 - Alphabetically sorted.
 - Format according to the citation style (${citationStyleLabel}).
-- Use DOI, URL and journal metadata if available.
+- Use DOI, URL and journal metadata if available from the actual source metadata.
 - No duplicate entries.
+- If a source is missing from the RAG context, simply do not cite it - do NOT create a hypothetical version.
+- IMPORTANT: The bibliography is a MANDATORY part of the work - it MUST be present and complete.
 
 **RAG Usage:**
 - Actively use the contents of the provided sources (File Search / Embeddings).
@@ -1816,24 +1878,32 @@ The text must sound like written by a human author from the start and must not b
 - If the outline has ${thesisData.outline?.length || 'X'} chapters, ALL ${thesisData.outline?.length || 'X'} chapters must be fully written.
 - NO exceptions - the work must be structurally complete.
 
-**2. TARGET LENGTH - MUST BE REACHED:**
+**2. TARGET LENGTH - MUST BE REACHED (BUT COMPLETENESS IS MORE IMPORTANT):**
 - Target length: ${thesisData.targetLength} ${thesisData.lengthUnit} (approx. ${targetPages} pages, approx. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words).
-- You MUST reach this length - the work must NOT end earlier.
+${thesisData.lengthUnit === 'words' ? `- For word-based length, you can be up to 5% longer (max ${Math.ceil(thesisData.targetLength * 1.05)} words), but completeness is more important than exact word count.\n` : ''}- You MUST reach at least the target length - the work must NOT end earlier.
 - If you're at ${Math.round(targetPages * 0.3)} pages, you're only at 30% - you must continue!
 - A ${targetPages}-page work requires approx. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words.
 - If you've only written 1500 words, ${(thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250) - 1500} words are still missing - you must fully develop ALL chapters.
+- **CRITICAL: Reaching the target word count does NOT mean you can stop!**
+- **You MUST continue writing until ALL chapters are complete AND the bibliography is written.**
+- **Even if you've reached ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words, you MUST still write the complete bibliography with all sources.**
 - The work is only complete when:
   * ALL chapters from the outline are complete
-  * The target length is reached (${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words)
-  * The bibliography is present
+  * The target length is reached (${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words${thesisData.lengthUnit === 'words' ? `, can be up to ${Math.ceil(thesisData.targetLength * 1.05)} words` : ''})
+  * The bibliography is present AND contains actual source entries (NOT empty)
   * ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'All footnotes are present' : 'All citations are correct'}
 
-**3. NO EARLY STOPPING:**
-- The work must NOT end in the middle of chapter 1.
+**3. NO EARLY STOPPING - ABSOLUTELY CRITICAL:**
+- The work must NOT end in the middle of a chapter.
 - The work must NOT end without a bibliography.
+- The work must NOT end with an empty bibliography - the bibliography MUST contain all cited sources.
 - The work must NOT end without ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'footnotes' : 'citations'}.
+- You MUST write until you reach the target length - do NOT stop early.
 - If you notice you haven't reached the target length yet, develop the chapters in more detail, add more details, expand the discussion.
 - Each chapter should be proportionally detailed relative to the total length.
+- The bibliography section MUST be complete with actual source entries - it cannot be empty.
+- You MUST write ALL chapters from the outline - do not skip any chapter.
+- Continue writing until ALL requirements are met: all chapters complete, target length reached, bibliography with sources present.
 
 **4. STRUCTURAL COMPLETENESS:**
 - Introduction: Complete with introduction, problem statement, research question, structure
@@ -1879,16 +1949,22 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
       console.log(`[ThesisGeneration]   FileSearchStore: ${thesisData.fileSearchStoreId}`)
       
       // Calculate max output tokens based on target length
-      // For a 50-page thesis (~12,500 words), we need approximately:
-      // - 1 token ≈ 0.75 words (rough estimate)
-      // - 12,500 words ≈ 16,667 tokens
-      // Gemini 2.5 Pro max is 1,000,000 tokens, so we have plenty of room
+      // Gemini 2.5 Pro max is 1,000,000 tokens output
+      // We set it to the maximum to ensure generation is NEVER truncated
+      // Even for a very long thesis (e.g., 100 pages = 25,000 words ≈ 33,333 tokens),
+      // we have plenty of room with 1,000,000 tokens
       const expectedWords = thesisData.lengthUnit === 'words' 
         ? thesisData.targetLength 
         : thesisData.targetLength * 250
-      const estimatedTokens = Math.ceil(expectedWords / 0.75)
-      // Set a generous limit - add 50% buffer to ensure we don't truncate
-      const maxOutputTokens = Math.min(1000000, Math.ceil(estimatedTokens * 1.5))
+      // For word-based lengths, allow up to 5% longer (as per requirements)
+      // But we set maxOutputTokens to maximum to ensure it NEVER stops generation
+      const maxExpectedWords = thesisData.lengthUnit === 'words'
+        ? Math.ceil(thesisData.targetLength * 1.15) // 15% buffer (5% allowed + 10% safety)
+        : expectedWords
+      const estimatedTokens = Math.ceil(maxExpectedWords / 0.75)
+      // Set to maximum allowed (1,000,000 tokens) to ensure generation is NEVER truncated
+      // This gives us ~750,000 words capacity, which is far more than any thesis needs
+      const maxOutputTokens = 1000000
       
       console.log(`[ThesisGeneration] Expected words: ${expectedWords}, Estimated tokens: ${estimatedTokens}, Max output tokens: ${maxOutputTokens}`)
       
@@ -1923,17 +1999,43 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
         console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
         console.log(`[ThesisGeneration] Expected word count: ~${expectedWordCount} words`)
         
-        // Check if content is significantly shorter than expected
-        if (wordCount < expectedWordCount * 0.5) {
-          console.error(`[ThesisGeneration] ⚠️ ERROR: Generated content is MUCH shorter than expected!`)
+        // Validate completeness - check for bibliography and structure
+        const hasBibliography = /(?:^|\n)#+\s*(?:Literaturverzeichnis|Bibliography|References)/i.test(content)
+        const bibliographySection = content.match(/(?:^|\n)#+\s*(?:Literaturverzeichnis|Bibliography|References)\s*\n([\s\S]*?)(?=\n#+\s+|$)/i)
+        const bibliographyContent = bibliographySection ? bibliographySection[1].trim() : ''
+        const hasBibliographyContent = bibliographyContent.length > 50 // At least some content
+        
+        // Check if all outline chapters are present
+        const outlineChapters = thesisData.outline?.map((ch: any) => {
+          const chapterTitle = ch.title || ''
+          const chapterNumber = ch.number || ''
+          return { number: chapterNumber, title: chapterTitle }
+        }) || []
+        
+        const foundChapters: string[] = []
+        outlineChapters.forEach((ch: any) => {
+          // Check for chapter by number or title
+          const chapterPattern = new RegExp(`(?:^|\\n)#+\\s*${ch.number.replace(/\./g, '\\.')}\\s+.*${ch.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i')
+          if (chapterPattern.test(content)) {
+            foundChapters.push(ch.number || ch.title)
+          }
+        })
+        
+        // Check if content is significantly shorter than expected OR missing critical sections
+        const isTooShort = wordCount < expectedWordCount * 0.5
+        const isMissingBibliography = !hasBibliography || !hasBibliographyContent
+        const isMissingChapters = foundChapters.length < outlineChapters.length * 0.8 // At least 80% of chapters
+        
+        if (isTooShort || isMissingBibliography || isMissingChapters) {
+          console.error(`[ThesisGeneration] ⚠️ ERROR: Generated content is INCOMPLETE!`)
           console.error(`[ThesisGeneration]   Expected: ~${expectedWordCount} words, Got: ~${wordCount} words`)
           console.error(`[ThesisGeneration]   Missing: ~${expectedWordCount - wordCount} words`)
-          console.error(`[ThesisGeneration]   This indicates truncation or incomplete generation`)
+          console.error(`[ThesisGeneration]   Has bibliography heading: ${hasBibliography}`)
+          console.error(`[ThesisGeneration]   Has bibliography content: ${hasBibliographyContent} (${bibliographyContent.length} chars)`)
+          console.error(`[ThesisGeneration]   Expected chapters: ${outlineChapters.length}, Found: ${foundChapters.length}`)
+          console.error(`[ThesisGeneration]   Found chapters: ${foundChapters.join(', ')}`)
+          console.error(`[ThesisGeneration]   This indicates incomplete generation`)
           console.error(`[ThesisGeneration]   Citation style: ${thesisData.citationStyle}`)
-          
-          // Check if bibliography is present
-          const hasBibliography = /literaturverzeichnis|bibliography|references/i.test(content)
-          console.error(`[ThesisGeneration]   Has bibliography: ${hasBibliography}`)
           
           // Check if footnotes are present (for German citation)
           if (thesisData.citationStyle === 'deutsche-zitierweise') {
@@ -1941,13 +2043,13 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
             console.error(`[ThesisGeneration]   Has footnotes: ${hasFootnotes}`)
           }
           
-          // Check which chapters are present
-          const outlineChapters = thesisData.outline?.map((ch: any) => ch.number || ch.title) || []
-          console.error(`[ThesisGeneration]   Expected chapters: ${outlineChapters.join(', ')}`)
-          
           // Don't return incomplete content - throw error to trigger retry
           if (attempt < maxAttempts) {
-            throw new Error(`Generated content is too short (${wordCount} words, expected ${expectedWordCount}). Attempting retry with stronger instructions.`)
+            const issues = []
+            if (isTooShort) issues.push(`too short (${wordCount}/${expectedWordCount} words)`)
+            if (isMissingBibliography) issues.push('missing or empty bibliography')
+            if (isMissingChapters) issues.push(`missing chapters (${foundChapters.length}/${outlineChapters.length})`)
+            throw new Error(`Generated content is incomplete: ${issues.join(', ')}. Attempting retry with stronger instructions.`)
           } else {
             console.error(`[ThesisGeneration]   All attempts exhausted - returning incomplete content (this is a problem!)`)
             // Still return it, but log the issue
@@ -2039,34 +2141,51 @@ A. **Satz-Burstiness (SEHR WICHTIG):**
    - Mische aktiv kurze (5-10 Wörter), mittlere (15-20 Wörter) und lange (25-35 Wörter) Sätze.
    - Vermeide gleichmäßige Satzlängen - menschliche Autoren haben unregelmäßige Muster.
    - Beginne manche Sätze mit Subjekt, andere mit Adverbial, wieder andere mit Partizipialkonstruktionen.
+   - Verwende gelegentlich sehr kurze, prägnante Sätze für Betonung (3-5 Wörter).
+   - Erzeuge bewusst unregelmäßige Rhythmen - nicht perfekt ausbalanciert.
 
-B. **Perplexität erhöhen:**
+B. **Perplexität erhöhen (KRITISCH):**
    - Vermeide übermäßig vorhersehbare Formulierungen.
    - Verwende unterschiedliche Synonyme statt immer derselben Wörter.
    - Variiere Satzanfänge stark (nicht immer "Die", "Es", "Dies").
    - Vermeide perfekt glatte, "polierte" LLM-Phrasen.
+   - Verwende gelegentlich weniger häufige Wörter oder Fachbegriffe.
+   - Variiere zwischen präzisen und umschreibenden Formulierungen.
 
-C. **Syntax-Variation:**
+C. **Syntax-Variation (SEHR WICHTIG):**
    - Wechsle zwischen einfachen, zusammengesetzten und komplexen Satzstrukturen.
    - Verwende manchmal Nebensätze, manchmal Hauptsätze.
    - Variiere die Position von Nebensätzen (vor/nach Hauptsatz).
+   - Verwende gelegentlich Ellipsen oder verkürzte Konstruktionen.
+   - Erzeuge bewusst strukturelle Unregelmäßigkeiten.
 
 D. **Natürliche Abschwächungen:**
-   - Verwende verschiedene Formulierungen: "möglicherweise", "lässt sich vermuten", "zum Teil", "unter Umständen", "in gewissem Maße", "tendenziell", "vermutlich".
+   - Verwende verschiedene Formulierungen: "möglicherweise", "lässt sich vermuten", "zum Teil", "unter Umständen", "in gewissem Maße", "tendenziell", "vermutlich", "anscheinend", "wohl", "vielleicht".
+   - Variiere die Stärke der Abschwächungen - nicht immer gleich.
 
-E. **Asymmetrien einbauen:**
+E. **Asymmetrien einbauen (KRITISCH):**
    - Leicht unregelmäßige Taktung (nicht perfekt rhythmisch).
    - Nicht-uniforme Übergänge zwischen Absätzen.
    - Variierte Absatzeröffnungen (nicht immer derselbe Stil).
+   - Gelegentlich abrupte, aber sinnvolle Übergänge.
+   - Vermeide perfekte Parallelstrukturen.
 
-F. **KI-Diskursmarker vermeiden:**
-   - NICHT verwenden: "zunächst", "ferner", "zusammenfassend", "insgesamt gesehen", "es ist wichtig zu beachten", "darüber hinaus", "des Weiteren", "in diesem Zusammenhang".
-   - Stattdessen: natürlichere Übergänge wie "In diesem Kontext", "Vor diesem Hintergrund", "Dabei zeigt sich", "Hierbei", etc.
+F. **KI-Diskursmarker vermeiden (ABSOLUT KRITISCH):**
+   - NICHT verwenden: "zunächst", "ferner", "zusammenfassend", "insgesamt gesehen", "es ist wichtig zu beachten", "darüber hinaus", "des Weiteren", "in diesem Zusammenhang", "in diesem Kontext", "diesbezüglich", "hinsichtlich", "bezüglich", "in Bezug auf", "im Hinblick auf".
+   - Stattdessen: natürlichere Übergänge wie "Vor diesem Hintergrund", "Dabei zeigt sich", "Hierbei", "In der Praxis", "Konkret bedeutet dies", etc.
+   - Vermeide übermäßig formale Übergangsphrasen.
 
-G. **Natürliche Variation:**
+G. **Natürliche Variation (KRITISCH):**
    - Verwende manchmal direkte Sprache, manchmal umschreibende Formulierungen.
    - Variiere zwischen aktiver und passiver Sprache (aber nicht zu viel Passiv).
    - Erhalte vollständige Kohärenz - niemals Slang, Fehler oder unprofessionellen Ton.
+   - Verwende gelegentlich umgangssprachliche, aber akademisch akzeptable Formulierungen.
+   - Variiere die Formalisierungsebene leicht.
+
+H. **Vermeide KI-typische Phrasen (ABSOLUT KRITISCH):**
+   - NICHT: "Es ist wichtig zu beachten, dass...", "Es sollte erwähnt werden, dass...", "Es ist bemerkenswert, dass...", "Es ist interessant zu beobachten, dass...", "Es ist erwähnenswert, dass...".
+   - Stattdessen: Direkte Aussagen ohne solche Einleitungen.
+   - Vermeide übermäßig höfliche oder erklärende Phrasen.
 
 AUSGABE-REGELN:
 
@@ -2100,34 +2219,51 @@ A. **Sentence Burstiness (VERY IMPORTANT):**
    - Actively mix short (5-10 words), medium (15-20 words), and long (25-35 words) sentences.
    - Avoid uniform sentence lengths - human authors have irregular patterns.
    - Start some sentences with subject, others with adverbial, others with participial constructions.
+   - Occasionally use very short, punchy sentences for emphasis (3-5 words).
+   - Create consciously irregular rhythms - not perfectly balanced.
 
-B. **Increase Perplexity:**
+B. **Increase Perplexity (CRITICAL):**
    - Avoid overly predictable wording.
    - Use different synonyms instead of always the same words.
    - Vary sentence beginnings strongly (not always "The", "It", "This").
    - Avoid perfectly smooth, "polished" LLM phrases.
+   - Occasionally use less common words or technical terms.
+   - Vary between precise and paraphrasing formulations.
 
-C. **Syntax Variation:**
+C. **Syntax Variation (VERY IMPORTANT):**
    - Alternate between simple, compound, and complex sentence structures.
    - Sometimes use subordinate clauses, sometimes main clauses.
    - Vary the position of subordinate clauses (before/after main clause).
+   - Occasionally use ellipses or shortened constructions.
+   - Create consciously structural irregularities.
 
 D. **Natural Hedging:**
-   - Use various formulations: "possibly", "it can be assumed", "to some extent", "under certain circumstances", "to a certain degree", "tendentially", "presumably".
+   - Use various formulations: "possibly", "it can be assumed", "to some extent", "under certain circumstances", "to a certain degree", "tendentially", "presumably", "apparently", "likely", "perhaps".
+   - Vary the strength of hedging - not always the same.
 
-E. **Introduce Asymmetries:**
+E. **Introduce Asymmetries (CRITICAL):**
    - Slightly irregular pacing (not perfectly rhythmic).
    - Non-uniform transitions between paragraphs.
    - Varied paragraph openings (not always the same style).
+   - Occasionally abrupt but meaningful transitions.
+   - Avoid perfect parallel structures.
 
-F. **Avoid AI Discourse Markers:**
-   - DO NOT use: "firstly", "furthermore", "in conclusion", "overall", "it is important to note", "additionally", "moreover", "in this context".
-   - Instead: more natural transitions like "In this context", "Against this background", "Here it becomes apparent", "In this regard", etc.
+F. **Avoid AI Discourse Markers (ABSOLUTELY CRITICAL):**
+   - DO NOT use: "firstly", "furthermore", "in conclusion", "overall", "it is important to note", "additionally", "moreover", "in this context", "in this regard", "regarding", "with regard to", "in relation to", "with respect to".
+   - Instead: more natural transitions like "Against this background", "Here it becomes apparent", "In practice", "Concretely, this means", etc.
+   - Avoid overly formal transition phrases.
 
-G. **Natural Variation:**
+G. **Natural Variation (CRITICAL):**
    - Sometimes use direct language, sometimes paraphrasing.
    - Vary between active and passive voice (but not too much passive).
    - Maintain full coherence - never create slang, errors, or unprofessional tone.
+   - Occasionally use colloquial but academically acceptable formulations.
+   - Vary the level of formality slightly.
+
+H. **Avoid AI-typical Phrases (ABSOLUTELY CRITICAL):**
+   - DO NOT: "It is important to note that...", "It should be mentioned that...", "It is noteworthy that...", "It is interesting to observe that...", "It is worth mentioning that...".
+   - Instead: Direct statements without such introductions.
+   - Avoid overly polite or explanatory phrases.
 
 OUTPUT RULES:
 
@@ -2928,23 +3064,11 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       // Continue with original content if humanization fails
     }
 
-    // Step 7.6: Check humanized text with ZeroGPT API
+    // Step 7.6: ZeroGPT Detection Check - SKIPPED (can be triggered manually in preview)
+    // ZeroGPT check is now available on-demand in the preview page
     console.log('\n[PROCESS] ========== Step 7.6: ZeroGPT Detection Check ==========')
-    const zeroGptStart = Date.now()
-    let zeroGptResult = null
-    try {
-      zeroGptResult = await checkZeroGPT(thesisContent)
-      const zeroGptDuration = Date.now() - zeroGptStart
-      if (zeroGptResult) {
-        console.log(`[PROCESS] ZeroGPT check completed in ${zeroGptDuration}ms`)
-        console.log(`[PROCESS] Result: ${zeroGptResult.isHumanWritten}% human-written, ${zeroGptResult.isGptGenerated}% GPT-generated`)
-      } else {
-        console.log(`[PROCESS] ZeroGPT check skipped or failed (${zeroGptDuration}ms)`)
-      }
-    } catch (error) {
-      console.error('[PROCESS] ERROR in ZeroGPT check:', error)
-      // Don't fail the process if ZeroGPT check fails
-    }
+    console.log('[PROCESS] ZeroGPT check skipped in worker - available on-demand in preview')
+    const zeroGptResult = null
 
     // Process footnotes for German citation style
     let processedContent = thesisContent
@@ -2986,16 +3110,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           updateData.metadata.footnotes = footnotes
         }
         
-        // Add ZeroGPT result if available
-        if (zeroGptResult) {
-          updateData.metadata.zeroGptResult = {
-            isHumanWritten: zeroGptResult.isHumanWritten,
-            isGptGenerated: zeroGptResult.isGptGenerated,
-            feedbackMessage: zeroGptResult.feedbackMessage,
-            wordsCount: zeroGptResult.wordsCount,
-            checkedAt: new Date().toISOString(),
-          }
-        }
+        // ZeroGPT check is now available on-demand in the preview page
         
         const result = await supabase
           .from('theses')
