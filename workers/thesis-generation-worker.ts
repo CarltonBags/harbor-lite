@@ -1558,7 +1558,9 @@ ${thesisData.citationStyle === 'deutsche-zitierweise' ? `
   [^1]: Autor, Vorname. Titel. Ort: Verlag, Jahr, S. XX.
   [^2]: Autor, Vorname. "Artikel-Titel." Zeitschrift, Jahr, S. XX-YY.
   
-- Jede Quelle bekommt eine fortlaufende Nummer (1, 2, 3, 4, ...) in der Reihenfolge, wie sie im Text erscheinen.
+- Jede Fußnote bekommt eine fortlaufende Nummer (1, 2, 3, 4, ...) in der Reihenfolge, wie sie im Text erscheinen.
+- WICHTIG: Die Fußnoten-Nummern sind ZÄHLNUMMERN, keine Quellen-IDs. Jede neue Fußnote im Text bekommt die nächste fortlaufende Nummer, unabhängig davon, welche Quelle zitiert wird.
+- Beispiel: Wenn Quelle A zuerst zitiert wird → ^1, dann Quelle B → ^2, dann Quelle A wieder → ^3 (NICHT ^1!).
 - Die Fußnoten müssen vollständig sein: Autor, Titel, Jahr, Seitenzahl (PFLICHT - immer angeben), Verlag/Journal.
 - JEDE Fußnote MUSS eine Seitenzahl enthalten - Seitenzahlen sind PFLICHT.
 
@@ -1576,25 +1578,30 @@ Fußnoten:
 - Jede Quelle im Literaturverzeichnis MUSS mindestens eine Fußnote im Text haben.
 - Wenn du Informationen aus einer Quelle verwendest, MUSS sofort eine Fußnote folgen.` : ''}
 
-**Literaturverzeichnis (ABSOLUT KRITISCH - KEINE HYPOTHETISCHEN QUELLEN - MUSS VOLLSTÄNDIG SEIN):**
+**Literaturverzeichnis (ABSOLUT KRITISCH - NUR ZITIERTE QUELLEN - KEINE UNZITIERTEN QUELLEN):**
 - Am Ende des Dokuments MUSS ein vollständiges, korrekt formatiertes Literaturverzeichnis mit TATSÄCHLICHEN Quellen stehen.
-- Das Literaturverzeichnis DARF NICHT leer sein - es MUSS alle im Text zitierten Quellen enthalten.
+- ABSOLUT KRITISCH: Das Literaturverzeichnis darf NUR Quellen enthalten, die TATSÄCHLICH im Text mit einer Fußnote zitiert wurden.
+- ABSOLUT VERBOTEN: Quellen ins Literaturverzeichnis aufzunehmen, die NICHT im Text zitiert wurden.
+- ABSOLUT VERBOTEN: Quellen ins Literaturverzeichnis aufzunehmen, die keine Fußnote im Text haben.
 - Nur Quellen aufnehmen, die:
-  1. Tatsächlich im Text zitiert wurden
+  1. Tatsächlich im Text mit einer Fußnote (^1, ^2, etc.) zitiert wurden
   2. Tatsächlich im FileSearchStore/RAG-Kontext verfügbar sind
   3. Tatsächlich während des Generierungsprozesses abgerufen wurden
+- Das Literaturverzeichnis MUSS alle im Text zitierten Quellen enthalten (keine darf fehlen).
+- Das Literaturverzeichnis DARF KEINE Quellen enthalten, die nicht im Text zitiert wurden.
 - ABSOLUT VERBOTEN: Ein leeres Literaturverzeichnis zu erstellen.
 - ABSOLUT VERBOTEN: Quellen mit "(Hypothetische Quelle)", "(Hypothetical Source)" oder Platzhalter-Quellen aufzunehmen.
 - ABSOLUT VERBOTEN: Quellen zu erfinden oder zu erstellen, die nicht im RAG-Kontext sind.
-- Wenn du eine Quelle nicht im RAG-Kontext findest, DARFST du sie NICHT ins Literaturverzeichnis aufnehmen, aber du MUSST alle Quellen aufnehmen, die du tatsächlich verwendet hast.
-- Jede Quelle im Literaturverzeichnis MUSS aus dem FileSearchStore abgerufen worden sein.
-- Das Literaturverzeichnis MUSS mindestens die Quellen enthalten, die du im Text zitiert hast.
+- Wenn du eine Quelle nicht im RAG-Kontext findest, DARFST du sie NICHT ins Literaturverzeichnis aufnehmen, aber du MUSST alle Quellen aufnehmen, die du tatsächlich mit Fußnoten zitiert hast.
+- Jede Quelle im Literaturverzeichnis MUSS:
+  * Aus dem FileSearchStore abgerufen worden sein
+  * Mindestens einmal im Text mit einer Fußnote zitiert worden sein
 - Alphabetisch sortiert.
 - Format entsprechend dem Zitationsstil (${citationStyleLabel}).
 - DOI, URL und Journal-Metadaten verwenden, sofern in den tatsächlichen Quellen-Metadaten vorhanden.
 - Keine doppelten Einträge.
 - Wenn eine Quelle im RAG-Kontext fehlt, zitiere sie einfach nicht - erstelle KEINE hypothetische Version.
-- WICHTIG: Das Literaturverzeichnis ist ein PFLICHT-Teil der Arbeit - es MUSS vorhanden und vollständig sein.
+- WICHTIG: Das Literaturverzeichnis ist ein PFLICHT-Teil der Arbeit - es MUSS vorhanden sein und NUR zitierten Quellen enthalten.
 
 **RAG-Nutzung (PFLICHT):**
 - Nutze aktiv die Inhalte der bereitgestellten Quellen (File Search / Embeddings).
@@ -1827,25 +1834,30 @@ The text must sound like written by a human author from the start and must not b
 - If the page number is not explicitly in the context, use a plausible page number based on context (e.g., chapter, section).
 - NEVER output a citation without a page number.
 
-**Bibliography (ABSOLUTELY CRITICAL - NO HYPOTHETICAL SOURCES - MUST BE COMPLETE):**
+**Bibliography (ABSOLUTELY CRITICAL - ONLY CITED SOURCES - NO UNCITED SOURCES):**
 - At the end of the document, you MUST output a complete, correctly formatted bibliography with ACTUAL sources.
-- The bibliography MUST NOT be empty - it MUST contain all sources cited in the text.
+- ABSOLUTELY CRITICAL: The bibliography may ONLY contain sources that were ACTUALLY cited in the text with a footnote (^1, ^2, etc.).
+- ABSOLUTELY FORBIDDEN: Including sources in the bibliography that were NOT cited in the text.
+- ABSOLUTELY FORBIDDEN: Including sources in the bibliography that do not have a footnote in the text.
 - Include ONLY sources that are:
-  1. Actually cited in the text
+  1. Actually cited in the text with a footnote (^1, ^2, etc.)
   2. Actually available in the FileSearchStore/RAG context
   3. Actually retrieved during the generation process
+- The bibliography MUST contain all sources cited in the text (none may be missing).
+- The bibliography MUST NOT contain any sources that were not cited in the text.
 - ABSOLUTELY FORBIDDEN: Creating an empty bibliography.
 - ABSOLUTELY FORBIDDEN: Including sources marked as "(Hypothetische Quelle)", "(Hypothetical Source)", or any placeholder sources.
 - ABSOLUTELY FORBIDDEN: Creating or inventing sources that are not in the RAG context.
-- If you cannot find a source in the RAG context, you MUST NOT include it in the bibliography, but you MUST include all sources you actually used.
-- Every source in the bibliography MUST have been retrieved from the FileSearchStore.
-- The bibliography MUST contain at least the sources you cited in the text.
+- If you cannot find a source in the RAG context, you MUST NOT include it in the bibliography, but you MUST include all sources you actually cited with footnotes.
+- Every source in the bibliography MUST:
+  * Have been retrieved from the FileSearchStore
+  * Have been cited at least once in the text with a footnote
 - Alphabetically sorted.
 - Format according to the citation style (${citationStyleLabel}).
 - Use DOI, URL and journal metadata if available from the actual source metadata.
 - No duplicate entries.
 - If a source is missing from the RAG context, simply do not cite it - do NOT create a hypothetical version.
-- IMPORTANT: The bibliography is a MANDATORY part of the work - it MUST be present and complete.
+- IMPORTANT: The bibliography is a MANDATORY part of the work - it MUST be present and contain ONLY cited sources.
 
 **RAG Usage:**
 - Actively use the contents of the provided sources (File Search / Embeddings).
@@ -2469,8 +2481,9 @@ async function checkZeroGPT(content: string): Promise<{
 
 /**
  * Extract and process footnotes from German citation style text
- * Normalizes footnote numbering so the same source always gets the same number
- * Returns content with footnote markers replaced and a footnotes object
+ * Footnotes are numbered sequentially (1, 2, 3, ...) based on order of appearance in text
+ * NOT based on source identity - each citation gets the next sequential number
+ * Returns content with footnote markers and a footnotes object
  */
 function extractAndProcessFootnotes(content: string): { content: string; footnotes: Record<number, string> } {
   // Step 1: Extract all markdown-style footnotes [^N]: citation
@@ -2485,73 +2498,60 @@ function extractAndProcessFootnotes(content: string): { content: string; footnot
   // Step 2: Replace all footnote references in text with ^N format
   processedContent = processedContent.replace(/\[\^(\d+)\]/g, '^$1')
   
-  // Step 3: Find all unique citations and group by source
-  // Extract author, year, title from citations to identify unique sources
-  const sourceMap = new Map<string, number>() // citation text -> footnote number
-  const normalizedFootnotes: Record<number, string> = {}
-  let nextFootnoteNumber = 1
-  
-  // Helper to extract source identifier from citation (author + year, or first few words)
-  const getSourceKey = (citation: string): string => {
-    // Try to extract author and year: "Müller, J. (2023)" or "Müller 2023" or "Müller, 2023"
-    const authorYearMatch = citation.match(/([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ]\.?)?(?:\s+et\s+al\.?)?)[,.\s]+\(?(\d{4})\)?/i)
-    if (authorYearMatch) {
-      const author = authorYearMatch[1].trim().toLowerCase()
-      const year = authorYearMatch[2]
-      return `${author}_${year}`
-    }
-    
-    // Fallback: use first 50 characters as key
-    return citation.substring(0, 50).toLowerCase().trim()
+  // Step 3: Find all footnote markers in text in order of appearance
+  // This gives us the sequential order of citations
+  const footnoteMarkers: Array<{ position: number; originalNum: number }> = []
+  const footnoteRegex = /\^(\d+)/g
+  let match
+  while ((match = footnoteRegex.exec(processedContent)) !== null) {
+    const originalNum = parseInt(match[1], 10)
+    footnoteMarkers.push({
+      position: match.index,
+      originalNum: originalNum
+    })
   }
   
-  // Step 4: Process all extracted footnotes and assign running numbers
-  const sortedFootnotes = Array.from(extractedFootnotes.entries()).sort((a, b) => a[0] - b[0])
+  // Step 4: Create sequential numbering based on order of appearance
+  // Each citation occurrence gets the next sequential number (1, 2, 3, ...)
+  // Even if the same source is cited multiple times, each occurrence gets a new number
+  const sequentialFootnotes: Record<number, string> = {}
+  const markerToSequential: Map<number, number> = new Map() // marker index -> sequential number
+  let nextSequentialNumber = 1
   
-  for (const [originalNum, citation] of sortedFootnotes) {
-    const sourceKey = getSourceKey(citation)
+  // Process footnotes in order of appearance in text
+  // Each occurrence gets the next sequential number, regardless of source
+  for (let i = 0; i < footnoteMarkers.length; i++) {
+    const marker = footnoteMarkers[i]
+    const originalNum = marker.originalNum
+    const citation = extractedFootnotes.get(originalNum)
     
-    // If we've seen this source before, reuse its number
-    if (sourceMap.has(sourceKey)) {
-      const existingNum = sourceMap.get(sourceKey)!
-      // Don't add duplicate, but keep the first occurrence
-      continue
-    }
-    
-    // New source - assign next number
-    const newNum = nextFootnoteNumber++
-    sourceMap.set(sourceKey, newNum)
-    normalizedFootnotes[newNum] = citation
-  }
-  
-  // Step 5: Replace all footnote markers in text with normalized numbers
-  // We need to map old numbers to new numbers
-  const numberMapping = new Map<number, number>()
-  
-  // Build mapping: for each original footnote number, find which source it belongs to
-  for (const [originalNum, citation] of sortedFootnotes) {
-    const sourceKey = getSourceKey(citation)
-    if (sourceMap.has(sourceKey)) {
-      const normalizedNum = sourceMap.get(sourceKey)!
-      numberMapping.set(originalNum, normalizedNum)
+    if (citation) {
+      // Assign the next sequential number to this citation occurrence
+      const sequentialNum = nextSequentialNumber++
+      markerToSequential.set(i, sequentialNum)
+      sequentialFootnotes[sequentialNum] = citation
     }
   }
   
-  // Replace all ^N markers with normalized numbers
+  // Step 5: Replace all ^N markers with sequential numbers based on order
+  // We need to replace them in order, so we track which one we're on
+  let currentMarkerIndex = 0
   processedContent = processedContent.replace(/\^(\d+)/g, (match, numStr) => {
-    const originalNum = parseInt(numStr, 10)
-    const normalizedNum = numberMapping.get(originalNum)
-    if (normalizedNum) {
-      return `^${normalizedNum}`
+    if (currentMarkerIndex < footnoteMarkers.length) {
+      const sequentialNum = markerToSequential.get(currentMarkerIndex)
+      currentMarkerIndex++
+      if (sequentialNum) {
+        return `^${sequentialNum}`
+      }
     }
-    // If no mapping found, keep original (shouldn't happen, but safety)
+    // Fallback: keep original
     return match
   })
   
-  console.log(`[Footnotes] Normalized ${extractedFootnotes.size} footnotes to ${Object.keys(normalizedFootnotes).length} unique sources`)
-  console.log(`[Footnotes] Number mapping: ${Array.from(numberMapping.entries()).slice(0, 10).map(([old, new_]) => `${old}→${new_}`).join(', ')}${numberMapping.size > 10 ? '...' : ''}`)
+  console.log(`[Footnotes] Processed ${footnoteMarkers.length} footnote markers into ${Object.keys(sequentialFootnotes).length} sequential footnotes`)
+  console.log(`[Footnotes] Sequential numbering: ${Array.from(Object.keys(sequentialFootnotes).map(n => parseInt(n, 10)).sort((a, b) => a - b).slice(0, 10).join(', '))}${Object.keys(sequentialFootnotes).length > 10 ? '...' : ''}`)
   
-  return { content: processedContent.trim(), footnotes: normalizedFootnotes }
+  return { content: processedContent.trim(), footnotes: sequentialFootnotes }
 }
 
 /**
