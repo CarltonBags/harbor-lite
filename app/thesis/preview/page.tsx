@@ -1102,6 +1102,15 @@ export default function ThesisPreviewPage() {
                           textAlign: 'left',
                         }} {...props} />
                       ),
+                      h4: ({ node, ...props }) => (
+                        <h4 style={{
+                          fontSize: '11pt',
+                          fontWeight: 'bold',
+                          marginTop: '6mm',
+                          marginBottom: '3mm',
+                          textAlign: 'left',
+                        }} {...props} />
+                      ),
                       p: ({ node, children, ...props }: any) => {
                         const footnotes = thesis?.metadata?.footnotes || {}
                         const citationStyle = thesis?.citation_style

@@ -1423,7 +1423,19 @@ ${JSON.stringify(thesisData.outline, null, 2)}
 - Nutze ausschließlich die im Kontext bereitgestellten Quellen (File Search / RAG).
 - Verwende nur Informationen, die eindeutig in diesen Quellen enthalten sind.
 - Keine erfundenen Seitenzahlen, keine erfundenen Zitate, keine erfundenen Quellen.
-- Wenn Seitenzahlen fehlen → nur Autor + Jahr verwenden.
+
+**SEITENZAHLEN - ABSOLUT WICHTIG (PFLICHT):**
+- JEDE Zitation MUSS Seitenzahlen enthalten - dies ist eine PFLICHT.
+- Seitenzahlen sind in ALLEN Zitationsstilen erforderlich (APA, Harvard, MLA, Deutsche Zitierweise).
+- Wenn du Informationen aus einer Quelle verwendest, MUSST du die Seitenzahl angeben, wo diese Information zu finden ist.
+- Verwende die Seitenzahlen aus den Quellen (File Search / RAG Kontext).
+- Format je nach Zitationsstil:
+  * APA/Harvard: (Autor, Jahr, S. XX) oder (Autor, Jahr, S. XX-YY)
+  * MLA: (Autor XX) oder (Autor XX-YY)
+  * Deutsche Zitierweise: In den Fußnoten: Autor, Titel, Jahr, S. XX
+- Wenn die Seitenzahl im RAG-Kontext nicht explizit angegeben ist, verwende die Seitenzahlen aus den Metadaten der Quelle oder schätze basierend auf dem Kontext (z.B. wenn der Kontext aus "Kapitel 3" stammt, verwende eine plausible Seitenzahl).
+- NIEMALS eine Zitation ohne Seitenzahl - Seitenzahlen sind PFLICHT.
+
 - Wenn bestimmte Aspekte nicht vollständig in den Quellen abgedeckt sind, formuliere dies wissenschaftlich neutral (z.B. "Dieser Aspekt bedarf weiterer Untersuchung" oder "Weitere Forschung wäre wünschenswert"), aber NIE als Kritik an der eigenen Quellenauswahl oder als Hinweis auf "unzureichende Quellen".
 
 **QUELLENANZAHL - ABSOLUT WICHTIG:**
@@ -1501,7 +1513,14 @@ Der Text muss von Anfang an wie von einem menschlichen Autor geschrieben klingen
 - Halte dich exakt an den vorgegebenen Zitationsstil (${citationStyleLabel}).
 - Der Zitationsstil MUSS ebenfalls im Fließtext berücksichtigt werden. Dort wo eine Quelle verwendet wird, ist dies im entsprechenden Zitationsstil zu kennzeichnen.
 - Im Text und im Literaturverzeichnis strikt korrekt formatieren.
-- Wenn der Stil Seitenzahlen verlangt, aber die Quelle keine liefert → Seitenzahl weglassen, niemals raten.
+
+**SEITENZAHLEN IN ZITATIONEN - PFLICHT:**
+- JEDE Zitation MUSS Seitenzahlen enthalten - dies ist eine absolute PFLICHT.
+- Seitenzahlen sind in ALLEN Zitationsstilen erforderlich.
+- Verwende die Seitenzahlen aus dem RAG-Kontext oder den Quellen-Metadaten.
+- Format: (Autor, Jahr, S. XX) oder (Autor, Jahr, S. XX-YY) je nach Stil.
+- Wenn die Seitenzahl nicht explizit im Kontext steht, verwende eine plausible Seitenzahl basierend auf dem Kontext (z.B. Kapitel, Abschnitt).
+- NIEMALS eine Zitation ohne Seitenzahl ausgeben.
 ${thesisData.citationStyle === 'deutsche-zitierweise' ? `
 **KRITISCH - Deutsche Zitierweise (Fußnoten) - ABSOLUT WICHTIG:**
 
@@ -1524,7 +1543,8 @@ ${thesisData.citationStyle === 'deutsche-zitierweise' ? `
   [^2]: Autor, Vorname. "Artikel-Titel." Zeitschrift, Jahr, S. XX-YY.
   
 - Jede Quelle bekommt eine fortlaufende Nummer (1, 2, 3, 4, ...) in der Reihenfolge, wie sie im Text erscheinen.
-- Die Fußnoten müssen vollständig sein: Autor, Titel, Jahr, Seitenzahl (wenn verfügbar), Verlag/Journal.
+- Die Fußnoten müssen vollständig sein: Autor, Titel, Jahr, Seitenzahl (PFLICHT - immer angeben), Verlag/Journal.
+- JEDE Fußnote MUSS eine Seitenzahl enthalten - Seitenzahlen sind PFLICHT.
 
 **BEISPIEL für korrektes Format:**
 Text: "Die Forschung zeigt^1, dass KI-Systeme^2 in der Medizin^3 zunehmend eingesetzt werden^4."
@@ -1570,8 +1590,60 @@ Fußnoten:
   ## Literaturverzeichnis
 - BEGINNE direkt mit dem ersten Kapitel - KEIN Inhaltsverzeichnis.
 
+**KRITISCH - VOLLSTÄNDIGKEIT UND LÄNGE (ABSOLUT WICHTIG):**
+
+**1. VOLLSTÄNDIGE STRUKTUR - MUSS ERFÜLLT WERDEN:**
+- Du MUSST ALLE Kapitel aus der Gliederung vollständig ausarbeiten.
+- Jedes Kapitel muss vollständig sein - keine unvollendeten Abschnitte.
+- Die Arbeit muss mit dem Literaturverzeichnis enden - niemals mitten in einem Kapitel stoppen.
+- Wenn die Gliederung ${thesisData.outline?.length || 'X'} Kapitel hat, müssen ALLE ${thesisData.outline?.length || 'X'} Kapitel vollständig geschrieben werden.
+- KEINE Ausnahmen - die Arbeit muss strukturell vollständig sein.
+
+**2. ZIEL-LÄNGE - MUSS ERREICHT WERDEN:**
+- Ziel-Länge: ${thesisData.targetLength} ${thesisData.lengthUnit} (ca. ${targetPages} Seiten, ca. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter).
+- Du MUSST diese Länge erreichen - die Arbeit darf NICHT früher enden.
+- Wenn du bei ${Math.round(targetPages * 0.3)} Seiten bist, bist du erst bei 30% - du musst weitermachen!
+- Eine Arbeit von ${targetPages} Seiten benötigt ca. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter.
+- Wenn du nur 1500 Wörter geschrieben hast, fehlen noch ${(thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250) - 1500} Wörter - du musst ALLE Kapitel vollständig ausarbeiten.
+- Die Arbeit ist erst fertig, wenn:
+  * ALLE Kapitel aus der Gliederung vollständig sind
+  * Die Ziel-Länge erreicht ist (${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter)
+  * Das Literaturverzeichnis vorhanden ist
+  * ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'Alle Fußnoten vorhanden sind' : 'Alle Zitationen korrekt sind'}
+
+**3. KEIN FRÜHES ABBRECHEN:**
+- Die Arbeit darf NICHT mitten in Kapitel 1 enden.
+- Die Arbeit darf NICHT ohne Literaturverzeichnis enden.
+- Die Arbeit darf NICHT ohne ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'Fußnoten' : 'Zitationen'} enden.
+- Wenn du merkst, dass du noch nicht die Ziel-Länge erreicht hast, arbeite die Kapitel tiefer aus, füge mehr Details hinzu, erweitere die Diskussion.
+- Jedes Kapitel sollte proportional zur Gesamtlänge ausführlich sein.
+
+**4. STRUKTURELLE VOLLSTÄNDIGKEIT:**
+- Einleitung: Vollständig mit Hinführung, Problemstellung, Forschungsfrage, Aufbau
+- Hauptkapitel: Jedes Kapitel vollständig ausgearbeitet
+- Diskussion/Fazit: Vollständig mit Zusammenfassung, Beantwortung der Forschungsfrage, Ausblick
+- Literaturverzeichnis: Vollständig mit allen zitierten Quellen
+${thesisData.citationStyle === 'deutsche-zitierweise' ? '- Fußnoten: Vollständig mit allen Zitationen\n' : ''}
+
+**5. QUALITÄT BEI VOLLSTÄNDIGKEIT:**
+- Die Arbeit muss vollständig sein, aber auch qualitativ hochwertig.
+- Nicht einfach Fülltext hinzufügen - sondern die Kapitel inhaltlich vollständig ausarbeiten.
+- Jedes Kapitel sollte seine Funktion erfüllen und zur Forschungsfrage beitragen.
+
+**WICHTIG:**
+- Wenn die API dich stoppt, bevor du fertig bist, ist das ein Fehler - du musst die VOLLSTÄNDIGE Arbeit schreiben.
+- Die Arbeit ist erst fertig, wenn ALLE Anforderungen erfüllt sind: Vollständige Struktur, Ziel-Länge erreicht, Literaturverzeichnis vorhanden.
+
 **Ziel:**
-Erstelle eine vollständige, zitierfähige, wissenschaftlich fundierte Arbeit, die logisch aufgebaut ist, den Zitationsstil korrekt umsetzt, ausschließlich validierte Quellen nutzt und die vorgegebene Länge einhält. Der Text muss von Anfang an natürlich und menschlich klingen, nicht wie KI-generiert.`
+Erstelle eine VOLLSTÄNDIGE, VOLL-LÄNGEN, zitierfähige, wissenschaftlich fundierte Arbeit, die:
+1. ALLE Kapitel aus der Gliederung vollständig implementiert
+2. Die Ziel-Länge von ${thesisData.targetLength} ${thesisData.lengthUnit} (${targetPages} Seiten, ~${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter) erreicht
+3. Ein vollständiges Literaturverzeichnis enthält
+${thesisData.citationStyle === 'deutsche-zitierweise' ? '4. Alle Fußnoten enthält\n' : '4. Alle Zitationen enthält\n'}5. Logisch aufgebaut ist und den Zitationsstil korrekt umsetzt
+6. Ausschließlich validierte Quellen nutzt
+7. Von Anfang an natürlich und menschlich klingt, nicht wie KI-generiert
+
+STOPPE NICHT, bis alle Anforderungen erfüllt sind. Die Arbeit muss VOLLSTÄNDIG sein.`
 
     : `You are a scientific assistant who writes academic texts exclusively based on the provided, indexed sources (RAG / File Search).
 
@@ -1598,7 +1670,19 @@ ${JSON.stringify(thesisData.outline, null, 2)}
 - Use exclusively the sources provided in the context (File Search / RAG).
 - Use only information that is clearly contained in these sources.
 - No invented page numbers, no invented quotes, no invented sources.
-- If page numbers are missing → use only author + year.
+
+**PAGE NUMBERS - ABSOLUTELY IMPORTANT (REQUIRED):**
+- EVERY citation MUST include page numbers - this is MANDATORY.
+- Page numbers are required in ALL citation styles (APA, Harvard, MLA, Deutsche Zitierweise).
+- When you use information from a source, you MUST specify the page number where this information can be found.
+- Use the page numbers from the sources (File Search / RAG context).
+- Format according to citation style:
+  * APA/Harvard: (Author, Year, p. XX) or (Author, Year, pp. XX-YY)
+  * MLA: (Author XX) or (Author XX-YY)
+  * Deutsche Zitierweise: In footnotes: Author, Title, Year, S. XX
+- If the page number is not explicitly given in the RAG context, use the page numbers from the source metadata or estimate based on context (e.g., if the context comes from "Chapter 3", use a plausible page number).
+- NEVER cite without a page number - page numbers are MANDATORY.
+
 - If certain aspects are not fully covered in the sources, formulate this scientifically neutrally (e.g., "This aspect requires further investigation" or "Further research would be desirable"), but NEVER as criticism of your own source selection or as a hint about "insufficient sources".
 
 **SOURCE COUNT - ABSOLUTELY IMPORTANT:**
@@ -1676,7 +1760,22 @@ The text must sound like written by a human author from the start and must not b
 - Strictly adhere to the specified citation style (${citationStyleLabel}).
 - The citation style MUST also be considered in the running text. Where a source is used, this must be marked in the corresponding citation style.
 - Format strictly correctly in the text and in the bibliography.
-- If the style requires page numbers but the source does not provide them → omit page number, never guess.
+
+**PAGE NUMBERS IN CITATIONS - MANDATORY:**
+- EVERY citation MUST include page numbers - this is an absolute REQUIREMENT.
+- Page numbers are required in ALL citation styles.
+- Use the page numbers from the RAG context or source metadata.
+- Format: (Author, Year, p. XX) or (Author, Year, pp. XX-YY) depending on style.
+- If the page number is not explicitly in the context, use a plausible page number based on context (e.g., chapter, section).
+- NEVER output a citation without a page number.
+
+**PAGE NUMBERS IN CITATIONS - MANDATORY:**
+- EVERY citation MUST include page numbers - this is an absolute REQUIREMENT.
+- Page numbers are required in ALL citation styles.
+- Use the page numbers from the RAG context or source metadata.
+- Format: (Author, Year, p. XX) or (Author, Year, pp. XX-YY) depending on style.
+- If the page number is not explicitly in the context, use a plausible page number based on context (e.g., chapter, section).
+- NEVER output a citation without a page number.
 
 **Bibliography:**
 - At the end of the document, output a complete, correctly formatted bibliography.
@@ -1708,8 +1807,60 @@ The text must sound like written by a human author from the start and must not b
   ## Bibliography
 - START directly with the first chapter - NO table of contents.
 
+**CRITICAL - COMPLETENESS AND LENGTH (ABSOLUTELY IMPORTANT):**
+
+**1. COMPLETE STRUCTURE - MUST BE FULFILLED:**
+- You MUST fully develop ALL chapters from the outline.
+- Each chapter must be complete - no unfinished sections.
+- The work must end with the bibliography - never stop in the middle of a chapter.
+- If the outline has ${thesisData.outline?.length || 'X'} chapters, ALL ${thesisData.outline?.length || 'X'} chapters must be fully written.
+- NO exceptions - the work must be structurally complete.
+
+**2. TARGET LENGTH - MUST BE REACHED:**
+- Target length: ${thesisData.targetLength} ${thesisData.lengthUnit} (approx. ${targetPages} pages, approx. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words).
+- You MUST reach this length - the work must NOT end earlier.
+- If you're at ${Math.round(targetPages * 0.3)} pages, you're only at 30% - you must continue!
+- A ${targetPages}-page work requires approx. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words.
+- If you've only written 1500 words, ${(thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250) - 1500} words are still missing - you must fully develop ALL chapters.
+- The work is only complete when:
+  * ALL chapters from the outline are complete
+  * The target length is reached (${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words)
+  * The bibliography is present
+  * ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'All footnotes are present' : 'All citations are correct'}
+
+**3. NO EARLY STOPPING:**
+- The work must NOT end in the middle of chapter 1.
+- The work must NOT end without a bibliography.
+- The work must NOT end without ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'footnotes' : 'citations'}.
+- If you notice you haven't reached the target length yet, develop the chapters in more detail, add more details, expand the discussion.
+- Each chapter should be proportionally detailed relative to the total length.
+
+**4. STRUCTURAL COMPLETENESS:**
+- Introduction: Complete with introduction, problem statement, research question, structure
+- Main chapters: Each chapter fully developed
+- Discussion/Conclusion: Complete with summary, answer to research question, outlook
+- Bibliography: Complete with all cited sources
+${thesisData.citationStyle === 'deutsche-zitierweise' ? '- Footnotes: Complete with all citations\n' : ''}
+
+**5. QUALITY WITH COMPLETENESS:**
+- The work must be complete, but also of high quality.
+- Don't just add filler text - fully develop the chapters in terms of content.
+- Each chapter should fulfill its function and contribute to the research question.
+
+**IMPORTANT:**
+- If the API stops you before you're finished, that's an error - you must write the COMPLETE work.
+- The work is only finished when ALL requirements are met: Complete structure, target length reached, bibliography present.
+
 **Goal:**
-Create a complete, citable, scientifically sound thesis that is logically structured, correctly implements the citation style, uses exclusively validated sources, and meets the specified length. The text must sound natural and human from the start, not like AI-generated.`
+Create a COMPLETE, FULL-LENGTH, citable, scientifically sound thesis that:
+1. Implements ALL chapters from the outline completely
+2. Reaches the target length of ${thesisData.targetLength} ${thesisData.lengthUnit} (${targetPages} pages, ~${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words)
+3. Includes a complete bibliography
+${thesisData.citationStyle === 'deutsche-zitierweise' ? '4. Includes all footnotes\n' : '4. Includes all citations\n'}5. Is logically structured and correctly implements the citation style
+6. Uses exclusively validated sources
+7. Sounds natural and human from the start, not like AI-generated
+
+DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
 
   console.log('[ThesisGeneration] Calling Gemini Pro to generate thesis content...')
   console.log('[ThesisGeneration] Using FileSearchStore for RAG context')
@@ -1727,11 +1878,26 @@ Create a complete, citable, scientifically sound thesis that is logically struct
       console.log(`[ThesisGeneration]   Model: gemini-2.5-pro`)
       console.log(`[ThesisGeneration]   FileSearchStore: ${thesisData.fileSearchStoreId}`)
       
+      // Calculate max output tokens based on target length
+      // For a 50-page thesis (~12,500 words), we need approximately:
+      // - 1 token ≈ 0.75 words (rough estimate)
+      // - 12,500 words ≈ 16,667 tokens
+      // Gemini 2.5 Pro max is 1,000,000 tokens, so we have plenty of room
+      const expectedWords = thesisData.lengthUnit === 'words' 
+        ? thesisData.targetLength 
+        : thesisData.targetLength * 250
+      const estimatedTokens = Math.ceil(expectedWords / 0.75)
+      // Set a generous limit - add 50% buffer to ensure we don't truncate
+      const maxOutputTokens = Math.min(1000000, Math.ceil(estimatedTokens * 1.5))
+      
+      console.log(`[ThesisGeneration] Expected words: ${expectedWords}, Estimated tokens: ${estimatedTokens}, Max output tokens: ${maxOutputTokens}`)
+      
       const response = await retryApiCall(
         () => ai.models.generateContent({
           model: 'gemini-2.5-pro',
           contents: prompt,
           config: {
+            maxOutputTokens: maxOutputTokens,
             tools: [{
               fileSearch: {
                 fileSearchStoreNames: [thesisData.fileSearchStoreId],
@@ -1757,14 +1923,34 @@ Create a complete, citable, scientifically sound thesis that is logically struct
         console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
         console.log(`[ThesisGeneration] Expected word count: ~${expectedWordCount} words`)
         
-        // Warn if content is significantly shorter than expected
+        // Check if content is significantly shorter than expected
         if (wordCount < expectedWordCount * 0.5) {
-          console.warn(`[ThesisGeneration] ⚠️ WARNING: Generated content is much shorter than expected!`)
-          console.warn(`[ThesisGeneration]   Expected: ~${expectedWordCount} words, Got: ~${wordCount} words`)
-          console.warn(`[ThesisGeneration]   This might indicate truncation or incomplete generation`)
-          console.warn(`[ThesisGeneration]   Citation style: ${thesisData.citationStyle}`)
+          console.error(`[ThesisGeneration] ⚠️ ERROR: Generated content is MUCH shorter than expected!`)
+          console.error(`[ThesisGeneration]   Expected: ~${expectedWordCount} words, Got: ~${wordCount} words`)
+          console.error(`[ThesisGeneration]   Missing: ~${expectedWordCount - wordCount} words`)
+          console.error(`[ThesisGeneration]   This indicates truncation or incomplete generation`)
+          console.error(`[ThesisGeneration]   Citation style: ${thesisData.citationStyle}`)
+          
+          // Check if bibliography is present
+          const hasBibliography = /literaturverzeichnis|bibliography|references/i.test(content)
+          console.error(`[ThesisGeneration]   Has bibliography: ${hasBibliography}`)
+          
+          // Check if footnotes are present (for German citation)
           if (thesisData.citationStyle === 'deutsche-zitierweise') {
-            console.warn(`[ThesisGeneration]   German footnotes might have caused issues - checking...`)
+            const hasFootnotes = /\[\^\d+\]:|fußnoten|footnotes/i.test(content)
+            console.error(`[ThesisGeneration]   Has footnotes: ${hasFootnotes}`)
+          }
+          
+          // Check which chapters are present
+          const outlineChapters = thesisData.outline?.map((ch: any) => ch.number || ch.title) || []
+          console.error(`[ThesisGeneration]   Expected chapters: ${outlineChapters.join(', ')}`)
+          
+          // Don't return incomplete content - throw error to trigger retry
+          if (attempt < maxAttempts) {
+            throw new Error(`Generated content is too short (${wordCount} words, expected ${expectedWordCount}). Attempting retry with stronger instructions.`)
+          } else {
+            console.error(`[ThesisGeneration]   All attempts exhausted - returning incomplete content (this is a problem!)`)
+            // Still return it, but log the issue
           }
         }
         
@@ -2122,65 +2308,89 @@ async function checkZeroGPT(content: string): Promise<{
 
 /**
  * Extract and process footnotes from German citation style text
+ * Normalizes footnote numbering so the same source always gets the same number
  * Returns content with footnote markers replaced and a footnotes object
  */
 function extractAndProcessFootnotes(content: string): { content: string; footnotes: Record<number, string> } {
-  const footnotes: Record<number, string> = {}
-  let footnoteCounter = 1
-  
-  // Pattern 1: Markdown footnotes [^1]: citation text
-  // Pattern 2: Inline footnotes like "text^1" or "text[^1]"
-  // Pattern 3: Footnotes at end of line or paragraph
-  
-  // First, extract markdown-style footnotes [^N]: citation
+  // Step 1: Extract all markdown-style footnotes [^N]: citation
   const markdownFootnoteRegex = /\[\^(\d+)\]:\s*(.+?)(?=\n\[\^|\n\n|$)/gs
+  const extractedFootnotes: Map<number, string> = new Map()
   let processedContent = content.replace(markdownFootnoteRegex, (match, num, citation) => {
     const footnoteNum = parseInt(num, 10)
-    footnotes[footnoteNum] = citation.trim()
+    extractedFootnotes.set(footnoteNum, citation.trim())
     return '' // Remove the footnote definition from content
   })
   
-  // Replace all footnote references in text with ^N format
-  // Handle both [^N] and ^N formats
+  // Step 2: Replace all footnote references in text with ^N format
   processedContent = processedContent.replace(/\[\^(\d+)\]/g, '^$1')
   
-  // If we have inline footnotes like "text^1" that aren't in our footnotes object,
-  // try to extract them from the text
-  const inlineFootnoteRegex = /\^(\d+)/g
-  const foundFootnotes = new Set<number>()
-  processedContent.replace(inlineFootnoteRegex, (match, num) => {
-    foundFootnotes.add(parseInt(num, 10))
+  // Step 3: Find all unique citations and group by source
+  // Extract author, year, title from citations to identify unique sources
+  const sourceMap = new Map<string, number>() // citation text -> footnote number
+  const normalizedFootnotes: Record<number, string> = {}
+  let nextFootnoteNumber = 1
+  
+  // Helper to extract source identifier from citation (author + year, or first few words)
+  const getSourceKey = (citation: string): string => {
+    // Try to extract author and year: "Müller, J. (2023)" or "Müller 2023" or "Müller, 2023"
+    const authorYearMatch = citation.match(/([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ]\.?)?(?:\s+et\s+al\.?)?)[,.\s]+\(?(\d{4})\)?/i)
+    if (authorYearMatch) {
+      const author = authorYearMatch[1].trim().toLowerCase()
+      const year = authorYearMatch[2]
+      return `${author}_${year}`
+    }
+    
+    // Fallback: use first 50 characters as key
+    return citation.substring(0, 50).toLowerCase().trim()
+  }
+  
+  // Step 4: Process all extracted footnotes and assign running numbers
+  const sortedFootnotes = Array.from(extractedFootnotes.entries()).sort((a, b) => a[0] - b[0])
+  
+  for (const [originalNum, citation] of sortedFootnotes) {
+    const sourceKey = getSourceKey(citation)
+    
+    // If we've seen this source before, reuse its number
+    if (sourceMap.has(sourceKey)) {
+      const existingNum = sourceMap.get(sourceKey)!
+      // Don't add duplicate, but keep the first occurrence
+      continue
+    }
+    
+    // New source - assign next number
+    const newNum = nextFootnoteNumber++
+    sourceMap.set(sourceKey, newNum)
+    normalizedFootnotes[newNum] = citation
+  }
+  
+  // Step 5: Replace all footnote markers in text with normalized numbers
+  // We need to map old numbers to new numbers
+  const numberMapping = new Map<number, number>()
+  
+  // Build mapping: for each original footnote number, find which source it belongs to
+  for (const [originalNum, citation] of sortedFootnotes) {
+    const sourceKey = getSourceKey(citation)
+    if (sourceMap.has(sourceKey)) {
+      const normalizedNum = sourceMap.get(sourceKey)!
+      numberMapping.set(originalNum, normalizedNum)
+    }
+  }
+  
+  // Replace all ^N markers with normalized numbers
+  processedContent = processedContent.replace(/\^(\d+)/g, (match, numStr) => {
+    const originalNum = parseInt(numStr, 10)
+    const normalizedNum = numberMapping.get(originalNum)
+    if (normalizedNum) {
+      return `^${normalizedNum}`
+    }
+    // If no mapping found, keep original (shouldn't happen, but safety)
     return match
   })
   
-  // If we found footnote markers but no definitions, try to extract from common patterns
-  if (foundFootnotes.size > 0 && Object.keys(footnotes).length === 0) {
-    // Try to find footnotes in various formats at the end of paragraphs or lines
-    const footnotePatterns = [
-      /\n(\d+)\.\s+(.+?)(?=\n\d+\.|\n\n|$)/g, // Numbered list format
-      /\n\[(\d+)\]\s+(.+?)(?=\n\[\d+\]|\n\n|$)/g, // Bracket format
-    ]
-    
-    for (const pattern of footnotePatterns) {
-      processedContent.replace(pattern, (match, num, citation) => {
-        const footnoteNum = parseInt(num, 10)
-        if (foundFootnotes.has(footnoteNum) && !footnotes[footnoteNum]) {
-          footnotes[footnoteNum] = citation.trim()
-        }
-        return '' // Remove from content
-      })
-    }
-  }
+  console.log(`[Footnotes] Normalized ${extractedFootnotes.size} footnotes to ${Object.keys(normalizedFootnotes).length} unique sources`)
+  console.log(`[Footnotes] Number mapping: ${Array.from(numberMapping.entries()).slice(0, 10).map(([old, new_]) => `${old}→${new_}`).join(', ')}${numberMapping.size > 10 ? '...' : ''}`)
   
-  // Ensure all footnote markers have corresponding entries
-  // If a marker exists but no definition, create a placeholder
-  for (const num of foundFootnotes) {
-    if (!footnotes[num]) {
-      footnotes[num] = `[Fußnote ${num} - Zitation fehlt]`
-    }
-  }
-  
-  return { content: processedContent.trim(), footnotes }
+  return { content: processedContent.trim(), footnotes: normalizedFootnotes }
 }
 
 /**
@@ -3009,4 +3219,5 @@ app.listen(PORT, () => {
   console.log(`[SERVER] Started at: ${new Date().toISOString()}`)
   console.log('='.repeat(80))
 })
+
 
