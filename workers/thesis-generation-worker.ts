@@ -2255,6 +2255,10 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     const hasDocuments = await checkFileSearchStoreHasDocuments(thesisData.fileSearchStoreId)
     
     // Also check database for uploaded_sources
+    // NOTE: We use database count, not FileSearchStore count, because:
+    // - FileSearchStore chunks large PDFs into multiple "active documents"
+    // - Database tracks one entry per unique source/PDF
+    // - For "skip research" logic, we care about unique sources, not chunks
     const { data: thesis } = await supabase
       .from('theses')
       .select('uploaded_sources')
@@ -2272,7 +2276,8 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     const requiredSourceCount = Math.min(50, Math.max(10, Math.ceil(requiredPages * 1.25)))
     
     console.log(`[PROCESS] FileSearchStore has documents: ${hasDocuments}`)
-    console.log(`[PROCESS] Database has uploaded_sources: ${hasUploadedSources} (${uploadedSources.length} sources)`)
+    console.log(`[PROCESS] Database has uploaded_sources: ${hasUploadedSources} (${uploadedSources.length} unique sources)`)
+    console.log(`[PROCESS] NOTE: FileSearchStore may show more "active documents" due to chunking (large PDFs split into chunks)`)
     console.log(`[PROCESS] Required source count for ${requiredPages} pages: ${requiredSourceCount} sources`)
     console.log(`[PROCESS] Existing sources: ${uploadedSources.length}, Required: ${requiredSourceCount}`)
     
@@ -2281,6 +2286,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     let successfullyUploaded: Source[] = []
     
     // Only skip research if we have enough sources
+    // Use database count (unique sources), not FileSearchStore count (which includes chunks)
     const hasEnoughSources = hasDocuments && hasUploadedSources && uploadedSources.length >= requiredSourceCount
     
     if (hasEnoughSources) {
@@ -2489,7 +2495,14 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     const sourcesToProcess: Source[] = [...topSources]
     let sourceIndex = 0
     
+    // Stop when we've reached the target count OR exhausted the queue
     while (sourceIndex < sourcesToProcess.length && successfullyUploaded.length < step6TargetSourceCount) {
+      // Double-check we haven't reached the target (in case it was reached in previous iteration)
+      if (successfullyUploaded.length >= step6TargetSourceCount) {
+        console.log(`[PROCESS] Target count reached (${successfullyUploaded.length}/${step6TargetSourceCount}), stopping upload process`)
+        break
+      }
+      
       const source = sourcesToProcess[sourceIndex]
       console.log(`[PROCESS] Processing source ${sourceIndex + 1}/${sourcesToProcess.length}: "${source.title}"`)
       console.log(`[PROCESS]   Chapter: ${source.chapterNumber || 'N/A'} - ${source.chapterTitle || 'N/A'}`)
@@ -2502,6 +2515,12 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
             uploadedCount++
             successfullyUploaded.push(source)
             console.log(`[PROCESS] ✓ Successfully uploaded: "${source.title}"`)
+            
+            // Check if we've reached the target count
+            if (successfullyUploaded.length >= step6TargetSourceCount) {
+              console.log(`[PROCESS] Target count reached (${successfullyUploaded.length}/${step6TargetSourceCount}), stopping upload process`)
+              break
+            }
           } else {
             failedCount++
             console.log(`[PROCESS] ✗ Failed to upload (paywalled/inaccessible): "${source.title}"`)
@@ -2529,7 +2548,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
             
             const replacement = candidates[0]
             
-            if (replacement) {
+            if (replacement && successfullyUploaded.length < step6TargetSourceCount) {
               const replacementId = getSourceId(replacement)
               usedSourceIds.add(replacementId)
               sourcesToProcess.push(replacement)
@@ -2537,7 +2556,11 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
               console.log(`[PROCESS]   ✓ Found replacement: "${replacement.title}"`)
               console.log(`[PROCESS]   Replacement chapter: ${replacement.chapterNumber || 'N/A'}, relevance: ${replacement.relevanceScore || 'N/A'}`)
             } else {
-              console.log(`[PROCESS]   ✗ No suitable replacement found (may have exhausted available sources)`)
+              if (successfullyUploaded.length >= step6TargetSourceCount) {
+                console.log(`[PROCESS]   ✗ Target count reached (${successfullyUploaded.length}/${step6TargetSourceCount}), skipping replacement`)
+              } else {
+                console.log(`[PROCESS]   ✗ No suitable replacement found (may have exhausted available sources)`)
+              }
             }
           }
         } catch (error) {
@@ -2561,12 +2584,14 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           
           const replacement = candidates[0]
           
-          if (replacement) {
+          if (replacement && successfullyUploaded.length < step6TargetSourceCount) {
             const replacementId = getSourceId(replacement)
             usedSourceIds.add(replacementId)
             sourcesToProcess.push(replacement)
             replacedCount++
             console.log(`[PROCESS]   ✓ Found replacement after error: "${replacement.title}"`)
+          } else if (successfullyUploaded.length >= step6TargetSourceCount) {
+            console.log(`[PROCESS]   Target count reached (${successfullyUploaded.length}/${step6TargetSourceCount}), skipping replacement`)
           }
         }
         // Rate limiting
@@ -2590,12 +2615,14 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         
         const replacement = candidates[0]
         
-        if (replacement) {
+        if (replacement && successfullyUploaded.length < step6TargetSourceCount) {
           const replacementId = getSourceId(replacement)
           usedSourceIds.add(replacementId)
           sourcesToProcess.push(replacement)
           replacedCount++
           console.log(`[PROCESS]   ✓ Found replacement (no PDF URL): "${replacement.title}"`)
+        } else if (successfullyUploaded.length >= step6TargetSourceCount) {
+          console.log(`[PROCESS]   Target count reached (${successfullyUploaded.length}/${step6TargetSourceCount}), skipping replacement`)
         }
       }
       
