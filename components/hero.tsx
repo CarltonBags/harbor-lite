@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, ChevronDown } from 'lucide-react'
 
 const thesisTypes = ['Hausarbeit', 'Bachelorarbeit', 'Masterarbeit', 'Dissertation']
 
@@ -41,8 +41,15 @@ export function Hero() {
   }, [displayText, isDeleting, currentTypeIndex])
 
   return (
-    <section className="pt-24 md:pt-32 pb-20 md:pb-28 px-4 sm:px-6 lg:px-8 bg-white dark:bg-gray-900">
-      <div className="max-w-5xl mx-auto">
+    <section
+      className="pt-40 md:pt-48 pb-48 md:pb-56 px-4 sm:px-6 lg:px-8 bg-white dark:bg-gray-900 bg-no-repeat relative min-h-screen flex flex-col justify-center"
+      style={{
+        backgroundImage: "url('/assets/deskheader.svg')",
+        backgroundPosition: 'center center',
+        backgroundSize: '100% auto'
+      }}
+    >
+      <div className="max-w-5xl mx-auto relative z-10">
         <div className="text-center">
           {/* Main Hook - Elegant and Stylish */}
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-8 md:mb-12 leading-tight">
@@ -58,19 +65,22 @@ export function Hero() {
             </span>
           </h1>
 
-          {/* CTA - Refined and Professional */}
+          {/* CTA - Subtle scroll-down link */}
           <div className="mb-10 md:mb-12">
-            <a
-              href="/thesis/new"
-              className="group inline-flex items-center px-8 py-3.5 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium text-base md:text-lg hover:bg-blue-600 dark:hover:bg-blue-500 transition-all shadow-md hover:shadow-lg"
+            <button
+              onClick={() => {
+                const servicesSection = document.querySelector('#services') || document.querySelector('main > *:nth-child(2)');
+                servicesSection?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="group inline-flex flex-col items-center text-lg md:text-xl text-gray-700 dark:text-gray-300 hover:text-yellow-600 dark:hover:text-yellow-500 transition-colors font-medium"
             >
-              Dann lass uns loslegen
-              <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </a>
+              <span>Dann lass uns loslegen</span>
+              <ChevronDown className="mt-2 w-6 h-6 group-hover:translate-y-1 transition-transform" />
+            </button>
           </div>
 
           {/* Clarifier - Subtle and Professional */}
-          <p className="text-lg md:text-xl lg:text-2xl text-gray-600 dark:text-gray-400 font-light leading-relaxed max-w-2xl mx-auto">
+          <p className="text-lg md:text-xl lg:text-2xl text-gray-600 dark:text-gray-400 font-light leading-relaxed max-w-2xl mx-auto mb-6">
             Vom Thema zum Entwurf in{' '}
             <span className="text-yellow-600 dark:text-yellow-500 font-medium">Minuten</span> statt{' '}
             <span className="text-gray-400 dark:text-gray-500 line-through">Wochen</span>
@@ -80,4 +90,3 @@ export function Hero() {
     </section>
   )
 }
-

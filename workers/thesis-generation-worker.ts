@@ -91,26 +91,26 @@ async function retryApiCall<T>(
   baseDelay: number = 1000
 ): Promise<T> {
   let lastError: Error | unknown
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await fn()
     } catch (error) {
       lastError = error
       const isLastAttempt = attempt === maxRetries
-      
+
       if (isLastAttempt) {
         console.error(`${operationName} failed after ${maxRetries} attempts:`, error)
         throw error
       }
-      
+
       // Exponential backoff: 1s, 2s, 4s
       const delay = baseDelay * Math.pow(2, attempt - 1)
       console.warn(`${operationName} failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`)
       await new Promise(resolve => setTimeout(resolve, delay))
     }
   }
-  
+
   // This should never be reached, but TypeScript needs it
   throw lastError
 }
@@ -136,7 +136,7 @@ async function generateSearchQueries(thesisData: ThesisData): Promise<{ chapter:
   console.log('[Step 1] Thesis title:', thesisData.title)
   console.log('[Step 1] Field:', thesisData.field)
   console.log('[Step 1] Number of chapters in outline:', thesisData.outline?.length || 0)
-  
+
   const prompt = `Du bist ein Experte für wissenschaftliche Literaturrecherche. Erstelle für jedes Kapitel der folgenden Thesis-Gliederung genau 2 Suchanfragen auf Deutsch und 2 Suchanfragen auf Englisch.
 
 **Thesis-Informationen:**
@@ -203,7 +203,7 @@ Antworte NUR mit einem JSON-Objekt im folgenden Format:
     console.log(`[Step 1]   German queries: ${q.queries?.german?.length || 0}`)
     console.log(`[Step 1]   English queries: ${q.queries?.english?.length || 0}`)
   })
-  
+
   return queries
 }
 
@@ -218,7 +218,7 @@ async function queryOpenAlex(query: string, language: 'german' | 'english'): Pro
   // Add mailto parameter to get into polite pool (10 req/sec instead of 1 req/sec)
   // Note: We use per-page=20 to get the top 20 most relevant results (not random samples)
   const url = `https://api.openalex.org/works?search=${encodeURIComponent(searchQuery)}&per-page=20&mailto=${encodeURIComponent(OPENALEX_EMAIL)}`
-  
+
   try {
     const startTime = Date.now()
     const response = await retryApiCall(
@@ -226,7 +226,7 @@ async function queryOpenAlex(query: string, language: 'german' | 'english'): Pro
       `Query OpenAlex: ${query}`
     )
     const duration = Date.now() - startTime
-    
+
     if (!response.ok) {
       console.error(`[OpenAlex] ERROR: ${response.status} ${response.statusText} for query: "${query}"`)
       return []
@@ -252,11 +252,11 @@ async function queryOpenAlex(query: string, language: 'german' | 'english'): Pro
       citationCount: work.cited_by_count || null,
       source: 'openalex',
     }))
-    
+
     const withPdf = sources.filter((s: Source) => s.pdfUrl).length
     const withDoi = sources.filter((s: Source) => s.doi).length
     console.log(`[OpenAlex] Results for "${query}": ${sources.length} total, ${withPdf} with PDF, ${withDoi} with DOI`)
-    
+
     return sources
   } catch (error) {
     console.error(`[OpenAlex] ERROR querying "${query}":`, error)
@@ -276,10 +276,10 @@ async function querySemanticScholar(query: string): Promise<Source[]> {
   // URL encode the query properly (spaces become + or %20)
   const encodedQuery = encodeURIComponent(query)
   const url = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodedQuery}&limit=10&fields=title,authors,year,doi,url,openAccessPdf,abstract,venue,citationCount`
-  
+
   try {
     const headers: Record<string, string> = {}
-    
+
     // Add API key if available (recommended for better rate limits)
     const apiKey = process.env.SEMANTIC_SCHOLAR_API_KEY
     if (apiKey) {
@@ -288,7 +288,7 @@ async function querySemanticScholar(query: string): Promise<Source[]> {
     } else {
       console.log(`[SemanticScholar] No API key - using public rate limits for query: "${query}"`)
     }
-    
+
     const startTime = Date.now()
     const response = await retryApiCall(
       () => fetch(url, { headers }),
@@ -334,11 +334,11 @@ async function querySemanticScholar(query: string): Promise<Source[]> {
       // If both have or don't have PDFs, sort by citation count
       return (b.citationCount || 0) - (a.citationCount || 0)
     })
-    
+
     const withPdf = sorted.filter((s: Source) => s.pdfUrl).length
     const withDoi = sorted.filter((s: Source) => s.doi).length
     console.log(`[SemanticScholar] Results for "${query}": ${sorted.length} total, ${withPdf} with PDF, ${withDoi} with DOI`)
-    
+
     return sorted
   } catch (error) {
     console.error(`[SemanticScholar] ERROR querying "${query}":`, error)
@@ -359,14 +359,14 @@ async function queryUnpaywall(doi: string): Promise<string | null> {
   console.log(`[Unpaywall] Querying PDF URL for DOI: ${doi}`)
   try {
     // Unpaywall API format: https://api.unpaywall.org/v2/{doi}?email={email}
-    const cleanDoi = doi.startsWith('https://doi.org/') 
-      ? doi.replace('https://doi.org/', '') 
-      : doi.startsWith('doi:') 
+    const cleanDoi = doi.startsWith('https://doi.org/')
+      ? doi.replace('https://doi.org/', '')
+      : doi.startsWith('doi:')
         ? doi.replace('doi:', '')
         : doi
-    
+
     const url = `https://api.unpaywall.org/v2/${encodeURIComponent(cleanDoi)}?email=${encodeURIComponent(OPENALEX_EMAIL)}`
-    
+
     const response = await retryApiCall(
       () => fetch(url, {
         headers: {
@@ -389,13 +389,13 @@ async function queryUnpaywall(doi: string): Promise<string | null> {
       () => response.json() as Promise<any>,
       `Parse Unpaywall response: ${doi}`
     )
-    
+
     // Check for best open access PDF URL
     if (data.best_oa_location?.url_for_pdf) {
       console.log(`[Unpaywall] Found PDF URL for DOI ${doi}: ${data.best_oa_location.url_for_pdf}`)
       return data.best_oa_location.url_for_pdf
     }
-    
+
     // Fallback to other PDF locations
     if (data.best_oa_location?.url_for_landing_page) {
       // Sometimes the landing page has the PDF
@@ -421,7 +421,7 @@ async function deduplicateAndEnrichSources(sources: Source[]): Promise<Source[]>
 
   for (const source of sources) {
     const key = source.doi?.toLowerCase() || source.title.toLowerCase()
-    
+
     if (!seen.has(key)) {
       seen.set(key, source)
     } else {
@@ -452,7 +452,7 @@ async function deduplicateAndEnrichSources(sources: Source[]): Promise<Source[]>
   console.log('[Deduplication] Enriching sources with Unpaywall for missing PDF URLs...')
   const sourcesToEnrich = deduplicated.filter(s => !s.pdfUrl && s.doi)
   console.log(`[Deduplication] ${sourcesToEnrich.length} sources need PDF URL enrichment`)
-  
+
   const enrichedSources = await Promise.all(
     deduplicated.map(async (source) => {
       // If source already has PDF URL, skip
@@ -467,7 +467,7 @@ async function deduplicateAndEnrichSources(sources: Source[]): Promise<Source[]>
           console.log(`Found PDF via Unpaywall for: ${source.title}`)
           return { ...source, pdfUrl }
         }
-        
+
         // Rate limiting for Unpaywall (be polite)
         await new Promise(resolve => setTimeout(resolve, 100))
       }
@@ -479,7 +479,7 @@ async function deduplicateAndEnrichSources(sources: Source[]): Promise<Source[]>
   const withPdfAfter = enrichedSources.filter(s => s.pdfUrl).length
   const newlyEnriched = withPdfAfter - withPdfBefore
   console.log(`[Deduplication] After enrichment: ${enrichedSources.length} sources, ${withPdfAfter} with PDF (+${newlyEnriched} newly enriched)`)
-  
+
   return enrichedSources
 }
 
@@ -491,12 +491,12 @@ async function rankSourcesByRelevance(sources: Source[], thesisData: ThesisData)
   console.log(`[Ranking] Starting relevance ranking for ${sources.length} sources`)
   console.log(`[Ranking] Thesis: "${thesisData.title}"`)
   console.log(`[Ranking] Field: ${thesisData.field}`)
-  
+
   // If we have too many sources, prioritize those with PDFs and limit to top 350 for ranking
   // This prevents token limit issues and timeouts
   const MAX_SOURCES_TO_RANK = 350
   let sourcesToRank = sources
-  
+
   if (sources.length > MAX_SOURCES_TO_RANK) {
     console.log(`[Ranking] Too many sources (${sources.length}), prioritizing sources with PDFs and limiting to ${MAX_SOURCES_TO_RANK}`)
     // Sort by: PDF first, then by citation count
@@ -507,23 +507,23 @@ async function rankSourcesByRelevance(sources: Source[], thesisData: ThesisData)
     }).slice(0, MAX_SOURCES_TO_RANK)
     console.log(`[Ranking] Selected ${sourcesToRank.length} sources for ranking (prioritized by PDF availability)`)
   }
-  
+
   // Process in batches of 50 to avoid token limits
   const BATCH_SIZE = 50
   const batches: Source[][] = []
   for (let i = 0; i < sourcesToRank.length; i += BATCH_SIZE) {
     batches.push(sourcesToRank.slice(i, i + BATCH_SIZE))
   }
-  
+
   console.log(`[Ranking] Processing ${batches.length} batches of up to ${BATCH_SIZE} sources each`)
-  
+
   const allRankings: Array<{ index: number; relevanceScore: number; reason?: string }> = []
   let globalIndex = 0
-  
+
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex]
     console.log(`[Ranking] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} sources)`)
-    
+
     const prompt = `Du bist ein Experte für wissenschaftliche Literaturbewertung. Bewerte die Relevanz der folgenden Quellen für diese Thesis:
 
 **Thesis-Informationen:**
@@ -534,16 +534,16 @@ async function rankSourcesByRelevance(sources: Source[], thesisData: ThesisData)
 
 **Quellen (Batch ${batchIndex + 1} von ${batches.length}):**
 ${JSON.stringify(
-  batch.map(s => ({
-    title: s.title,
-    authors: s.authors.slice(0, 3), // Limit authors to reduce token usage
-    year: s.year,
-    abstract: s.abstract ? s.abstract.substring(0, 500) : null, // Truncate abstract
-    journal: s.journal,
-  })),
-  null,
-  2
-)}
+      batch.map(s => ({
+        title: s.title,
+        authors: s.authors.slice(0, 3), // Limit authors to reduce token usage
+        year: s.year,
+        abstract: s.abstract ? s.abstract.substring(0, 500) : null, // Truncate abstract
+        journal: s.journal,
+      })),
+      null,
+      2
+    )}
 
 **Aufgabe:**
 Bewerte jede Quelle auf einer Skala von 0-100 basierend auf ihrer Relevanz für die Thesis. Berücksichtige:
@@ -600,7 +600,7 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
 
       const batchRankings = JSON.parse(jsonMatch[0]) as Array<{ index: number; relevanceScore: number; reason?: string }>
       console.log(`[Ranking] Received ${batchRankings.length} rankings for batch ${batchIndex + 1}`)
-      
+
       // Adjust indices to global indices
       batchRankings.forEach(ranking => {
         allRankings.push({
@@ -609,9 +609,9 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
           reason: ranking.reason,
         })
       })
-      
+
       globalIndex += batch.length
-      
+
       // Small delay between batches to avoid rate limiting
       if (batchIndex < batches.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 500))
@@ -625,7 +625,7 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
       globalIndex += batch.length
     }
   }
-  
+
   // Apply relevance scores to sources that were ranked
   const rankedSources = sourcesToRank.map((source, index) => {
     const ranking = allRankings.find(r => r.index === index)
@@ -634,24 +634,24 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
       relevanceScore: ranking?.relevanceScore || 50,
     }
   })
-  
+
   // Add sources that weren't ranked with default scores
   const unrankedSources = sources.slice(MAX_SOURCES_TO_RANK).map(source => ({
     ...source,
     relevanceScore: 30, // Lower default score for unranked sources
   }))
-  
+
   // Combine and sort by relevance score (descending)
   const allSourcesWithScores = [...rankedSources, ...unrankedSources]
   const sorted = allSourcesWithScores.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
-  
+
   // Log statistics
   const highRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) >= 70).length
   const mediumRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) >= 40 && (s.relevanceScore || 0) < 70).length
   const lowRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) < 40).length
   const topScore = sorted[0]?.relevanceScore || 0
   const avgScore = sorted.reduce((sum, s) => sum + (s.relevanceScore || 0), 0) / sorted.length
-  
+
   console.log(`[Ranking] Ranking complete:`)
   console.log(`[Ranking]   Total sources: ${sorted.length}`)
   console.log(`[Ranking]   Ranked sources: ${rankedSources.length}`)
@@ -660,7 +660,7 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
   console.log(`[Ranking]   Medium relevance (40-69): ${mediumRelevance}`)
   console.log(`[Ranking]   Low relevance (<40): ${lowRelevance}`)
   console.log(`[Ranking]   Top score: ${topScore}, Average score: ${avgScore.toFixed(1)}`)
-  
+
   return sorted
 }
 
@@ -670,7 +670,7 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
  */
 function selectTopSourcesWithChapterGuarantee(rankedSources: Source[], maxSources: number = 50, minPerChapter: number = 2): Source[] {
   console.log(`[SmartFilter] Starting smart filtering: max ${maxSources} sources, min ${minPerChapter} per chapter`)
-  
+
   // Group sources by chapter
   const sourcesByChapter = new Map<string, Source[]>()
   for (const source of rankedSources) {
@@ -680,21 +680,21 @@ function selectTopSourcesWithChapterGuarantee(rankedSources: Source[], maxSource
     }
     sourcesByChapter.get(chapterKey)!.push(source)
   }
-  
+
   console.log(`[SmartFilter] Sources grouped into ${sourcesByChapter.size} chapters`)
   sourcesByChapter.forEach((sources, chapter) => {
     console.log(`[SmartFilter]   Chapter ${chapter}: ${sources.length} sources`)
   })
-  
+
   // First, ensure minimum per chapter
   const guaranteedSources: Source[] = []
   const usedSources = new Set<string>() // Track by DOI or title to avoid duplicates
-  
+
   for (const [chapter, sources] of sourcesByChapter.entries()) {
     const chapterSources = sources
       .filter(s => s.relevanceScore && s.relevanceScore >= 40) // Only consider relevant sources
       .slice(0, minPerChapter)
-    
+
     for (const source of chapterSources) {
       const key = source.doi || source.title || ''
       if (!usedSources.has(key)) {
@@ -703,9 +703,9 @@ function selectTopSourcesWithChapterGuarantee(rankedSources: Source[], maxSource
       }
     }
   }
-  
+
   console.log(`[SmartFilter] Guaranteed sources (min per chapter): ${guaranteedSources.length}`)
-  
+
   // Then, fill remaining slots with top-ranked sources (excluding already selected)
   const remainingSlots = maxSources - guaranteedSources.length
   if (remainingSlots > 0) {
@@ -715,14 +715,14 @@ function selectTopSourcesWithChapterGuarantee(rankedSources: Source[], maxSource
         return !usedSources.has(key) && s.relevanceScore && s.relevanceScore >= 40
       })
       .slice(0, remainingSlots)
-    
+
     console.log(`[SmartFilter] Adding ${topSources.length} top-ranked sources to fill remaining slots`)
     guaranteedSources.push(...topSources)
   }
-  
+
   // Sort final selection by relevance score
   const finalSelection = guaranteedSources.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
-  
+
   // Log chapter distribution in final selection
   const finalByChapter = new Map<string, number>()
   for (const source of finalSelection) {
@@ -733,7 +733,7 @@ function selectTopSourcesWithChapterGuarantee(rankedSources: Source[], maxSource
   finalByChapter.forEach((count, chapter) => {
     console.log(`[SmartFilter]   Chapter ${chapter}: ${count} sources`)
   })
-  
+
   return finalSelection
 }
 
@@ -838,26 +838,26 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     console.log(`[PDFUpload]   DOI: ${source.doi || 'N/A'}`)
     console.log(`[PDFUpload]   PDF URL: ${source.pdfUrl}`)
     console.log(`[PDFUpload]   FileSearchStore: ${fileSearchStoreId}`)
-    
+
     // Always download the PDF first to extract page numbers
     console.log(`[PDFUpload] Downloading PDF...`)
     if (!source.pdfUrl) {
       console.error(`[PDFUpload] ERROR: No PDF URL for source: ${source.title}`)
       return false
     }
-    
+
     const downloadStart = Date.now()
     const pdfResponse = await retryApiCall(
       () => fetch(source.pdfUrl!),
       `Download PDF: ${source.title}`
     )
     const downloadDuration = Date.now() - downloadStart
-    
+
     if (!pdfResponse.ok) {
       console.error(`[PDFUpload] ERROR: Failed to download PDF: ${pdfResponse.status} ${pdfResponse.statusText}`)
       return false
     }
-    
+
     const contentLength = pdfResponse.headers.get('content-length')
     console.log(`[PDFUpload] PDF downloaded (${downloadDuration}ms, ${contentLength ? `${(parseInt(contentLength) / 1024).toFixed(2)} KB` : 'size unknown'})`)
 
@@ -867,7 +867,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     const fileSizeKB = pdfBuffer.length / 1024
     const fileSizeMB = fileSizeKB / 1024
     console.log(`[PDFUpload] PDF buffer created: ${fileSizeKB.toFixed(2)} KB (${fileSizeMB.toFixed(2)} MB)`)
-    
+
     // Validate PDF before processing
     // Check 1: File size - Google FileSearchStore has a 20MB limit per file
     const MAX_FILE_SIZE_MB = 20
@@ -875,14 +875,14 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
       console.error(`[PDFUpload] ERROR: PDF too large (${fileSizeMB.toFixed(2)} MB > ${MAX_FILE_SIZE_MB} MB limit)`)
       return false
     }
-    
+
     // Check 2: Minimum size - ensure it's not empty or corrupted
     const MIN_FILE_SIZE_KB = 1
     if (fileSizeKB < MIN_FILE_SIZE_KB) {
       console.error(`[PDFUpload] ERROR: PDF too small (${fileSizeKB.toFixed(2)} KB < ${MIN_FILE_SIZE_KB} KB) - likely corrupted or empty`)
       return false
     }
-    
+
     // Check 3: Validate PDF header - should start with %PDF
     const pdfHeader = pdfBuffer.subarray(0, 4).toString('ascii')
     if (pdfHeader !== '%PDF') {
@@ -890,7 +890,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
       return false
     }
     console.log(`[PDFUpload] PDF validation passed: valid PDF format, size OK`)
-    
+
     // Extract page numbers using Gemini 2.5 Flash
     console.log(`[PDFUpload] Extracting page numbers...`)
     const pageExtractStart = Date.now()
@@ -911,7 +911,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
       pageEnd = estimatedPages.toString()
       console.log(`[PDFUpload] Using fallback: estimated ${estimatedPages} pages based on file size (${fileSizeKB.toFixed(2)} KB / 50 KB per page)`)
     }
-    
+
     // Ensure we have page numbers (fallback if extraction returned null)
     if (!pageStart || !pageEnd) {
       console.warn(`[PDFUpload] WARNING: Page extraction returned null, using fallback estimation`)
@@ -920,13 +920,13 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
       pageEnd = estimatedPages.toString()
       console.log(`[PDFUpload] Using fallback: estimated ${estimatedPages} pages based on file size`)
     }
-    
+
     // Create a Blob from Buffer for SDK compatibility
     const fileSource = new Blob([pdfBuffer], { type: 'application/pdf' })
 
     // Prepare metadata for FileSearchStore
     const customMetadata: any[] = []
-    
+
     if (source.doi) {
       customMetadata.push({ key: 'doi', stringValue: source.doi.substring(0, 256) })
     }
@@ -966,7 +966,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     console.log(`[PDFUpload]   Metadata fields: ${customMetadata.length}`)
     console.log(`[PDFUpload]   Display name: ${source.title.substring(0, 100) || 'Untitled'}`)
     const uploadStart = Date.now()
-    
+
     let operation: any
     try {
       operation = await retryApiCall(
@@ -1022,7 +1022,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
         `Poll upload operation: ${source.title}`
       )
       Object.assign(operation, updatedOperation)
-      
+
       if (pollCount % 5 === 0) {
         console.log(`[PDFUpload] Still processing... (poll ${pollCount}, ${Math.round((Date.now() - startTime) / 1000)}s elapsed)`)
       }
@@ -1105,33 +1105,33 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
     console.log('[Embedding] OpenAI API key not available, skipping embedding generation')
     return null
   }
-  
+
   // Model dimension mapping
   const modelDimensions: Record<string, number> = {
     'text-embedding-ada-002': 1536,
     'text-embedding-3-small': 1536, // Can be reduced to 512
     'text-embedding-3-large': 3072, // Can be reduced to 1024 or 256
   }
-  
+
   const expectedDims = modelDimensions[OPENAI_EMBEDDING_MODEL] || 1536
   console.log(`[Embedding] Using model: ${OPENAI_EMBEDDING_MODEL} (expected ${expectedDims} dimensions)`)
-  
+
   // Note: Database schema expects 1536 dimensions
   // If using text-embedding-3-large (3072 dims), you'd need to update the schema
   // For text-embedding-3-small, you can request 1536 dims to match schema
-  
+
   try {
     const requestBody: any = {
       model: OPENAI_EMBEDDING_MODEL,
       input: text,
     }
-    
+
     // For text-embedding-3 models, we can request specific dimensions
     if (OPENAI_EMBEDDING_MODEL.startsWith('text-embedding-3')) {
       // Request 1536 dimensions to match database schema
       requestBody.dimensions = 1536
     }
-    
+
     const response = await retryApiCall(
       () => fetch('https://api.openai.com/v1/embeddings', {
         method: 'POST',
@@ -1145,20 +1145,20 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
       2,
       1000
     )
-    
+
     if (!response.ok) {
       const errorText = await response.text()
       throw new Error(`OpenAI API error: ${response.status} ${errorText}`)
     }
-    
+
     const data = await response.json() as { data: Array<{ embedding: number[] }> }
     const embedding = data.data[0]?.embedding || null
-    
+
     if (embedding && embedding.length !== 1536) {
       console.warn(`[Embedding] WARNING: Embedding dimension (${embedding.length}) doesn't match database schema (1536)`)
       console.warn(`[Embedding] You may need to update the database schema or use a different model`)
     }
-    
+
     return embedding
   } catch (error) {
     console.error('[Embedding] Error generating embedding:', error)
@@ -1173,7 +1173,7 @@ async function generateEmbedding(text: string): Promise<number[] | null> {
 async function chunkAndStoreThesis(thesisId: string, latexContent: string, outline: any[]): Promise<void> {
   console.log('[Chunking] Starting thesis chunking and embedding for Supabase vector DB...')
   console.log('[Chunking] NOTE: Thesis content goes to Supabase vector DB, NOT Google FileSearchStore')
-  
+
   // First, delete any existing paragraphs for this thesis (in case of regeneration)
   console.log('[Chunking] Cleaning up existing paragraphs...')
   try {
@@ -1192,11 +1192,11 @@ async function chunkAndStoreThesis(thesisId: string, latexContent: string, outli
   } catch (error) {
     console.warn('[Chunking] Could not delete existing paragraphs (may not exist):', error)
   }
-  
+
   // Parse LaTeX/Markdown content into paragraphs
   // Handle both LaTeX and Markdown formats
   let textContent: string[] = []
-  
+
   // Try to detect format and parse accordingly
   if (latexContent.includes('\\') || latexContent.includes('\\section') || latexContent.includes('\\chapter')) {
     // LaTeX format
@@ -1219,18 +1219,18 @@ async function chunkAndStoreThesis(thesisId: string, latexContent: string, outli
       })
       .map(p => p.replace(/^#{1,6}\s+/, '')) // Remove markdown headers from paragraph text
   }
-  
+
   console.log(`[Chunking] Extracted ${textContent.length} paragraphs from thesis`)
-  
+
   if (textContent.length === 0) {
     console.warn('[Chunking] No paragraphs extracted - thesis content may be empty or malformed')
     return
   }
-  
+
   // Map paragraphs to chapters based on outline
   const chapters = outline || []
   const paragraphsPerChapter = Math.ceil(textContent.length / Math.max(chapters.length, 1))
-  
+
   let paragraphIndex = 0
   const paragraphsToStore: Array<{
     thesis_id: string
@@ -1241,24 +1241,24 @@ async function chunkAndStoreThesis(thesisId: string, latexContent: string, outli
     embedding: number[] | null
     metadata: Record<string, any>
   }> = []
-  
+
   console.log('[Chunking] Mapping paragraphs to chapters and generating embeddings...')
-  
+
   for (let chapterIdx = 0; chapterIdx < chapters.length; chapterIdx++) {
     const chapter = chapters[chapterIdx]
     const chapterNumber = parseInt(chapter.number || String(chapterIdx + 1)) || chapterIdx + 1
-    
+
     // Get paragraphs for this chapter
     const chapterParagraphs = textContent.slice(
       paragraphIndex,
       Math.min(paragraphIndex + paragraphsPerChapter, textContent.length)
     )
-    
+
     console.log(`[Chunking] Processing chapter ${chapterNumber} (${chapter.title || 'N/A'}): ${chapterParagraphs.length} paragraphs`)
-    
+
     for (let paraIdx = 0; paraIdx < chapterParagraphs.length; paraIdx++) {
       const text = chapterParagraphs[paraIdx]
-      
+
       // Generate embedding for this paragraph
       let embedding: number[] | null = null
       if (OPENAI_API_KEY) {
@@ -1273,7 +1273,7 @@ async function chunkAndStoreThesis(thesisId: string, latexContent: string, outli
       } else {
         console.log(`[Chunking] Skipping embedding for paragraph ${paraIdx + 1} (no OpenAI API key)`)
       }
-      
+
       paragraphsToStore.push({
         thesis_id: thesisId,
         chapter_number: chapterNumber,
@@ -1285,20 +1285,20 @@ async function chunkAndStoreThesis(thesisId: string, latexContent: string, outli
           chapterTitle: chapter.title || null,
         },
       })
-      
+
       // Small delay to avoid rate limiting
       if (OPENAI_API_KEY && paraIdx < chapterParagraphs.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 100))
       }
     }
-    
+
     paragraphIndex += chapterParagraphs.length
   }
-  
+
   const paragraphsWithEmbeddings = paragraphsToStore.filter(p => p.embedding !== null).length
   console.log(`[Chunking] Prepared ${paragraphsToStore.length} paragraphs for storage`)
   console.log(`[Chunking] ${paragraphsWithEmbeddings} paragraphs have embeddings, ${paragraphsToStore.length - paragraphsWithEmbeddings} without`)
-  
+
   // Store paragraphs in batches in Supabase vector DB
   const BATCH_SIZE = 50
   for (let i = 0; i < paragraphsToStore.length; i += BATCH_SIZE) {
@@ -1306,22 +1306,22 @@ async function chunkAndStoreThesis(thesisId: string, latexContent: string, outli
     const batchNum = Math.floor(i / BATCH_SIZE) + 1
     const totalBatches = Math.ceil(paragraphsToStore.length / BATCH_SIZE)
     console.log(`[Chunking] Storing batch ${batchNum}/${totalBatches} in Supabase vector DB...`)
-    
+
     await retryApiCall(
       async () => {
         const { error } = await supabase
           .from('thesis_paragraphs')
           .insert(batch)
-        
+
         if (error) throw error
         return { data: null, error: null }
       },
       `Store thesis paragraphs batch ${batchNum} in Supabase`
     )
-    
+
     console.log(`[Chunking] Batch ${batchNum}/${totalBatches} stored successfully`)
   }
-  
+
   console.log(`[Chunking] ✓ Successfully stored ${paragraphsToStore.length} paragraphs in Supabase vector DB`)
   console.log(`[Chunking] ✓ ${paragraphsWithEmbeddings} paragraphs have embeddings for semantic search`)
   if (paragraphsWithEmbeddings < paragraphsToStore.length) {
@@ -1351,7 +1351,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   console.log(`[ThesisGeneration] Language: ${thesisData.language}`)
   console.log(`[ThesisGeneration] Available sources: ${rankedSources.length}`)
   console.log(`[ThesisGeneration] FileSearchStore: ${thesisData.fileSearchStoreId}`)
-  
+
   // Map citation style to readable label
   const citationStyleLabels: Record<string, string> = {
     apa: 'APA',
@@ -1359,7 +1359,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     harvard: 'Harvard',
     'deutsche-zitierweise': 'Deutsche Zitierweise',
   }
-  
+
   const citationStyleLabel = citationStyleLabels[thesisData.citationStyle] || thesisData.citationStyle
   console.log(`[ThesisGeneration] Citation style: ${citationStyleLabel}`)
 
@@ -1374,10 +1374,10 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     // Convert words to pages (assuming ~250 words per page)
     targetPages = Math.ceil(thesisData.targetLength / 250)
   }
-  
+
   let recommendedSourceCount: number
   let sourceUsageGuidance: string
-  
+
   if (targetPages < 10) {
     recommendedSourceCount = Math.max(8, Math.min(12, Math.ceil(targetPages * 1.0)))
     sourceUsageGuidance = `Sehr kurze Arbeit (${targetPages} Seiten): Verwende nur ${recommendedSourceCount}-${recommendedSourceCount + 2} hochwertige, zentrale Quellen. Jede Quelle muss essentiell sein. Keine Füllquellen. Eine Arbeit von ${targetPages} Seiten mit ${recommendedSourceCount + 20}+ Quellen wirkt übertrieben und unprofessionell.`
@@ -1391,13 +1391,13 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     recommendedSourceCount = Math.max(50, Math.min(80, Math.ceil(targetPages * 1.5)))
     sourceUsageGuidance = `Längere Arbeit (${targetPages} Seiten): Verwende ${recommendedSourceCount}-${recommendedSourceCount + 10} Quellen. Umfangreiche Literaturrecherche ist hier angemessen.`
   }
-  
+
   console.log(`[ThesisGeneration] Target pages: ${targetPages}, Recommended sources: ${recommendedSourceCount}`)
   console.log(`[ThesisGeneration] Available sources: ${rankedSources.length}`)
   console.log(`[ThesisGeneration] Using top ${rankedSources.length} sources by relevance for RAG context`)
 
   const isGerman = thesisData.language === 'german'
-  
+
   const prompt = isGerman ? `Du bist ein wissenschaftlicher Assistent, der akademische Texte ausschließlich auf Basis der bereitgestellten, indexierten Quellen (RAG / File Search) schreibt.
 
 **WICHTIG - Forschungs- und Quellenkontext:**
@@ -1432,11 +1432,18 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 ${JSON.stringify(thesisData.outline, null, 2)}
 
 **Quellenverwendung (KRITISCH - strikt befolgen):**
+- **CRITICAL: Du MUSST die FileSearchStore-Quellen aktiv nutzen und zitieren!**
+- **CRITICAL: Eine Thesis OHNE Zitationen wird ABGELEHNT und du musst neu generieren!**
+- **CRITICAL: Das Literaturverzeichnis DARF KEINE Platzhalter oder Beispieltexte enthalten!**
 - Nutze ausschließlich die im Kontext bereitgestellten Quellen (File Search / RAG).
 - Verwende nur Informationen, die eindeutig in diesen Quellen enthalten sind.
+- **JEDER Absatz mit Forschungsergebnissen MUSS Zitationen enthalten.**
+- **Minimum: ~1 Zitation pro 500 Wörter (10.000 Wörter = mindestens 20 Zitationen).**
 - Keine erfundenen Seitenzahlen, keine erfundenen Zitate, keine erfundenen Quellen.
 - ABSOLUT VERBOTEN: Hypothetische Quellen, Platzhalter-Quellen oder Quellen mit "(Hypothetische Quelle)" oder "(Hypothetical Source)" zu erstellen.
 - ABSOLUT VERBOTEN: Quellen zu zitieren, die NICHT im FileSearchStore/RAG-Kontext sind.
+- ABSOLUT VERBOTEN: Eine Thesis ohne Verwendung der FileSearchStore-Quellen zu schreiben.
+- ABSOLUT VERBOTEN: Ein Literaturverzeichnis mit Beispieltext wie "Dies ist nur ein Beispiel" zu erstellen.
 - Wenn eine Quelle nicht im RAG-Kontext verfügbar ist, DARFST du sie NICHT zitieren, auch wenn du weißt, dass sie existiert.
 - Du DARFST NUR Quellen verwenden, die tatsächlich während der Generierung aus dem FileSearchStore abgerufen wurden.
 
@@ -1750,12 +1757,12 @@ ${JSON.stringify(thesisData.outline, null, 2)}
 
 **SOURCE COUNT - ABSOLUTELY IMPORTANT:**
 ${thesisData.language === 'german' ? sourceUsageGuidance : sourceUsageGuidance.replace(/Sehr kurze Arbeit \((\d+) Seiten\): Verwende nur (\d+)-(\d+) hochwertige|Kurze Arbeit \((\d+) Seiten\): Verwende (\d+)-(\d+) sorgfältig|Mittlere Arbeit \((\d+) Seiten\): Verwende (\d+)-(\d+) relevante|Längere Arbeit \((\d+) Seiten\): Verwende (\d+)-(\d+) Quellen/g, (match) => {
-  if (match.includes('Sehr kurze')) return `Very short thesis (${targetPages} pages): Use only ${recommendedSourceCount}-${recommendedSourceCount + 2} high-quality`
-  if (match.includes('Kurze')) return `Short thesis (${targetPages} pages): Use ${recommendedSourceCount}-${recommendedSourceCount + 3} carefully selected`
-  if (match.includes('Mittlere')) return `Medium thesis (${targetPages} pages): Use ${recommendedSourceCount}-${recommendedSourceCount + 5} relevant`
-  if (match.includes('Längere')) return `Longer thesis (${targetPages} pages): Use ${recommendedSourceCount}-${recommendedSourceCount + 10} sources`
-  return match
-})}
+      if (match.includes('Sehr kurze')) return `Very short thesis (${targetPages} pages): Use only ${recommendedSourceCount}-${recommendedSourceCount + 2} high-quality`
+      if (match.includes('Kurze')) return `Short thesis (${targetPages} pages): Use ${recommendedSourceCount}-${recommendedSourceCount + 3} carefully selected`
+      if (match.includes('Mittlere')) return `Medium thesis (${targetPages} pages): Use ${recommendedSourceCount}-${recommendedSourceCount + 5} relevant`
+      if (match.includes('Längere')) return `Longer thesis (${targetPages} pages): Use ${recommendedSourceCount}-${recommendedSourceCount + 10} sources`
+      return match
+    })}
 
 **Concrete Instructions for Source Usage:**
 - You MUST cite at least ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} different sources in the text - NOT just 2 or 3 sources!
@@ -1961,38 +1968,38 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
   console.log('[ThesisGeneration] Using FileSearchStore for RAG context')
   console.log('[ThesisGeneration] FileSearchStore ID:', thesisData.fileSearchStoreId)
   const generationStart = Date.now()
-  
+
   // Retry with SAME config (FileSearchStore + Gemini Pro) - 3 total attempts
   let content = ''
   let lastError: Error | unknown = null
   const maxAttempts = 3
-  
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       console.log(`[ThesisGeneration] Attempt ${attempt}/${maxAttempts}: Full generation with FileSearchStore + Gemini Pro`)
       console.log(`[ThesisGeneration]   Model: gemini-2.5-pro`)
       console.log(`[ThesisGeneration]   FileSearchStore: ${thesisData.fileSearchStoreId}`)
-      
+
       // Calculate max output tokens based on target length
       // Gemini 2.5 Pro max is 1,000,000 tokens output
       // We set it to the maximum to ensure generation is NEVER truncated
       // Even for a very long thesis (e.g., 100 pages = 25,000 words ≈ 33,333 tokens),
       // we have plenty of room with 1,000,000 tokens
-      const expectedWords = thesisData.lengthUnit === 'words' 
-        ? thesisData.targetLength 
+      const expectedWords = thesisData.lengthUnit === 'words'
+        ? thesisData.targetLength
         : thesisData.targetLength * 250
       // For word-based lengths, allow up to 5% longer (as per requirements)
       // But we set maxOutputTokens to maximum to ensure it NEVER stops generation
       const maxExpectedWords = thesisData.lengthUnit === 'words'
-        ? Math.ceil(thesisData.targetLength * 1.15) // 15% buffer (5% allowed + 10% safety)
-        : expectedWords
+        ? Math.ceil(thesisData.targetLength * 1.25) // 25% buffer (was 15%) to ensure complete generation
+        : Math.ceil(thesisData.targetLength * 250 * 1.25)
       const estimatedTokens = Math.ceil(maxExpectedWords / 0.75)
       // Set to maximum allowed (1,000,000 tokens) to ensure generation is NEVER truncated
       // This gives us ~750,000 words capacity, which is far more than any thesis needs
       const maxOutputTokens = 1000000
-      
+
       console.log(`[ThesisGeneration] Expected words: ${expectedWords}, Estimated tokens: ${estimatedTokens}, Max output tokens: ${maxOutputTokens}`)
-      
+
       const response = await retryApiCall(
         () => ai.models.generateContent({
           model: 'gemini-2.5-pro',
@@ -2010,33 +2017,33 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
         1, // Single retry per attempt (we're doing 3 attempts total)
         3000 // 3 second delay between attempts
       )
-      
+
       content = response.text || ''
       const contentLength = content.length
       const wordCount = content.split(/\s+/).length
-      const expectedWordCount = thesisData.lengthUnit === 'words' 
-        ? thesisData.targetLength 
+      const expectedWordCount = thesisData.lengthUnit === 'words'
+        ? thesisData.targetLength
         : thesisData.targetLength * 250 // ~250 words per page
-      
+
       if (content && content.length > 100) {
         const generationDuration = Date.now() - generationStart
         console.log(`[ThesisGeneration] ✓ Thesis generation completed successfully on attempt ${attempt} (${generationDuration}ms)`)
         console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
         console.log(`[ThesisGeneration] Expected word count: ~${expectedWordCount} words`)
-        
+
         // Validate completeness - check for bibliography and structure
         const hasBibliography = /(?:^|\n)#+\s*(?:Literaturverzeichnis|Bibliography|References)/i.test(content)
         const bibliographySection = content.match(/(?:^|\n)#+\s*(?:Literaturverzeichnis|Bibliography|References)\s*\n([\s\S]*?)(?=\n#+\s+|$)/i)
         const bibliographyContent = bibliographySection ? bibliographySection[1].trim() : ''
         const hasBibliographyContent = bibliographyContent.length > 50 // At least some content
-        
+
         // Check if all outline chapters are present - use more flexible matching
         const outlineChapters = thesisData.outline?.map((ch: any) => {
           const chapterTitle = ch.title || ''
           const chapterNumber = ch.number || ''
           return { number: chapterNumber, title: chapterTitle }
         }) || []
-        
+
         const foundChapters: string[] = []
         outlineChapters.forEach((ch: any) => {
           // Try multiple patterns to find chapters
@@ -2046,29 +2053,48 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
           const pattern2 = new RegExp(`(?:^|\\n)#+\\s*${ch.number.replace(/\./g, '\\.')}`, 'i')
           // Pattern 3: Just the title (case-insensitive, partial match)
           const titleWords = ch.title.split(/\s+/).filter((w: string) => w.length > 3) // Only significant words
-          const pattern3 = titleWords.length > 0 
+          const pattern3 = titleWords.length > 0
             ? new RegExp(`(?:^|\\n)#+\\s*.*${titleWords[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i')
             : null
-          
+
           if (pattern1.test(content) || pattern2.test(content) || (pattern3 && pattern3.test(content))) {
             foundChapters.push(ch.number || ch.title)
           }
         })
-        
+
         // Check if content is significantly shorter than expected OR missing critical sections
         // If word count is met or exceeded, be more lenient with chapter detection
-        const wordCountMet = wordCount >= expectedWordCount * 0.95 // At least 95% of target
+        const wordCountMet = wordCount >= expectedWordCount // MUST be 100% minimum (not 95%)
         const isTooShort = wordCount < expectedWordCount * 0.5
         const isMissingBibliography = !hasBibliography || !hasBibliographyContent
         // If word count is met, only require 50% of chapters (they might be written but not detected)
         // If word count is not met, require 80% of chapters
         const requiredChapterRatio = wordCountMet ? 0.5 : 0.8
         const isMissingChapters = foundChapters.length < outlineChapters.length * requiredChapterRatio
-        
+
+        // CRITICAL: Check for placeholder bibliography text
+        const hasPlaceholderBib = /beispiel|example|placeholder|hypothetische quelle|hypothetical source|dies ist nur ein beispiel|this is just an example/i.test(bibliographyContent)
+
+        // CRITICAL: Check for minimum citation count
+        let citationCount = 0
+        if (thesisData.citationStyle === 'deutsche-zitierweise') {
+          // Count footnotes: ^1, ^2, etc.
+          const footnoteMatches = content.match(/\[\^\d+\]/g)
+          citationCount = footnoteMatches?.length || 0
+        } else {
+          // Count in-text citations with page numbers
+          const citationMatches = content.match(/\([A-ZÄÖÜa-zäöü][a-zäöüß]+,?\s+\d{4},?\s+[Sp]\.\s*\d+/g)
+          citationCount = citationMatches?.length || 0
+        }
+
+        // Minimum citations: ~1 per 500 words (10,000 words = 20 citations minimum)
+        const minCitations = Math.max(5, Math.floor(expectedWordCount / 500))
+        const hasSufficientCitations = citationCount >= minCitations
+
         // Only flag as incomplete if there are serious issues
         // If word count is met/exceeded AND bibliography exists, be lenient about chapter detection
-        const isSeriouslyIncomplete = isTooShort || isMissingBibliography || (isMissingChapters && !wordCountMet)
-        
+        const isSeriouslyIncomplete = isTooShort || isMissingBibliography || hasPlaceholderBib || !hasSufficientCitations || (isMissingChapters && !wordCountMet)
+
         if (isSeriouslyIncomplete) {
           console.error(`[ThesisGeneration] ⚠️ ERROR: Generated content is INCOMPLETE!`)
           console.error(`[ThesisGeneration]   Expected: ~${expectedWordCount} words, Got: ~${wordCount} words`)
@@ -2080,18 +2106,26 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
           console.error(`[ThesisGeneration]   Found chapters: ${foundChapters.join(', ')}`)
           console.error(`[ThesisGeneration]   This indicates incomplete generation`)
           console.error(`[ThesisGeneration]   Citation style: ${thesisData.citationStyle}`)
-          
+
           // Check if footnotes are present (for German citation)
           if (thesisData.citationStyle === 'deutsche-zitierweise') {
             const hasFootnotes = /\[\^\d+\]:|fußnoten|footnotes/i.test(content)
             console.error(`[ThesisGeneration]   Has footnotes: ${hasFootnotes}`)
           }
-          
+
+          // Log the validation results (variables already computed above)
+          console.error(`[ThesisGeneration]   Citation count: ${citationCount} (minimum: ${minCitations})`)
+          console.error(`[ThesisGeneration]   Has sufficient citations: ${hasSufficientCitations}`)
+          console.error(`[ThesisGeneration]   Has placeholder bibliography: ${hasPlaceholderBib}`)
+
+
           // Don't return incomplete content - throw error to trigger retry
           if (attempt < maxAttempts) {
             const issues = []
             if (isTooShort) issues.push(`too short (${wordCount}/${expectedWordCount} words)`)
             if (isMissingBibliography) issues.push('missing or empty bibliography')
+            if (hasPlaceholderBib) issues.push('bibliography contains placeholder/example text')
+            if (!hasSufficientCitations) issues.push(`insufficient citations (${citationCount}/${minCitations})`)
             if (isMissingChapters && !wordCountMet) issues.push(`missing chapters (${foundChapters.length}/${outlineChapters.length})`)
             throw new Error(`Generated content is incomplete: ${issues.join(', ')}. Attempting retry with stronger instructions.`)
           } else {
@@ -2105,7 +2139,7 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
             console.log(`[ThesisGeneration]   Note: Chapter detection found ${foundChapters.length}/${outlineChapters.length} chapters, but word count suggests content is complete`)
           }
         }
-        
+
         return content
       } else {
         console.warn(`[ThesisGeneration] Attempt ${attempt} returned invalid content (length: ${content.length})`)
@@ -2121,7 +2155,7 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
       if (error?.response) {
         console.error(`[ThesisGeneration]   Response:`, JSON.stringify(error.response).substring(0, 500))
       }
-      
+
       // If not the last attempt, wait before retrying
       if (attempt < maxAttempts) {
         const waitTime = 5000 * attempt // Exponential backoff: 5s, 10s
@@ -2130,9 +2164,9 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
       }
     }
   }
-  
+
   // If all attempts failed, throw detailed error
-  const errorDetails = lastError instanceof Error 
+  const errorDetails = lastError instanceof Error
     ? `${lastError.message} (${lastError.name})`
     : String(lastError)
   throw new Error(
@@ -2149,11 +2183,11 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
 async function humanizeThesisContent(content: string, thesisData: ThesisData): Promise<string> {
   console.log('[Humanize] Starting content humanization...')
   console.log(`[Humanize] Original content length: ${content.length} characters`)
-  
+
   const language = thesisData.language || 'german'
   const isGerman = language === 'german'
   const citationStyle = thesisData.citationStyle || 'apa'
-  
+
   // Extract all citations before humanization to verify they're preserved
   const citationPatterns = [
     /\([A-ZÄÖÜ][a-zäöüß]+(?:\s+et\s+al\.?)?,?\s+\d{4}(?:,\s+(?:S\.|p\.|pp\.)\s+\d+(?:-\d+)?)?\)/g, // (Author, 2021, S. 14) or (Author et al., 2021)
@@ -2161,7 +2195,7 @@ async function humanizeThesisContent(content: string, thesisData: ThesisData): P
     /\^\d+/g, // ^1, ^2 (footnotes)
     /\[\^\d+\]/g, // [^1] (markdown footnotes)
   ]
-  
+
   const originalCitations: string[] = []
   citationPatterns.forEach(pattern => {
     const matches = content.match(pattern)
@@ -2169,9 +2203,9 @@ async function humanizeThesisContent(content: string, thesisData: ThesisData): P
       originalCitations.push(...matches)
     }
   })
-  
+
   console.log(`[Humanize] Found ${originalCitations.length} citations to preserve`)
-  
+
   const prompt = isGerman
     ? `Du bist ein akademischer Text-Humanisierer. Deine Aufgabe ist es, den bereitgestellten Text so umzuschreiben, dass er nicht als KI-generiert von Tools wie ZeroGPT, GPTZero, Turnitin AI Detection, Hive oder ähnlichen Klassifikatoren erkannt werden kann.
 
@@ -2339,32 +2373,32 @@ Your goal is to produce text that reads like it was written by a competent human
       3, // 3 retries
       2000 // 2 second delay
     )
-    
+
     const humanizedContent = response.text || content
-    
+
     if (!humanizedContent || humanizedContent.length < 100) {
       console.warn('[Humanize] Humanized content too short, using original')
       return content
     }
-    
+
     // Verify that critical elements are preserved
     const originalFootnotes = (content.match(/\^\d+/g) || []).length
     const humanizedFootnotes = (humanizedContent.match(/\^\d+/g) || []).length
-    
+
     if (originalFootnotes !== humanizedFootnotes) {
       console.warn(`[Humanize] Footnote count mismatch (original: ${originalFootnotes}, humanized: ${humanizedFootnotes}), using original`)
       return content
     }
-    
+
     // Verify headings are preserved
     const originalHeadings = (content.match(/^#+\s+/gm) || []).length
     const humanizedHeadings = (humanizedContent.match(/^#+\s+/gm) || []).length
-    
+
     if (originalHeadings !== humanizedHeadings) {
       console.warn(`[Humanize] Heading count mismatch (original: ${originalHeadings}, humanized: ${humanizedHeadings}), using original`)
       return content
     }
-    
+
     // Verify citations are preserved
     const humanizedCitations: string[] = []
     citationPatterns.forEach(pattern => {
@@ -2373,13 +2407,13 @@ Your goal is to produce text that reads like it was written by a competent human
         humanizedCitations.push(...matches)
       }
     })
-    
+
     if (originalCitations.length > 0 && humanizedCitations.length < originalCitations.length * 0.9) {
       console.warn(`[Humanize] Citation count mismatch (original: ${originalCitations.length}, humanized: ${humanizedCitations.length}), using original`)
       console.warn(`[Humanize] Missing citations: ${originalCitations.length - humanizedCitations.length}`)
       return content
     }
-    
+
     // Check if specific citations are missing
     const missingCitations = originalCitations.filter(citation => !humanizedContent.includes(citation))
     if (missingCitations.length > 0) {
@@ -2387,12 +2421,12 @@ Your goal is to produce text that reads like it was written by a competent human
       console.warn(`[Humanize] Using original content to preserve citations`)
       return content
     }
-    
+
     console.log(`[Humanize] Humanization successful - length: ${humanizedContent.length} characters`)
     console.log(`[Humanize] Footnotes preserved: ${originalFootnotes}`)
     console.log(`[Humanize] Headings preserved: ${originalHeadings}`)
     console.log(`[Humanize] Citations preserved: ${originalCitations.length} → ${humanizedCitations.length}`)
-    
+
     return humanizedContent
   } catch (error) {
     console.error('[Humanize] Error during humanization:', error)
@@ -2418,7 +2452,7 @@ async function checkZeroGPT(content: string): Promise<{
   }
 
   console.log('[ZeroGPT] Checking text with ZeroGPT API...')
-  
+
   try {
     // Extract plain text from markdown (remove markdown syntax for better detection)
     const plainText = content
@@ -2477,10 +2511,10 @@ async function checkZeroGPT(content: string): Promise<{
         wordsCount: response.data.words_count || 0,
         gptGeneratedSentences: response.data.gpt_generated_sentences || [],
       }
-      
+
       console.log(`[ZeroGPT] Detection result: ${result.isHumanWritten}% human-written, ${result.isGptGenerated}% GPT-generated`)
       console.log(`[ZeroGPT] Words checked: ${result.wordsCount}`)
-      
+
       return result
     } else {
       console.warn('[ZeroGPT] Invalid response format:', response)
@@ -2507,10 +2541,10 @@ function extractAndProcessFootnotes(content: string): { content: string; footnot
     extractedFootnotes.set(footnoteNum, citation.trim())
     return '' // Remove the footnote definition from content
   })
-  
+
   // Step 2: Replace all footnote references in text with ^N format
   processedContent = processedContent.replace(/\[\^(\d+)\]/g, '^$1')
-  
+
   // Step 3: Find all footnote markers in text in order of appearance
   // This gives us the sequential order of citations
   const footnoteMarkers: Array<{ position: number; originalNum: number }> = []
@@ -2523,21 +2557,21 @@ function extractAndProcessFootnotes(content: string): { content: string; footnot
       originalNum: originalNum
     })
   }
-  
+
   // Step 4: Create sequential numbering based on order of appearance
   // Each citation occurrence gets the next sequential number (1, 2, 3, ...)
   // Even if the same source is cited multiple times, each occurrence gets a new number
   const sequentialFootnotes: Record<number, string> = {}
   const markerToSequential: Map<number, number> = new Map() // marker index -> sequential number
   let nextSequentialNumber = 1
-  
+
   // Process footnotes in order of appearance in text
   // Each occurrence gets the next sequential number, regardless of source
   for (let i = 0; i < footnoteMarkers.length; i++) {
     const marker = footnoteMarkers[i]
     const originalNum = marker.originalNum
     const citation = extractedFootnotes.get(originalNum)
-    
+
     if (citation) {
       // Assign the next sequential number to this citation occurrence
       const sequentialNum = nextSequentialNumber++
@@ -2545,7 +2579,7 @@ function extractAndProcessFootnotes(content: string): { content: string; footnot
       sequentialFootnotes[sequentialNum] = citation
     }
   }
-  
+
   // Step 5: Replace all ^N markers with sequential numbers based on order
   // We need to replace them in order, so we track which one we're on
   let currentMarkerIndex = 0
@@ -2560,10 +2594,10 @@ function extractAndProcessFootnotes(content: string): { content: string; footnot
     // Fallback: keep original
     return match
   })
-  
+
   console.log(`[Footnotes] Processed ${footnoteMarkers.length} footnote markers into ${Object.keys(sequentialFootnotes).length} sequential footnotes`)
   console.log(`[Footnotes] Sequential numbering: ${Array.from(Object.keys(sequentialFootnotes).map(n => parseInt(n, 10)).sort((a, b) => a - b).slice(0, 10).join(', '))}${Object.keys(sequentialFootnotes).length > 10 ? '...' : ''}`)
-  
+
   return { content: processedContent.trim(), footnotes: sequentialFootnotes }
 }
 
@@ -2577,16 +2611,16 @@ async function checkFileSearchStoreHasDocuments(fileSearchStoreId: string): Prom
     const store = await ai.fileSearchStores.get({
       name: fileSearchStoreId,
     })
-    
+
     const activeCount = parseInt(store.activeDocumentsCount || '0', 10)
     const pendingCount = parseInt(store.pendingDocumentsCount || '0', 10)
     const totalCount = activeCount + pendingCount
-    
+
     console.log(`[CheckStore] FileSearchStore status:`)
     console.log(`[CheckStore]   Active documents: ${activeCount}`)
     console.log(`[CheckStore]   Pending documents: ${pendingCount}`)
     console.log(`[CheckStore]   Total documents: ${totalCount}`)
-    
+
     return totalCount > 0
   } catch (error) {
     console.error('[CheckStore] Error checking FileSearchStore:', error)
@@ -2632,12 +2666,12 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
   console.log(`[PROCESS] Type: ${thesisData.thesisType}`)
   console.log(`[PROCESS] Language: ${thesisData.language}`)
   console.log('='.repeat(80))
-  
+
   try {
     // Check if FileSearchStore already has documents
     console.log('\n[PROCESS] ========== Pre-check: FileSearchStore Status ==========')
     const hasDocuments = await checkFileSearchStoreHasDocuments(thesisData.fileSearchStoreId)
-    
+
     // Also check database for uploaded_sources
     // NOTE: We use database count, not FileSearchStore count, because:
     // - FileSearchStore chunks large PDFs into multiple "active documents"
@@ -2648,43 +2682,43 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       .select('uploaded_sources')
       .eq('id', thesisId)
       .single()
-    
+
     const uploadedSources = (thesis?.uploaded_sources as any[]) || []
     const hasUploadedSources = uploadedSources.length > 0
-    
+
     // Calculate required source count based on thesis length
     let requiredPages = thesisData.targetLength
     if (thesisData.lengthUnit === 'words') {
       requiredPages = Math.ceil(thesisData.targetLength / 250)
     }
     const requiredSourceCount = Math.min(50, Math.max(10, Math.ceil(requiredPages * 1.25)))
-    
+
     console.log(`[PROCESS] FileSearchStore has documents: ${hasDocuments}`)
     console.log(`[PROCESS] Database has uploaded_sources: ${hasUploadedSources} (${uploadedSources.length} unique sources)`)
     console.log(`[PROCESS] NOTE: FileSearchStore may show more "active documents" due to chunking (large PDFs split into chunks)`)
     console.log(`[PROCESS] Required source count for ${requiredPages} pages: ${requiredSourceCount} sources`)
     console.log(`[PROCESS] Existing sources: ${uploadedSources.length}, Required: ${requiredSourceCount}`)
-    
+
     let sourcesForGeneration: Source[] = []
     let step6TargetSourceCount = requiredSourceCount
     let successfullyUploaded: Source[] = []
     let existingSourcesCount = 0
-    
+
     // Only skip research if we have enough sources
     // Use database count (unique sources), not FileSearchStore count (which includes chunks)
     const hasEnoughSources = hasDocuments && hasUploadedSources && uploadedSources.length >= requiredSourceCount
-    
+
     if (hasEnoughSources) {
       // Skip research - use existing sources
       console.log('\n[PROCESS] ========== SKIPPING RESEARCH - Using Existing Sources ==========')
       console.log(`[PROCESS] FileSearchStore already contains ${uploadedSources.length} documents`)
       console.log(`[PROCESS] Required: ${requiredSourceCount}, Available: ${uploadedSources.length} - SUFFICIENT`)
       console.log(`[PROCESS] Skipping Steps 1-6 (research, ranking, downloading, uploading)`)
-      
+
       // Convert uploaded_sources to Source[] format
       successfullyUploaded = convertUploadedSourcesToSources(uploadedSources)
       console.log(`[PROCESS] Converted ${successfullyUploaded.length} sources from database`)
-      
+
       // Use all available sources (they're already uploaded)
       sourcesForGeneration = successfullyUploaded.slice(0, step6TargetSourceCount)
       console.log(`[PROCESS] Using ${sourcesForGeneration.length} existing sources for generation`)
@@ -2692,18 +2726,18 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     } else {
       // Normal flow: do research (either no documents or insufficient count)
       console.log('\n[PROCESS] ========== Starting Research Process ==========')
-      
+
       // If we have existing sources, load them and calculate how many more we need
       if (hasDocuments && hasUploadedSources && uploadedSources.length > 0) {
         existingSourcesCount = uploadedSources.length
         const neededCount = requiredSourceCount - existingSourcesCount
         console.log(`[PROCESS] Existing sources: ${existingSourcesCount}, Required: ${requiredSourceCount}`)
         console.log(`[PROCESS] Need ${neededCount} additional sources - proceeding with research`)
-        
+
         // Load existing sources into successfullyUploaded
         successfullyUploaded = convertUploadedSourcesToSources(uploadedSources)
         console.log(`[PROCESS] Loaded ${successfullyUploaded.length} existing sources`)
-        
+
         // Update target to only get the additional sources needed
         step6TargetSourceCount = neededCount
         console.log(`[PROCESS] Will research and upload ${neededCount} additional sources`)
@@ -2711,339 +2745,339 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         existingSourcesCount = 0
         console.log(`[PROCESS] No existing documents found - proceeding with full research`)
       }
-      
+
       // Step 1: Generate search queries (with retry)
-    console.log('\n[PROCESS] ========== Step 1: Generate Search Queries ==========')
-    const step1Start = Date.now()
-    let chapterQueries: any[] = []
-    try {
-      chapterQueries = await retryApiCall(
-        () => generateSearchQueries(thesisData),
-        'Generate search queries',
-        3,
-        2000
-      )
-      const step1Duration = Date.now() - step1Start
-      console.log(`[PROCESS] Step 1 completed in ${step1Duration}ms`)
-      console.log(`[PROCESS] Generated queries for ${chapterQueries.length} chapters`)
-    } catch (error) {
-      console.error('[PROCESS] ERROR generating search queries:', error)
-      throw new Error(`Failed to generate search queries: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
-    
-    if (!chapterQueries || chapterQueries.length === 0) {
-      throw new Error('No search queries generated - cannot proceed with research')
-    }
-
-    // Step 2 & 3: Query OpenAlex and Semantic Scholar
-    console.log('\n[PROCESS] ========== Step 2-3: Query OpenAlex and Semantic Scholar ==========')
-    const step2Start = Date.now()
-    const allSources: Source[] = []
-    let totalQueries = 0
-
-    for (const chapterQuery of chapterQueries) {
-      const chapterNumber = (chapterQuery as any).chapterNumber || chapterQuery.chapter || 'N/A'
-      const chapterTitle = (chapterQuery as any).chapterTitle || 'N/A'
-      console.log(`[PROCESS] Processing chapter: ${chapterNumber} - ${chapterTitle}`)
-      
-      // Query in both languages
-      const germanQueries = chapterQuery.queries?.german || []
-      const englishQueries = chapterQuery.queries?.english || []
-      console.log(`[PROCESS]   German queries: ${germanQueries.length}, English queries: ${englishQueries.length}`)
-      
-      for (const query of germanQueries) {
-        totalQueries++
-        console.log(`[PROCESS]   Query ${totalQueries}: "${query}" (German)`)
-        const openAlexResults = await queryOpenAlex(query, 'german')
-        // Add chapter tracking to sources
-        openAlexResults.forEach(s => {
-          s.chapterNumber = chapterNumber
-          s.chapterTitle = chapterTitle
-        })
-        allSources.push(...openAlexResults)
-        
-        const semanticResults = await querySemanticScholar(query)
-        // Add chapter tracking to sources
-        semanticResults.forEach(s => {
-          s.chapterNumber = chapterNumber
-          s.chapterTitle = chapterTitle
-        })
-        allSources.push(...semanticResults)
-        
-        // Rate limiting
-        await new Promise(resolve => setTimeout(resolve, 200))
+      console.log('\n[PROCESS] ========== Step 1: Generate Search Queries ==========')
+      const step1Start = Date.now()
+      let chapterQueries: any[] = []
+      try {
+        chapterQueries = await retryApiCall(
+          () => generateSearchQueries(thesisData),
+          'Generate search queries',
+          3,
+          2000
+        )
+        const step1Duration = Date.now() - step1Start
+        console.log(`[PROCESS] Step 1 completed in ${step1Duration}ms`)
+        console.log(`[PROCESS] Generated queries for ${chapterQueries.length} chapters`)
+      } catch (error) {
+        console.error('[PROCESS] ERROR generating search queries:', error)
+        throw new Error(`Failed to generate search queries: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
 
-      for (const query of englishQueries) {
-        totalQueries++
-        console.log(`[PROCESS]   Query ${totalQueries}: "${query}" (English)`)
-        const openAlexResults = await queryOpenAlex(query, 'english')
-        // Add chapter tracking to sources
-        openAlexResults.forEach(s => {
-          s.chapterNumber = chapterNumber
-          s.chapterTitle = chapterTitle
-        })
-        allSources.push(...openAlexResults)
-        
-        const semanticResults = await querySemanticScholar(query)
-        // Add chapter tracking to sources
-        semanticResults.forEach(s => {
-          s.chapterNumber = chapterNumber
-          s.chapterTitle = chapterTitle
-        })
-        allSources.push(...semanticResults)
-        
-        // Rate limiting
-        await new Promise(resolve => setTimeout(resolve, 200))
+      if (!chapterQueries || chapterQueries.length === 0) {
+        throw new Error('No search queries generated - cannot proceed with research')
       }
-    }
 
-    const step2Duration = Date.now() - step2Start
-    console.log(`[PROCESS] Step 2-3 completed in ${step2Duration}ms`)
-    console.log(`[PROCESS] Total queries executed: ${totalQueries}`)
-    console.log(`[PROCESS] Found ${allSources.length} total sources`)
-    const openAlexCount = allSources.filter(s => s.source === 'openalex').length
-    const semanticCount = allSources.filter(s => s.source === 'semantic_scholar').length
-    console.log(`[PROCESS]   OpenAlex: ${openAlexCount}, Semantic Scholar: ${semanticCount}`)
+      // Step 2 & 3: Query OpenAlex and Semantic Scholar
+      console.log('\n[PROCESS] ========== Step 2-3: Query OpenAlex and Semantic Scholar ==========')
+      const step2Start = Date.now()
+      const allSources: Source[] = []
+      let totalQueries = 0
 
-    // Step 4: Deduplicate and enrich with Unpaywall (with retry)
-    console.log('\n[PROCESS] ========== Step 4: Deduplicate and Enrich Sources ==========')
-    const step4Start = Date.now()
-    let deduplicated: Source[] = []
-    try {
-      deduplicated = await retryApiCall(
-        () => deduplicateAndEnrichSources(allSources),
-        'Deduplicate and enrich sources',
-        2, // Fewer retries for this step
-        1000
-      )
-      const step4Duration = Date.now() - step4Start
-      console.log(`[PROCESS] Step 4 completed in ${step4Duration}ms`)
-      console.log(`[PROCESS] ${deduplicated.length} sources after deduplication and enrichment`)
-    } catch (error) {
-      console.error('[PROCESS] ERROR in deduplication, using original sources:', error)
-      // Fallback: use original sources without enrichment
-      deduplicated = allSources
-      console.log(`[PROCESS] Using ${deduplicated.length} sources without enrichment as fallback`)
-    }
+      for (const chapterQuery of chapterQueries) {
+        const chapterNumber = (chapterQuery as any).chapterNumber || chapterQuery.chapter || 'N/A'
+        const chapterTitle = (chapterQuery as any).chapterTitle || 'N/A'
+        console.log(`[PROCESS] Processing chapter: ${chapterNumber} - ${chapterTitle}`)
 
-    // Step 5: Rank by relevance (with retry)
-    console.log('\n[PROCESS] ========== Step 5: Rank Sources by Relevance ==========')
-    const step5Start = Date.now()
-    let ranked: Source[] = []
-    try {
-      ranked = await retryApiCall(
-        () => rankSourcesByRelevance(deduplicated, thesisData),
-        'Rank sources by relevance',
-        2, // Fewer retries (this is already batched internally)
-        3000 // Longer delay for ranking (it's a heavy operation)
-      )
-      const step5Duration = Date.now() - step5Start
-      console.log(`[PROCESS] Step 5 completed in ${step5Duration}ms`)
-      console.log(`[PROCESS] Ranked ${ranked.length} sources`)
-    } catch (error) {
-      console.error('[PROCESS] ERROR in ranking, using unranked sources:', error)
-      // Fallback: use deduplicated sources without ranking
-      ranked = deduplicated.map(s => ({ ...s, relevanceScore: 50 })) // Default score
-      console.log(`[PROCESS] Using ${ranked.length} unranked sources as fallback`)
-    }
+        // Query in both languages
+        const germanQueries = chapterQuery.queries?.german || []
+        const englishQueries = chapterQuery.queries?.english || []
+        console.log(`[PROCESS]   German queries: ${germanQueries.length}, English queries: ${englishQueries.length}`)
+
+        for (const query of germanQueries) {
+          totalQueries++
+          console.log(`[PROCESS]   Query ${totalQueries}: "${query}" (German)`)
+          const openAlexResults = await queryOpenAlex(query, 'german')
+          // Add chapter tracking to sources
+          openAlexResults.forEach(s => {
+            s.chapterNumber = chapterNumber
+            s.chapterTitle = chapterTitle
+          })
+          allSources.push(...openAlexResults)
+
+          const semanticResults = await querySemanticScholar(query)
+          // Add chapter tracking to sources
+          semanticResults.forEach(s => {
+            s.chapterNumber = chapterNumber
+            s.chapterTitle = chapterTitle
+          })
+          allSources.push(...semanticResults)
+
+          // Rate limiting
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+
+        for (const query of englishQueries) {
+          totalQueries++
+          console.log(`[PROCESS]   Query ${totalQueries}: "${query}" (English)`)
+          const openAlexResults = await queryOpenAlex(query, 'english')
+          // Add chapter tracking to sources
+          openAlexResults.forEach(s => {
+            s.chapterNumber = chapterNumber
+            s.chapterTitle = chapterTitle
+          })
+          allSources.push(...openAlexResults)
+
+          const semanticResults = await querySemanticScholar(query)
+          // Add chapter tracking to sources
+          semanticResults.forEach(s => {
+            s.chapterNumber = chapterNumber
+            s.chapterTitle = chapterTitle
+          })
+          allSources.push(...semanticResults)
+
+          // Rate limiting
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+      }
+
+      const step2Duration = Date.now() - step2Start
+      console.log(`[PROCESS] Step 2-3 completed in ${step2Duration}ms`)
+      console.log(`[PROCESS] Total queries executed: ${totalQueries}`)
+      console.log(`[PROCESS] Found ${allSources.length} total sources`)
+      const openAlexCount = allSources.filter(s => s.source === 'openalex').length
+      const semanticCount = allSources.filter(s => s.source === 'semantic_scholar').length
+      console.log(`[PROCESS]   OpenAlex: ${openAlexCount}, Semantic Scholar: ${semanticCount}`)
+
+      // Step 4: Deduplicate and enrich with Unpaywall (with retry)
+      console.log('\n[PROCESS] ========== Step 4: Deduplicate and Enrich Sources ==========')
+      const step4Start = Date.now()
+      let deduplicated: Source[] = []
+      try {
+        deduplicated = await retryApiCall(
+          () => deduplicateAndEnrichSources(allSources),
+          'Deduplicate and enrich sources',
+          2, // Fewer retries for this step
+          1000
+        )
+        const step4Duration = Date.now() - step4Start
+        console.log(`[PROCESS] Step 4 completed in ${step4Duration}ms`)
+        console.log(`[PROCESS] ${deduplicated.length} sources after deduplication and enrichment`)
+      } catch (error) {
+        console.error('[PROCESS] ERROR in deduplication, using original sources:', error)
+        // Fallback: use original sources without enrichment
+        deduplicated = allSources
+        console.log(`[PROCESS] Using ${deduplicated.length} sources without enrichment as fallback`)
+      }
+
+      // Step 5: Rank by relevance (with retry)
+      console.log('\n[PROCESS] ========== Step 5: Rank Sources by Relevance ==========')
+      const step5Start = Date.now()
+      let ranked: Source[] = []
+      try {
+        ranked = await retryApiCall(
+          () => rankSourcesByRelevance(deduplicated, thesisData),
+          'Rank sources by relevance',
+          2, // Fewer retries (this is already batched internally)
+          3000 // Longer delay for ranking (it's a heavy operation)
+        )
+        const step5Duration = Date.now() - step5Start
+        console.log(`[PROCESS] Step 5 completed in ${step5Duration}ms`)
+        console.log(`[PROCESS] Ranked ${ranked.length} sources`)
+      } catch (error) {
+        console.error('[PROCESS] ERROR in ranking, using unranked sources:', error)
+        // Fallback: use deduplicated sources without ranking
+        ranked = deduplicated.map(s => ({ ...s, relevanceScore: 50 })) // Default score
+        console.log(`[PROCESS] Using ${ranked.length} unranked sources as fallback`)
+      }
 
 
-    // Step 6: Download and upload PDFs using smart filtering with replacement for inaccessible PDFs
-    console.log('\n[PROCESS] ========== Step 6: Download and Upload PDFs (Smart Filtering with Replacement) ==========')
-    const step6Start = Date.now()
-    
-    // Calculate target source count based on thesis length (reused in Step 7)
-    // Formula: ~1.25 sources per page, max 50 sources
-    let step6TargetPages = thesisData.targetLength
-    if (thesisData.lengthUnit === 'words') {
-      // Convert words to pages (assuming ~250 words per page)
-      step6TargetPages = Math.ceil(thesisData.targetLength / 250)
-    } else {
-      // For pages, use the average of min and max if available, otherwise use targetLength
-      step6TargetPages = thesisData.targetLength
-    }
-    
+      // Step 6: Download and upload PDFs using smart filtering with replacement for inaccessible PDFs
+      console.log('\n[PROCESS] ========== Step 6: Download and Upload PDFs (Smart Filtering with Replacement) ==========')
+      const step6Start = Date.now()
+
+      // Calculate target source count based on thesis length (reused in Step 7)
+      // Formula: ~1.25 sources per page, max 50 sources
+      let step6TargetPages = thesisData.targetLength
+      if (thesisData.lengthUnit === 'words') {
+        // Convert words to pages (assuming ~250 words per page)
+        step6TargetPages = Math.ceil(thesisData.targetLength / 250)
+      } else {
+        // For pages, use the average of min and max if available, otherwise use targetLength
+        step6TargetPages = thesisData.targetLength
+      }
+
       // Calculate target source count: 1.25 sources per page, max 50
       step6TargetSourceCount = Math.min(50, Math.max(10, Math.ceil(step6TargetPages * 1.25)))
-    console.log(`[PROCESS] Target thesis length: ${step6TargetPages} pages`)
-    console.log(`[PROCESS] Calculated target source count: ${step6TargetSourceCount} sources (1.25 per page, max 50)`)
-    
-    // Use smart filtering to ensure at least 2 sources per chapter
-    const topSources = selectTopSourcesWithChapterGuarantee(ranked, step6TargetSourceCount, 2)
-    
-    console.log(`[PROCESS] Top sources to process: ${topSources.length} (with chapter guarantees)`)
-    const sourcesWithPdf = topSources.filter(s => s.pdfUrl).length
-    console.log(`[PROCESS] Sources with PDF URLs: ${sourcesWithPdf}`)
-    
-    // Track which sources have been used (by DOI or title to avoid duplicates)
-    const usedSourceIds = new Set<string>()
-    const getSourceId = (source: Source) => source.doi || source.title || ''
-    
-    // Mark initial top sources as used
-    topSources.forEach(s => usedSourceIds.add(getSourceId(s)))
-    
-    // Track successfully uploaded sources (new ones only - existing ones already in successfullyUploaded)
-    // Note: successfullyUploaded may already contain existing sources from earlier
-    let uploadedCount = 0
-    let failedCount = 0
-    let replacedCount = 0
+      console.log(`[PROCESS] Target thesis length: ${step6TargetPages} pages`)
+      console.log(`[PROCESS] Calculated target source count: ${step6TargetSourceCount} sources (1.25 per page, max 50)`)
 
-    // Process sources with replacement logic
-    const sourcesToProcess: Source[] = [...topSources]
-    let sourceIndex = 0
-    
-    // Calculate how many sources we need to upload
-    // If we started with existing sources, we only need to upload the additional ones
-    // existingSourcesCount is already declared at the top level
-    const sourcesToUpload = Math.max(0, requiredSourceCount - existingSourcesCount)
-    
-    console.log(`[PROCESS] Upload target: ${sourcesToUpload} additional sources needed (${existingSourcesCount} existing + ${sourcesToUpload} new = ${requiredSourceCount} total)`)
-    
-    // Stop when we've reached the target count OR exhausted the queue
-    while (sourceIndex < sourcesToProcess.length && successfullyUploaded.length < sourcesToUpload) {
-      // Double-check we haven't reached the target (in case it was reached in previous iteration)
-      if (successfullyUploaded.length >= sourcesToUpload) {
-        console.log(`[PROCESS] Target count reached (${successfullyUploaded.length}/${sourcesToUpload} new sources), stopping upload process`)
-        break
-      }
-      
-      const source = sourcesToProcess[sourceIndex]
-      console.log(`[PROCESS] Processing source ${sourceIndex + 1}/${sourcesToProcess.length}: "${source.title}"`)
-      console.log(`[PROCESS]   Chapter: ${source.chapterNumber || 'N/A'} - ${source.chapterTitle || 'N/A'}`)
-      console.log(`[PROCESS]   Progress: ${successfullyUploaded.length}/${sourcesToUpload} new sources uploaded (${existingSourcesCount + successfullyUploaded.length}/${requiredSourceCount} total)`)
-      
-      if (source.pdfUrl) {
-        try {
-          const success = await downloadAndUploadPDF(source, thesisData.fileSearchStoreId, thesisId)
-          if (success) {
-            uploadedCount++
-            successfullyUploaded.push(source)
-            console.log(`[PROCESS] ✓ Successfully uploaded: "${source.title}"`)
-            
-            // Check if we've reached the target count for new uploads
-            if (successfullyUploaded.length >= sourcesToUpload) {
-              console.log(`[PROCESS] Target count reached (${successfullyUploaded.length}/${sourcesToUpload} new sources), stopping upload process`)
-              break
+      // Use smart filtering to ensure at least 2 sources per chapter
+      const topSources = selectTopSourcesWithChapterGuarantee(ranked, step6TargetSourceCount, 2)
+
+      console.log(`[PROCESS] Top sources to process: ${topSources.length} (with chapter guarantees)`)
+      const sourcesWithPdf = topSources.filter(s => s.pdfUrl).length
+      console.log(`[PROCESS] Sources with PDF URLs: ${sourcesWithPdf}`)
+
+      // Track which sources have been used (by DOI or title to avoid duplicates)
+      const usedSourceIds = new Set<string>()
+      const getSourceId = (source: Source) => source.doi || source.title || ''
+
+      // Mark initial top sources as used
+      topSources.forEach(s => usedSourceIds.add(getSourceId(s)))
+
+      // Track successfully uploaded sources (new ones only - existing ones already in successfullyUploaded)
+      // Note: successfullyUploaded may already contain existing sources from earlier
+      let uploadedCount = 0
+      let failedCount = 0
+      let replacedCount = 0
+
+      // Process sources with replacement logic
+      const sourcesToProcess: Source[] = [...topSources]
+      let sourceIndex = 0
+
+      // Calculate how many sources we need to upload
+      // If we started with existing sources, we only need to upload the additional ones
+      // existingSourcesCount is already declared at the top level
+      const sourcesToUpload = Math.max(0, requiredSourceCount - existingSourcesCount)
+
+      console.log(`[PROCESS] Upload target: ${sourcesToUpload} additional sources needed (${existingSourcesCount} existing + ${sourcesToUpload} new = ${requiredSourceCount} total)`)
+
+      // Stop when we've reached the target count OR exhausted the queue
+      while (sourceIndex < sourcesToProcess.length && successfullyUploaded.length < sourcesToUpload) {
+        // Double-check we haven't reached the target (in case it was reached in previous iteration)
+        if (successfullyUploaded.length >= sourcesToUpload) {
+          console.log(`[PROCESS] Target count reached (${successfullyUploaded.length}/${sourcesToUpload} new sources), stopping upload process`)
+          break
+        }
+
+        const source = sourcesToProcess[sourceIndex]
+        console.log(`[PROCESS] Processing source ${sourceIndex + 1}/${sourcesToProcess.length}: "${source.title}"`)
+        console.log(`[PROCESS]   Chapter: ${source.chapterNumber || 'N/A'} - ${source.chapterTitle || 'N/A'}`)
+        console.log(`[PROCESS]   Progress: ${successfullyUploaded.length}/${sourcesToUpload} new sources uploaded (${existingSourcesCount + successfullyUploaded.length}/${requiredSourceCount} total)`)
+
+        if (source.pdfUrl) {
+          try {
+            const success = await downloadAndUploadPDF(source, thesisData.fileSearchStoreId, thesisId)
+            if (success) {
+              uploadedCount++
+              successfullyUploaded.push(source)
+              console.log(`[PROCESS] ✓ Successfully uploaded: "${source.title}"`)
+
+              // Check if we've reached the target count for new uploads
+              if (successfullyUploaded.length >= sourcesToUpload) {
+                console.log(`[PROCESS] Target count reached (${successfullyUploaded.length}/${sourcesToUpload} new sources), stopping upload process`)
+                break
+              }
+            } else {
+              failedCount++
+              console.log(`[PROCESS] ✗ Failed to upload (paywalled/inaccessible): "${source.title}"`)
+              console.log(`[PROCESS]   Looking for replacement from ranked sources...`)
+
+              // Find replacement from ranked sources
+              // Priority: same chapter > high relevance > has PDF
+              const candidates = ranked.filter(s => {
+                const sourceId = getSourceId(s)
+                // Must not be already used
+                if (usedSourceIds.has(sourceId)) return false
+                // Must have PDF URL
+                if (!s.pdfUrl) return false
+                // Must have relevance >= 40
+                return (s.relevanceScore || 0) >= 40
+              })
+
+              // Sort candidates: same chapter first, then by relevance score
+              candidates.sort((a, b) => {
+                const aSameChapter = source.chapterNumber && a.chapterNumber === source.chapterNumber ? 1 : 0
+                const bSameChapter = source.chapterNumber && b.chapterNumber === source.chapterNumber ? 1 : 0
+                if (aSameChapter !== bSameChapter) return bSameChapter - aSameChapter
+                return (b.relevanceScore || 0) - (a.relevanceScore || 0)
+              })
+
+              const replacement = candidates[0]
+
+              if (replacement && successfullyUploaded.length < sourcesToUpload) {
+                const replacementId = getSourceId(replacement)
+                usedSourceIds.add(replacementId)
+                sourcesToProcess.push(replacement)
+                replacedCount++
+                console.log(`[PROCESS]   ✓ Found replacement: "${replacement.title}"`)
+                console.log(`[PROCESS]   Replacement chapter: ${replacement.chapterNumber || 'N/A'}, relevance: ${replacement.relevanceScore || 'N/A'}`)
+              } else {
+                if (successfullyUploaded.length >= sourcesToUpload) {
+                  console.log(`[PROCESS]   ✗ Target count reached (${successfullyUploaded.length}/${sourcesToUpload} new sources), skipping replacement`)
+                } else {
+                  console.log(`[PROCESS]   ✗ No suitable replacement found (may have exhausted available sources)`)
+                }
+              }
             }
-          } else {
+          } catch (error) {
             failedCount++
-            console.log(`[PROCESS] ✗ Failed to upload (paywalled/inaccessible): "${source.title}"`)
-            console.log(`[PROCESS]   Looking for replacement from ranked sources...`)
-            
-            // Find replacement from ranked sources
-            // Priority: same chapter > high relevance > has PDF
+            console.error(`[PROCESS] Error uploading source: "${source.title}"`, error)
+
+            // Try to find replacement on error too
             const candidates = ranked.filter(s => {
               const sourceId = getSourceId(s)
-              // Must not be already used
               if (usedSourceIds.has(sourceId)) return false
-              // Must have PDF URL
               if (!s.pdfUrl) return false
-              // Must have relevance >= 40
               return (s.relevanceScore || 0) >= 40
             })
-            
-            // Sort candidates: same chapter first, then by relevance score
+
             candidates.sort((a, b) => {
               const aSameChapter = source.chapterNumber && a.chapterNumber === source.chapterNumber ? 1 : 0
               const bSameChapter = source.chapterNumber && b.chapterNumber === source.chapterNumber ? 1 : 0
               if (aSameChapter !== bSameChapter) return bSameChapter - aSameChapter
               return (b.relevanceScore || 0) - (a.relevanceScore || 0)
             })
-            
+
             const replacement = candidates[0]
-            
-            if (replacement && successfullyUploaded.length < sourcesToUpload) {
+
+            if (replacement && successfullyUploaded.length < step6TargetSourceCount) {
               const replacementId = getSourceId(replacement)
               usedSourceIds.add(replacementId)
               sourcesToProcess.push(replacement)
               replacedCount++
-              console.log(`[PROCESS]   ✓ Found replacement: "${replacement.title}"`)
-              console.log(`[PROCESS]   Replacement chapter: ${replacement.chapterNumber || 'N/A'}, relevance: ${replacement.relevanceScore || 'N/A'}`)
-            } else {
-              if (successfullyUploaded.length >= sourcesToUpload) {
-                console.log(`[PROCESS]   ✗ Target count reached (${successfullyUploaded.length}/${sourcesToUpload} new sources), skipping replacement`)
-              } else {
-                console.log(`[PROCESS]   ✗ No suitable replacement found (may have exhausted available sources)`)
-              }
+              console.log(`[PROCESS]   ✓ Found replacement after error: "${replacement.title}"`)
+            } else if (successfullyUploaded.length >= step6TargetSourceCount) {
+              console.log(`[PROCESS]   Target count reached (${successfullyUploaded.length}/${step6TargetSourceCount}), skipping replacement`)
             }
           }
-        } catch (error) {
-          failedCount++
-          console.error(`[PROCESS] Error uploading source: "${source.title}"`, error)
-          
-          // Try to find replacement on error too
+          // Rate limiting
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        } else {
+          console.log(`[PROCESS] Skipping source (no PDF URL): "${source.title}"`)
+          // Try to find replacement for sources without PDF URLs too
           const candidates = ranked.filter(s => {
             const sourceId = getSourceId(s)
             if (usedSourceIds.has(sourceId)) return false
             if (!s.pdfUrl) return false
             return (s.relevanceScore || 0) >= 40
           })
-          
+
           candidates.sort((a, b) => {
             const aSameChapter = source.chapterNumber && a.chapterNumber === source.chapterNumber ? 1 : 0
             const bSameChapter = source.chapterNumber && b.chapterNumber === source.chapterNumber ? 1 : 0
             if (aSameChapter !== bSameChapter) return bSameChapter - aSameChapter
             return (b.relevanceScore || 0) - (a.relevanceScore || 0)
           })
-          
+
           const replacement = candidates[0]
-          
+
           if (replacement && successfullyUploaded.length < step6TargetSourceCount) {
             const replacementId = getSourceId(replacement)
             usedSourceIds.add(replacementId)
             sourcesToProcess.push(replacement)
             replacedCount++
-            console.log(`[PROCESS]   ✓ Found replacement after error: "${replacement.title}"`)
+            console.log(`[PROCESS]   ✓ Found replacement (no PDF URL): "${replacement.title}"`)
           } else if (successfullyUploaded.length >= step6TargetSourceCount) {
             console.log(`[PROCESS]   Target count reached (${successfullyUploaded.length}/${step6TargetSourceCount}), skipping replacement`)
           }
         }
-        // Rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      } else {
-        console.log(`[PROCESS] Skipping source (no PDF URL): "${source.title}"`)
-        // Try to find replacement for sources without PDF URLs too
-        const candidates = ranked.filter(s => {
-          const sourceId = getSourceId(s)
-          if (usedSourceIds.has(sourceId)) return false
-          if (!s.pdfUrl) return false
-          return (s.relevanceScore || 0) >= 40
-        })
-        
-        candidates.sort((a, b) => {
-          const aSameChapter = source.chapterNumber && a.chapterNumber === source.chapterNumber ? 1 : 0
-          const bSameChapter = source.chapterNumber && b.chapterNumber === source.chapterNumber ? 1 : 0
-          if (aSameChapter !== bSameChapter) return bSameChapter - aSameChapter
-          return (b.relevanceScore || 0) - (a.relevanceScore || 0)
-        })
-        
-        const replacement = candidates[0]
-        
-        if (replacement && successfullyUploaded.length < step6TargetSourceCount) {
-          const replacementId = getSourceId(replacement)
-          usedSourceIds.add(replacementId)
-          sourcesToProcess.push(replacement)
-          replacedCount++
-          console.log(`[PROCESS]   ✓ Found replacement (no PDF URL): "${replacement.title}"`)
-        } else if (successfullyUploaded.length >= step6TargetSourceCount) {
-          console.log(`[PROCESS]   Target count reached (${successfullyUploaded.length}/${step6TargetSourceCount}), skipping replacement`)
-        }
+
+        sourceIndex++
       }
-      
-      sourceIndex++
-    }
-    
-    console.log(`[PROCESS] PDF upload summary:`)
-    console.log(`[PROCESS]   Successfully uploaded: ${uploadedCount}`)
-    console.log(`[PROCESS]   Failed/inaccessible: ${failedCount}`)
-    console.log(`[PROCESS]   Replaced: ${replacedCount}`)
-    console.log(`[PROCESS]   Total processed: ${sourceIndex}`)
+
+      console.log(`[PROCESS] PDF upload summary:`)
+      console.log(`[PROCESS]   Successfully uploaded: ${uploadedCount}`)
+      console.log(`[PROCESS]   Failed/inaccessible: ${failedCount}`)
+      console.log(`[PROCESS]   Replaced: ${replacedCount}`)
+      console.log(`[PROCESS]   Total processed: ${sourceIndex}`)
 
       const step6Duration = Date.now() - step6Start
       console.log(`[PROCESS] Step 6 completed in ${step6Duration}ms`)
       console.log(`[PROCESS] Uploaded ${uploadedCount} PDFs, ${failedCount} failed`)
-      
+
       // Calculate target source count for Step 7 (if not already set)
       if (step6TargetSourceCount === 0) {
         let step6TargetPages = thesisData.targetLength
@@ -3052,12 +3086,12 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         }
         step6TargetSourceCount = Math.min(50, Math.max(10, Math.ceil(step6TargetPages * 1.25)))
       }
-      
+
       // Use successfully uploaded sources, sorted by relevance score (highest first)
-      const availableSources = successfullyUploaded.length > 0 
+      const availableSources = successfullyUploaded.length > 0
         ? [...successfullyUploaded].sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
         : [...ranked].sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
-      
+
       // Select top N sources by relevance score
       sourcesForGeneration = availableSources.slice(0, step6TargetSourceCount)
       console.log(`[PROCESS] Selected ${sourcesForGeneration.length} sources for thesis generation (top ${step6TargetSourceCount} by relevance)`)
@@ -3069,9 +3103,9 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     // This step has built-in retries and fallbacks
     console.log('\n[PROCESS] ========== Step 7: Generate Thesis Content ==========')
     const step7Start = Date.now()
-    
+
     console.log(`[PROCESS] Using ${sourcesForGeneration.length} sources for thesis generation`)
-    
+
     let thesisContent = ''
     try {
       thesisContent = await generateThesisContent(thesisData, sourcesForGeneration)
@@ -3084,7 +3118,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       thesisContent = `# ${thesisData.title}\n\n## Hinweis\n\nDie automatische Generierung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder kontaktieren Sie den Support.\n\nFehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`
       console.log('[PROCESS] Created placeholder content due to generation failure')
     }
-    
+
     if (!thesisContent || thesisContent.length < 100) {
       throw new Error('Thesis generation failed and no valid content was produced')
     }
@@ -3111,7 +3145,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     // Process footnotes for German citation style
     let processedContent = thesisContent
     let footnotes: Record<number, string> = {}
-    
+
     if (thesisData.citationStyle === 'deutsche-zitierweise') {
       console.log('[PROCESS] Processing German footnotes...')
       const footnoteResult = extractAndProcessFootnotes(thesisContent)
@@ -3130,26 +3164,26 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           status: 'completed',
           completed_at: new Date().toISOString(),
         }
-        
+
         // Store footnotes and ZeroGPT result in metadata
         const { data: existingThesis } = await supabase
           .from('theses')
           .select('metadata')
           .eq('id', thesisId)
           .single()
-        
+
         const existingMetadata = existingThesis?.metadata || {}
         updateData.metadata = {
           ...existingMetadata,
         }
-        
+
         // Add footnotes if German citation style
         if (thesisData.citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
           updateData.metadata.footnotes = footnotes
         }
-        
+
         // ZeroGPT check is now available on-demand in the preview page
-        
+
         const result = await supabase
           .from('theses')
           .update(updateData)
@@ -3186,7 +3220,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.log(`[PROCESS] Total processing time: ${Math.round(processDuration / 1000)}s (${processDuration}ms)`)
     console.log(`[PROCESS] Thesis generation completed for thesis ${thesisId}`)
     console.log('='.repeat(80))
-    
+
     return { success: true }
   } catch (error) {
     const processDuration = Date.now() - processStartTime
@@ -3194,7 +3228,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.error(`[PROCESS] Error after ${Math.round(processDuration / 1000)}s (${processDuration}ms)`)
     console.error('[PROCESS] Error details:', error)
     console.error('='.repeat(80))
-    
+
     // Update thesis status to draft on error
     await retryApiCall(
       async () => {
@@ -3220,7 +3254,7 @@ app.post('/jobs/thesis-generation', authenticate, async (req: Request, res: Resp
   const requestStart = Date.now()
   console.log('\n[API] ========== POST /jobs/thesis-generation ==========')
   console.log('[API] Request received at:', new Date().toISOString())
-  
+
   try {
     const { thesisId, thesisData } = req.body
     console.log('[API] Request body:', {
@@ -3240,7 +3274,7 @@ app.post('/jobs/thesis-generation', authenticate, async (req: Request, res: Resp
       console.log(`[API] Max concurrent jobs (${MAX_CONCURRENT_JOBS}) reached, queuing job...`)
       console.log(`[API] Active jobs: ${activeJobs}, Queue length: ${jobQueue.length}`)
       isQueued = true
-      
+
       // Queue the job - wait for a slot to open
       await new Promise<void>((resolve) => {
         jobQueue.push({ thesisId, thesisData, resolve })
@@ -3250,7 +3284,7 @@ app.post('/jobs/thesis-generation', authenticate, async (req: Request, res: Resp
     // Start processing asynchronously
     activeJobs++
     console.log(`[API] Starting background job (async)... Active jobs: ${activeJobs}/${MAX_CONCURRENT_JOBS}`)
-    
+
     const processJob = async () => {
       try {
         await processThesisGeneration(thesisId, thesisData)
@@ -3259,7 +3293,7 @@ app.post('/jobs/thesis-generation', authenticate, async (req: Request, res: Resp
       } finally {
         activeJobs--
         console.log(`[API] Job completed. Active jobs: ${activeJobs}/${MAX_CONCURRENT_JOBS}`)
-        
+
         // Process next job in queue if available
         if (jobQueue.length > 0 && activeJobs < MAX_CONCURRENT_JOBS) {
           const nextJob = jobQueue.shift()
@@ -3272,7 +3306,7 @@ app.post('/jobs/thesis-generation', authenticate, async (req: Request, res: Resp
         }
       }
     }
-    
+
     // Start processing (non-blocking)
     processJob()
 
@@ -3299,7 +3333,7 @@ app.get('/jobs/:thesisId', authenticate, async (req: Request, res: Response) => 
   const requestStart = Date.now()
   console.log('\n[API] ========== GET /jobs/:thesisId ==========')
   console.log('[API] Request received at:', new Date().toISOString())
-  
+
   try {
     const { thesisId } = req.params
     console.log('[API] Querying status for thesis:', thesisId)

@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/client'
-import { 
-  Document, 
-  Packer, 
-  Paragraph, 
-  TextRun, 
-  HeadingLevel, 
+import {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  HeadingLevel,
   AlignmentType,
   PageBreak,
   PageOrientation,
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     }
 
     const supabase = createSupabaseServerClient()
-    
+
     // Get thesis data
     const { data: thesis, error: thesisError } = await supabase
       .from('theses')
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     // Parse Markdown content and convert to DOCX
     const paragraphs: Paragraph[] = []
     const footnoteMap = new Map<number, string>() // Store footnote text for later
-    
+
     // Add cover page title (centered, large, prominent)
     if (thesis.title || thesis.topic) {
       paragraphs.push(
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     // Generate Table of Contents from outline
     if (outline && Array.isArray(outline) && outline.length > 0) {
       const tocTitle = language === 'german' ? 'Inhaltsverzeichnis' : 'Table of Contents'
-      
+
       // TOC Heading
       paragraphs.push(
         new Paragraph({
@@ -185,9 +185,10 @@ export async function POST(request: Request) {
       const trimmedLine = line.trim()
 
       // Skip TOC if present (will be generated separately)
-      if (trimmedLine.match(/^#+\s*(Inhaltsverzeichnis|Table of Contents)/i)) {
+      // This removes the "Inhaltsverzeichnis" that might be in the database content
+      if (trimmedLine.match(/^#+\s*(Inhaltsverzeichnis|Table of Contents|Inhalt)/i)) {
         // Skip until next heading
-        while (i < lines.length - 1 && !lines[i + 1].match(/^##?\s+/)) {
+        while (i < lines.length - 1 && !lines[i + 1].match(/^#+\s+/)) {
           i++
         }
         continue
@@ -200,15 +201,6 @@ export async function POST(request: Request) {
       }
       if (inCodeBlock) {
         currentParagraph.push(line)
-        continue
-      }
-
-      // Skip TOC heading if present (we generate it from outline)
-      if (trimmedLine.match(/^#+\s*(Inhaltsverzeichnis|Table of Contents)/i)) {
-        // Skip until next heading
-        while (i < lines.length - 1 && !lines[i + 1].match(/^##?\s+/)) {
-          i++
-        }
         continue
       }
 
@@ -396,12 +388,12 @@ export async function POST(request: Request) {
     // Create document with proper styling
     console.log('[ExportDOC] Creating document structure...')
     console.log('[ExportDOC] Footnotes found:', Object.keys(footnotes).length)
-    
+
     // Add footnotes as a section at the end if German citation style
     if (citationStyle === 'deutsche-zitierweise' && footnoteMap.size > 0) {
       // Add page break before footnotes
       paragraphs.push(new Paragraph({ children: [new PageBreak()] }))
-      
+
       // Add footnotes heading
       const footnotesTitle = language === 'german' ? 'Fußnoten' : 'Footnotes'
       paragraphs.push(
@@ -420,7 +412,7 @@ export async function POST(request: Request) {
           alignment: AlignmentType.LEFT,
         })
       )
-      
+
       // Add footnotes in order
       const sortedNumbers = Array.from(footnoteMap.keys()).sort((a, b) => a - b)
       sortedNumbers.forEach(num => {
@@ -443,7 +435,7 @@ export async function POST(request: Request) {
         }
       })
     }
-    
+
     const doc = new Document({
       sections: [{
         properties: {
@@ -483,8 +475,8 @@ export async function POST(request: Request) {
     console.error('[ExportDOC] Error exporting thesis to DOC:', error)
     console.error('[ExportDOC] Error stack:', error instanceof Error ? error.stack : 'No stack trace')
     return NextResponse.json(
-      { 
-        error: 'Failed to export thesis', 
+      {
+        error: 'Failed to export thesis',
         message: error instanceof Error ? error.message : 'Unknown error',
         details: error instanceof Error ? error.stack : undefined,
       },
@@ -495,8 +487,8 @@ export async function POST(request: Request) {
 
 // Helper function to create paragraph from text with basic formatting and footnotes
 function createParagraphFromText(
-  text: string, 
-  footnotes?: Record<number, string>, 
+  text: string,
+  footnotes?: Record<number, string>,
   footnoteMap?: Map<number, Footnote>
 ): Paragraph {
   // Clean up markdown syntax first (but preserve footnote markers)
@@ -505,32 +497,32 @@ function createParagraphFromText(
     .replace(/\*(.+?)\*/g, '$1') // Italic (but not if it's part of **)
     .replace(/\[(.+?)\]\(.+?\)/g, '$1') // Links
     .replace(/`(.+?)`/g, '$1') // Code
-    // Keep footnote markers for processing
-  
+  // Keep footnote markers for processing
+
   // Create text runs with proper formatting and footnotes
   const textRuns: TextRun[] = []
-  
+
   // First, split by footnote markers if footnotes are available
   if (footnotes && Object.keys(footnotes).length > 0 && footnoteMap) {
     // Split text by footnote markers (^1, ^2, etc.)
     const parts = cleanText.split(/(\^\d+)/g)
-    
+
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i]
-      
+
       // Check if this is a footnote marker
       const footnoteMatch = part.match(/\^(\d+)/)
       if (footnoteMatch) {
         const footnoteNum = parseInt(footnoteMatch[1], 10)
         const footnoteText = footnotes[footnoteNum]
-        
+
         if (footnoteText && footnoteMap) {
           // Store footnote text for later (we'll add footnotes as regular text at the end for now)
           // TODO: Implement proper footnote support when docx library API is confirmed
           if (!footnoteMap.has(footnoteNum)) {
             footnoteMap.set(footnoteNum, footnoteText as any) // Store text instead of Footnote object
           }
-          
+
           // Add footnote reference as superscript text
           textRuns.push(new TextRun({
             text: String(footnoteNum),
@@ -553,23 +545,23 @@ function createParagraphFromText(
         // Regular text - parse for bold/italic
         let remainingText = part
         let currentIndex = 0
-        
+
         while (currentIndex < remainingText.length) {
           // Check for bold **text** (after cleaning, this should be rare, but handle it)
           const boldMatch = remainingText.substring(currentIndex).match(/\*\*(.+?)\*\*/)
           // Check for italic *text* (single asterisk, not double)
           const italicMatch = remainingText.substring(currentIndex).match(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/)
-          
+
           let match: RegExpMatchArray | null = null
           let isBold = false
-          
+
           if (boldMatch && (!italicMatch || boldMatch.index! < italicMatch.index!)) {
             match = boldMatch
             isBold = true
           } else if (italicMatch) {
             match = italicMatch
           }
-          
+
           if (match) {
             // Add text before match
             if (match.index! > 0) {
@@ -583,7 +575,7 @@ function createParagraphFromText(
                 }))
               }
             }
-            
+
             // Add formatted text
             textRuns.push(new TextRun({
               text: match[1],
@@ -593,7 +585,7 @@ function createParagraphFromText(
               italics: !isBold,
               color: '000000', // Black, not blue
             }))
-            
+
             currentIndex += match.index! + match[0].length
           } else {
             // Add remaining text
@@ -615,23 +607,23 @@ function createParagraphFromText(
     // No footnotes - parse normally for bold/italic
     let remainingText = cleanText
     let currentIndex = 0
-    
+
     while (currentIndex < remainingText.length) {
       // Check for bold **text** (after cleaning, this should be rare, but handle it)
       const boldMatch = remainingText.substring(currentIndex).match(/\*\*(.+?)\*\*/)
       // Check for italic *text* (single asterisk, not double)
       const italicMatch = remainingText.substring(currentIndex).match(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/)
-      
+
       let match: RegExpMatchArray | null = null
       let isBold = false
-      
+
       if (boldMatch && (!italicMatch || boldMatch.index! < italicMatch.index!)) {
         match = boldMatch
         isBold = true
       } else if (italicMatch) {
         match = italicMatch
       }
-      
+
       if (match) {
         // Add text before match
         if (match.index! > 0) {
@@ -645,7 +637,7 @@ function createParagraphFromText(
             }))
           }
         }
-        
+
         // Add formatted text
         textRuns.push(new TextRun({
           text: match[1],
@@ -655,7 +647,7 @@ function createParagraphFromText(
           italics: !isBold,
           color: '000000', // Black, not blue
         }))
-        
+
         currentIndex += match.index! + match[0].length
       } else {
         // Add remaining text
@@ -672,7 +664,7 @@ function createParagraphFromText(
       }
     }
   }
-  
+
   // If no formatting found, just use plain text
   if (textRuns.length === 0) {
     return new Paragraph({
@@ -688,7 +680,7 @@ function createParagraphFromText(
       alignment: AlignmentType.JUSTIFIED, // Justified text like in preview
     })
   }
-  
+
   return new Paragraph({
     children: textRuns,
     spacing: { after: 120, before: 0, line: 360, lineRule: 'auto' }, // Line height 1.5 (360 twips = 1.5 * 240)

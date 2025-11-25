@@ -20,7 +20,7 @@ export function Navbar() {
   useEffect(() => {
     try {
       const supabase = createSupabaseClient()
-      
+
       // Get initial session
       supabase.auth.getSession().then(({ data: { session } }) => {
         setUser(session?.user ?? null)
@@ -79,15 +79,13 @@ export function Navbar() {
   ]
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-transparent backdrop-blur-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
-            <FileText className="w-8 h-8 text-black dark:text-white" />
-            <span className="text-2xl font-bold text-black dark:text-white">
-              Uni<span className="text-yellow-600 dark:text-yellow-500">Lord</span>
-            </span>
+          <Link href="/" className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
+            <img src="/assets/darklogo.png" alt="ThesisMeister Logo" className="w-10 h-10" />
+
           </Link>
 
           {/* Desktop Navigation */}
@@ -131,7 +129,7 @@ export function Navbar() {
                   </span>
                   <ChevronDown className={`w-4 h-4 text-gray-700 dark:text-gray-300 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
-                
+
                 {userMenuOpen && (
                   <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
                     <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -292,7 +290,7 @@ export function Navbar() {
           </div>
         )}
       </div>
-      
+
       <AuthDialog
         isOpen={authDialogOpen}
         onClose={() => setAuthDialogOpen(false)}

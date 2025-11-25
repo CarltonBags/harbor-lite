@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     }
 
     const supabase = createSupabaseServerClient()
-    
+
     // Get thesis data
     const { data: thesis, error: thesisError } = await supabase
       .from('theses')
@@ -70,8 +70,8 @@ export async function POST(request: Request) {
     console.error('[ExportLaTeX] Error exporting thesis to LaTeX:', error)
     console.error('[ExportLaTeX] Error stack:', error instanceof Error ? error.stack : 'No stack trace')
     return NextResponse.json(
-      { 
-        error: 'Failed to export thesis', 
+      {
+        error: 'Failed to export thesis',
         message: error instanceof Error ? error.message : 'Unknown error',
         details: error instanceof Error ? error.stack : undefined,
       },
@@ -89,12 +89,12 @@ function generateLaTeXDocument(
   footnotes: Record<number, string>
 ): string {
   const isGerman = language === 'german'
-  
+
   // Document class and packages
   let latex = `\\documentclass[12pt,a4paper]{article}
 \\usepackage[utf8]{inputenc}
 \\usepackage[T1]{fontenc}
-\\usepackage[ngerman,english]{babel}
+\\usepackage[${isGerman ? 'english,ngerman' : 'ngerman,english'}]{babel}
 \\usepackage{geometry}
 \\geometry{a4paper, left=2cm, right=2cm, top=2.5cm, bottom=2.5cm}
 \\usepackage{setspace}
@@ -151,29 +151,17 @@ function generateLaTeXDocument(
 `
   }
 
-  // Table of Contents - generate manually from outline
+  // Table of Contents - use native LaTeX command
   if (outline && Array.isArray(outline) && outline.length > 0) {
-    const tocTitle = isGerman ? 'Inhaltsverzeichnis' : 'Table of Contents'
-    latex += `\\section*{${tocTitle}}
-\\addcontentsline{toc}{section}{${tocTitle}}
+    // Rename TOC if needed (babel handles this usually, but we can force it)
+    if (isGerman) {
+      latex += `\\renewcommand{\\contentsname}{Inhaltsverzeichnis}\n`
+    } else {
+      latex += `\\renewcommand{\\contentsname}{Table of Contents}\n`
+    }
 
-`
-    outline.forEach((chapter) => {
-      // Main chapter entry
-      latex += `\\noindent\\textbf{${chapter.number} ${escapeLaTeX(chapter.title)}}\\\\[0.5em]
-`
-      // Sections
-      chapter.sections?.forEach((section) => {
-        latex += `\\hspace{8mm}${section.number} ${escapeLaTeX(section.title)}\\\\[0.3em]
-`
-        // Subsections
-        section.subsections?.forEach((subsection) => {
-          latex += `\\hspace{16mm}${subsection.number} ${escapeLaTeX(subsection.title)}\\\\[0.2em]
-`
-        })
-      })
-    })
-    latex += `\\newpage
+    latex += `\\tableofcontents
+\\newpage
 
 `
   }
@@ -182,11 +170,50 @@ function generateLaTeXDocument(
   let mainContent = content
   let bibliographyContent = ''
   const bibMatch = content.match(/^#+\s*(Literaturverzeichnis|Bibliography)\s*\n(.*?)(?=^#+\s+|$)/ims)
-  
+
   if (bibMatch) {
     // Remove bibliography from main content
     mainContent = content.replace(bibMatch[0], '').trim()
     bibliographyContent = bibMatch[2] || ''
+  }
+
+  // Attempt to rescue orphaned references from the end of mainContent
+  // This handles cases where the AI generates references before the actual bibliography header
+  const lines = mainContent.split('\n')
+  const orphanedRefs: string[] = []
+  let lastIndexToRemove = -1
+
+  // Regex for a citation line: Name, Initials. (Year) ...
+  const citationRegex = /^[A-Za-z\u00C0-\u017F\-]+,\s+[A-Z]\.?\s*.*?\((?:\d{4}|o\.J\.|\d{4}\/\d{4})\)/
+  const pageNumRegex = /^\d+$/
+  const emptyRegex = /^\s*$/
+
+  // Scan from bottom up
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim()
+
+    if (citationRegex.test(line)) {
+      orphanedRefs.unshift(line)
+      lastIndexToRemove = i
+    } else if (pageNumRegex.test(line) || emptyRegex.test(line)) {
+      // Only include spacers/page numbers if we've already found a citation below
+      if (orphanedRefs.length > 0) {
+        orphanedRefs.unshift(line)
+        lastIndexToRemove = i
+      }
+    } else {
+      // Stop at first non-citation line
+      break
+    }
+  }
+
+  if (lastIndexToRemove !== -1) {
+    // Remove orphaned refs from mainContent
+    mainContent = lines.slice(0, lastIndexToRemove).join('\n').trim()
+
+    // Add to bibliography (filtering out page numbers/empty lines)
+    const cleanOrphaned = orphanedRefs.filter(l => !pageNumRegex.test(l.trim()) && !emptyRegex.test(l.trim()))
+    bibliographyContent = cleanOrphaned.join('\n') + '\n' + bibliographyContent
   }
 
   // Main content (without bibliography)
@@ -203,7 +230,7 @@ function generateLaTeXDocument(
     const sortedNumbers = Object.keys(footnotes)
       .map(n => parseInt(n, 10))
       .sort((a, b) => a - b)
-    
+
     sortedNumbers.forEach(num => {
       const footnoteText = footnotes[num]
       if (footnoteText) {
@@ -221,13 +248,16 @@ function generateLaTeXDocument(
 \\addcontentsline{toc}{section}{${isGerman ? 'Literaturverzeichnis' : 'Bibliography'}}
 
 `
-  
+
   if (bibliographyContent.trim()) {
+    // Add spacing between bibliography entries
+    latex += `\\setlength{\\parskip}{1em}\n\n`
+
     // Process bibliography entries
     const bibLines = bibliographyContent.split('\n')
     for (const line of bibLines) {
       const trimmed = line.trim()
-      if (trimmed && !trimmed.match(/^#+\s*(Literaturverzeichnis|Bibliography)/i)) {
+      if (trimmed && !trimmed.match(/^#+\s*(Literaturverzeichnis|Bibliography|Inhalt)/i)) {
         // Convert bibliography entries to LaTeX
         const processed = processFootnotesInText(trimmed, citationStyle, footnotes)
         // Format as bibliography entry (remove list markers if present)
@@ -269,8 +299,9 @@ function convertMarkdownToLaTeX(
     const trimmedLine = line.trim()
 
     // Skip TOC if present (we generate it from outline)
-    if (trimmedLine.match(/^#+\s*(Inhaltsverzeichnis|Table of Contents)/i)) {
-      while (i < lines.length - 1 && !lines[i + 1].match(/^##?\s+/)) {
+    // This removes the "Inhaltsverzeichnis" that might be in the database content
+    if (trimmedLine.match(/^#+\s*(Inhaltsverzeichnis|Table of Contents|Inhalt)/i)) {
+      while (i < lines.length - 1 && !lines[i + 1].match(/^#+\s+/)) {
         i++
       }
       continue
@@ -284,7 +315,7 @@ function convertMarkdownToLaTeX(
       latex += `\\[${mathContent}\\]\n\n`
       continue
     }
-    
+
     // Check for opening math block
     if (trimmedLine.match(/^\$\$/) || trimmedLine.match(/^\\\[/)) {
       latex += '\\[\n'
@@ -304,7 +335,7 @@ function convertMarkdownToLaTeX(
       }
       continue
     }
-    
+
     // Check for closing math block
     if (trimmedLine.match(/\$\$$/) || trimmedLine.match(/\\\]$/)) {
       if (inMathBlock) {
@@ -317,7 +348,7 @@ function convertMarkdownToLaTeX(
       }
       continue
     }
-    
+
     if (inMathBlock) {
       // Inside math block - don't escape, just output
       latex += line + '\n'
@@ -349,20 +380,20 @@ function convertMarkdownToLaTeX(
         inList = false
         listIsOrdered = false
       }
-      
+
       const hashCount = headingMatch[1].length
       const headingText = headingMatch[2].trim()
-      
+
       // Skip empty headings
       if (!headingText) {
         continue
       }
-      
+
       // Skip TOC heading (already generated from outline)
       if (headingText.match(/^(Inhaltsverzeichnis|Table of Contents)$/i)) {
         continue
       }
-      
+
       // Map heading levels to LaTeX commands
       if (hashCount === 1) {
         // H1: Main chapter - add page break
@@ -383,7 +414,7 @@ function convertMarkdownToLaTeX(
       }
       continue
     }
-    
+
     // Also handle lines that start with # but might be malformed
     // This catches cases like "##" on its own, or "##Heading" without space
     if (trimmedLine.match(/^#{1,6}$/) || (trimmedLine.match(/^#{2,}/) && !trimmedLine.match(/^#{1,6}\s+/))) {
@@ -514,36 +545,36 @@ function convertMarkdownToLaTeX(
 
 function convertTableToLaTeX(rows: string[][], citationStyle: string, footnotes: Record<number, string>): string {
   if (rows.length === 0) return ''
-  
+
   const numCols = Math.max(...rows.map(row => row.length))
   if (numCols === 0) return ''
-  
+
   let latex = '\n\\begin{table}[h]\n\\centering\n'
   latex += `\\begin{tabular}{|${'l|'.repeat(numCols)}}\n`
   latex += '\\hline\n'
-  
+
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
     const cells: string[] = []
-    
+
     for (let j = 0; j < numCols; j++) {
       const cell = row[j] || ''
       // Process cell content (HTML tags, footnotes, etc.)
       const processedCell = processFootnotesInText(cell, citationStyle, footnotes)
       cells.push(processedCell)
     }
-    
+
     latex += cells.join(' & ') + ' \\\\\n'
     if (i === 0) {
       // Add horizontal line after header row
       latex += '\\hline\n'
     }
   }
-  
+
   latex += '\\hline\n'
   latex += '\\end{tabular}\n'
   latex += '\\end{table}\n\n'
-  
+
   return latex
 }
 
@@ -555,7 +586,7 @@ function processFootnotesInText(
   // First, protect math expressions from being processed
   const mathPlaceholders: string[] = []
   let placeholderIndex = 0
-  
+
   // Replace inline math ($...$) with placeholders
   let processed = text.replace(/(?<!\$)\$(?!\$)((?:(?!\$).)+?)\$(?!\$)/g, (match) => {
     const placeholder = `__MATH_PLACEHOLDER_${placeholderIndex}__`
@@ -563,7 +594,7 @@ function processFootnotesInText(
     placeholderIndex++
     return placeholder
   })
-  
+
   // Replace display math ($$...$$) with placeholders
   processed = processed.replace(/\$\$([^$]+)\$\$/g, (match) => {
     const placeholder = `__MATH_PLACEHOLDER_${placeholderIndex}__`
@@ -581,11 +612,20 @@ function processFootnotesInText(
       if (footnoteText) {
         // Clean and prepare footnote text
         let cleanText = footnoteText.trim()
-        
+
+        // Normalize LaTeX commands: remove spaces between command and opening brace
+        // e.g., \textit {text} -> \textit{text}
+        cleanText = cleanText.replace(/\\(?:textbf|textit|texttt|underline|textsubscript|textsuperscript|emph|em|textsc|textsl|textmd|textup|textnormal|textrm|textsf|textbackslash)\s+\{/g, (match) => {
+          return match.replace(/\s+\{/, '{')
+        })
+
+        // Remove placeholder text like "\ETC." that might indicate truncation
+        cleanText = cleanText.replace(/\\ETC\./gi, '')
+
         // Protect LaTeX commands before escaping
         const latexCmdPlaceholders: string[] = []
         let cmdIndex = 0
-        
+
         // Process text to find and protect LaTeX commands
         let protectedText = ''
         let i = 0
@@ -594,28 +634,33 @@ function processFootnotesInText(
           if (cleanText[i] === '\\' && i + 1 < cleanText.length) {
             const cmdStart = i
             i++ // Skip backslash
-            
-            // Match command name
+
+            // Match command name (with optional whitespace)
             const cmdNameMatch = cleanText.substring(i).match(/^(?:textbf|textit|texttt|underline|textsubscript|textsuperscript|emph|em|textsc|textsl|textmd|textup|textnormal|textrm|textsf|textbackslash)/)
             if (cmdNameMatch) {
               i += cmdNameMatch[0].length
-              
-              // Skip whitespace
+
+              // Skip whitespace (normalized, but handle edge cases)
               while (i < cleanText.length && /\s/.test(cleanText[i])) i++
-              
+
               // Find the opening brace
               if (i < cleanText.length && cleanText[i] === '{') {
                 i++ // Skip opening brace
-                
+
                 // Find matching closing brace
                 let depth = 1
                 const argStart = i
                 while (i < cleanText.length && depth > 0) {
+                  if (cleanText[i] === '\\' && i + 1 < cleanText.length) {
+                    // Skip escaped characters
+                    i += 2
+                    continue
+                  }
                   if (cleanText[i] === '{') depth++
                   else if (cleanText[i] === '}') depth--
                   i++
                 }
-                
+
                 if (depth === 0) {
                   // Complete command found
                   const fullCmd = cleanText.substring(cmdStart, i)
@@ -625,8 +670,12 @@ function processFootnotesInText(
                   cmdIndex++
                   continue
                 } else {
-                  // Incomplete command - close it
-                  const fullCmd = cleanText.substring(cmdStart) + '}'
+                  // Incomplete command - close it properly
+                  // Extract what we have so far
+                  const partialContent = cleanText.substring(argStart)
+                  // Remove any trailing incomplete commands or placeholders
+                  const cleanedContent = partialContent.replace(/\\ETC\./gi, '').trim()
+                  const fullCmd = cleanText.substring(cmdStart, argStart) + cleanedContent + '}'
                   const placeholder = `FOOTNOTECMD${cmdIndex}FOOTNOTECMD`
                   latexCmdPlaceholders[cmdIndex] = fullCmd
                   protectedText += placeholder
@@ -634,7 +683,8 @@ function processFootnotesInText(
                   break // End of text
                 }
               } else {
-                // No opening brace - not a valid command, treat as regular text
+                // No opening brace found - might be incomplete, skip this command
+                // Just add the backslash and continue
                 protectedText += cleanText[cmdStart]
                 i = cmdStart + 1
               }
@@ -649,17 +699,17 @@ function processFootnotesInText(
             i++
           }
         }
-        
+
         // Escape the rest of the text (but not the protected commands)
         let escapedText = escapeLaTeXForText(protectedText)
-        
+
         // Restore LaTeX commands (in reverse order to avoid conflicts)
         for (let i = latexCmdPlaceholders.length - 1; i >= 0; i--) {
           const placeholder = `FOOTNOTECMD${i}FOOTNOTECMD`
           const cmd = latexCmdPlaceholders[i]
           escapedText = escapedText.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), cmd)
         }
-        
+
         // Final validation: ensure balanced braces in the footnote content
         // Count braces that are NOT part of LaTeX commands
         let openBraces = 0
@@ -667,21 +717,33 @@ function processFootnotesInText(
         i = 0
         while (i < escapedText.length) {
           if (escapedText[i] === '\\' && i + 1 < escapedText.length) {
-            // Skip LaTeX command
-            i++
-            // Skip command name
-            while (i < escapedText.length && /[a-zA-Z]/.test(escapedText[i])) i++
-            // Skip whitespace
-            while (i < escapedText.length && /\s/.test(escapedText[i])) i++
-            // Skip command argument (braces are part of the command)
-            if (i < escapedText.length && escapedText[i] === '{') {
-              i++
-              let depth = 1
-              while (i < escapedText.length && depth > 0) {
-                if (escapedText[i] === '{') depth++
-                else if (escapedText[i] === '}') depth--
+            // Check if this is a LaTeX command
+            const cmdMatch = escapedText.substring(i).match(/^\\(?:textbf|textit|texttt|underline|textsubscript|textsuperscript|emph|em|textsc|textsl|textmd|textup|textnormal|textrm|textsf|textbackslash)/)
+            if (cmdMatch) {
+              // Skip LaTeX command
+              i += cmdMatch[0].length
+              // Skip whitespace
+              while (i < escapedText.length && /\s/.test(escapedText[i])) i++
+              // Skip command argument (braces are part of the command)
+              if (i < escapedText.length && escapedText[i] === '{') {
                 i++
+                let depth = 1
+                while (i < escapedText.length && depth > 0) {
+                  if (escapedText[i] === '\\' && i + 1 < escapedText.length) {
+                    // Skip escaped characters
+                    i += 2
+                    continue
+                  }
+                  if (escapedText[i] === '{') depth++
+                  else if (escapedText[i] === '}') depth--
+                  i++
+                }
+                continue
               }
+            } else {
+              // Escaped character, skip it
+              i += 2
+              continue
             }
           } else {
             if (escapedText[i] === '{') openBraces++
@@ -689,12 +751,12 @@ function processFootnotesInText(
             i++
           }
         }
-        
+
         // Balance braces if needed
         if (openBraces > closeBraces) {
           escapedText = escapedText + '}'.repeat(openBraces - closeBraces)
         }
-        
+
         return `\\footnote{${escapedText}}`
       }
       return match
@@ -720,21 +782,21 @@ function processFootnotesInText(
   // Handle markdown formatting (but not inside math)
   // Bold: **text** -> \textbf{text}
   processed = processed.replace(/\*\*(.+?)\*\*/g, '\\textbf{$1}')
-  
+
   // Italic: *text* -> \textit{text} (but not if it's part of **)
   processed = processed.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '\\textit{$1}')
-  
+
   // Inline code: `code` -> \texttt{code}
   processed = processed.replace(/`(.+?)`/g, '\\texttt{$1}')
-  
+
   // Links: [text](url) -> \href{url}{text}
   processed = processed.replace(/\[(.+?)\]\((.+?)\)/g, '\\href{$2}{$1}')
-  
+
   // Protect LaTeX commands from being escaped
   // Use a placeholder format that won't be escaped (no underscores, use a unique pattern)
   const latexCommandPlaceholders: string[] = []
   let commandIndex = 0
-  
+
   // Protect LaTeX commands (e.g., \textbf{...}, \textit{...}, \texttt{...}, \href{...}{...}, \footnote{...})
   // Match commands with one or two arguments
   // Use a placeholder that won't conflict with LaTeX escaping (no underscores)
@@ -744,7 +806,7 @@ function processFootnotesInText(
     commandIndex++
     return placeholder
   })
-  
+
   // Protect \href{url}{text} (two arguments)
   processed = processed.replace(/\\href\{([^}]*)\}\{([^}]*)\}/g, (match) => {
     const placeholder = `LATEXCMDPROTECT${commandIndex}LATEXCMDPROTECT`
@@ -752,21 +814,21 @@ function processFootnotesInText(
     commandIndex++
     return placeholder
   })
-  
+
   // Escape LaTeX special characters (but not the protected commands)
   processed = escapeLaTeXForText(processed)
-  
+
   // Restore LaTeX commands
   for (let i = 0; i < latexCommandPlaceholders.length; i++) {
     const placeholder = `LATEXCMDPROTECT${i}LATEXCMDPROTECT`
     processed = processed.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), latexCommandPlaceholders[i])
   }
-  
+
   // Restore math expressions (convert to LaTeX format)
   for (let i = 0; i < mathPlaceholders.length; i++) {
     const placeholder = `__MATH_PLACEHOLDER_${i}__`
     const mathExpr = mathPlaceholders[i]
-    
+
     // Convert to LaTeX math format
     let latexMath = mathExpr
     if (mathExpr.startsWith('$$') && mathExpr.endsWith('$$')) {
@@ -778,7 +840,7 @@ function processFootnotesInText(
       // Content is already correct
       latexMath = mathExpr
     }
-    
+
     processed = processed.replace(placeholder, latexMath)
   }
 
@@ -788,13 +850,13 @@ function processFootnotesInText(
 // Escape LaTeX for text (but preserve $ for math mode - math is handled separately)
 function escapeLaTeXForText(text: string): string {
   if (!text) return ''
-  
+
   // First, normalize the string
   let normalized = text
     .replace(/^\uFEFF/, '')
     .replace(/\u0000/g, '')
     .replace(/[\uFFFE\uFFFF]/g, '')
-  
+
   // Escape LaTeX special characters
   // Note: $ is NOT escaped here because math expressions are handled separately
   return normalized
@@ -816,13 +878,13 @@ function escapeLaTeXForText(text: string): string {
 
 function escapeLaTeX(text: string): string {
   if (!text) return ''
-  
+
   // First, normalize the string to remove any BOM or encoding issues
   let normalized = text
     .replace(/^\uFEFF/, '') // Remove UTF-8 BOM if present
     .replace(/\u0000/g, '') // Remove null bytes
     .replace(/[\uFFFE\uFFFF]/g, '') // Remove invalid UTF-16 characters
-  
+
   // Then escape LaTeX special characters in the correct order
   return normalized
     .replace(/\\/g, '\\textbackslash{}')
