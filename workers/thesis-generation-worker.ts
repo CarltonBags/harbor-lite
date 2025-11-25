@@ -1458,13 +1458,17 @@ ${JSON.stringify(thesisData.outline, null, 2)}
 ${sourceUsageGuidance}
 
 **Konkrete Anweisungen zur Quellenverwendung:**
-- Verwende maximal ${recommendedSourceCount} Quellen im gesamten Text.
+- Du MUSST mindestens ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} verschiedene Quellen im Text zitieren - NICHT nur 2 oder 3 Quellen!
+- Verwende ${recommendedSourceCount}-${recommendedSourceCount + 3} verschiedene Quellen im gesamten Text.
 - Jede Quelle muss einen klaren, essentiellen Beitrag leisten.
-- Keine "Füllquellen" - keine Quellen nur um die Anzahl zu erhöhen.
+- Verteile die Zitationen gleichmäßig über die gesamte Arbeit - nicht alle Quellen in einem Kapitel.
+- Jedes Hauptkapitel sollte mehrere verschiedene Quellen zitieren (mindestens 2-3 verschiedene Quellen pro Kapitel).
+- ABSOLUT VERBOTEN: Nur 1-2 Quellen zu verwenden - das ist unzureichend für eine wissenschaftliche Arbeit.
+- ABSOLUT VERBOTEN: Alle Zitationen in einem einzigen Kapitel zu konzentrieren.
 - Bei kurzen Arbeiten: Weniger ist mehr. ${targetPages < 15 ? `Eine ${targetPages}-Seiten-Arbeit mit 30+ Quellen wirkt unprofessionell und übertrieben.` : ''}
-- Qualität über Quantität: Lieber 10 hochwertige, relevante Quellen als 30 oberflächliche.
+- Qualität über Quantität: Lieber ${recommendedSourceCount} hochwertige, relevante Quellen als 30 oberflächliche.
 - Die Quellenanzahl muss zur Länge der Arbeit passen. Eine kurze Hausarbeit sollte nicht wie eine Dissertation zitiert werden.
-- Im Literaturverzeichnis NUR die tatsächlich im Text zitierten Quellen aufführen (maximal ${recommendedSourceCount}).
+- Im Literaturverzeichnis MUSS ALLE im Text zitierten Quellen enthalten sein (mindestens ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} Quellen, maximal ${recommendedSourceCount + 3}).
 
 **MENSCHLICHER STIL UND AI-ERKENNUNGS-VERMEIDUNG (KRITISCH):**
 
@@ -1578,18 +1582,20 @@ Fußnoten:
 - Jede Quelle im Literaturverzeichnis MUSS mindestens eine Fußnote im Text haben.
 - Wenn du Informationen aus einer Quelle verwendest, MUSS sofort eine Fußnote folgen.` : ''}
 
-**Literaturverzeichnis (ABSOLUT KRITISCH - NUR ZITIERTE QUELLEN - KEINE UNZITIERTEN QUELLEN):**
+**Literaturverzeichnis (ABSOLUT KRITISCH - MUSS VOLLSTÄNDIG SEIN - NUR ZITIERTE QUELLEN):**
 - Am Ende des Dokuments MUSS ein vollständiges, korrekt formatiertes Literaturverzeichnis mit TATSÄCHLICHEN Quellen stehen.
+- ABSOLUT KRITISCH: Das Literaturverzeichnis MUSS vorhanden sein und darf NICHT leer sein.
+- ABSOLUT KRITISCH: Das Literaturverzeichnis muss mindestens ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} Quellen enthalten (basierend auf der Anzahl der im Text zitierten Quellen).
 - ABSOLUT KRITISCH: Das Literaturverzeichnis darf NUR Quellen enthalten, die TATSÄCHLICH im Text mit einer Fußnote zitiert wurden.
+- ABSOLUT VERBOTEN: Ein leeres Literaturverzeichnis zu erstellen.
 - ABSOLUT VERBOTEN: Quellen ins Literaturverzeichnis aufzunehmen, die NICHT im Text zitiert wurden.
 - ABSOLUT VERBOTEN: Quellen ins Literaturverzeichnis aufzunehmen, die keine Fußnote im Text haben.
 - Nur Quellen aufnehmen, die:
   1. Tatsächlich im Text mit einer Fußnote (^1, ^2, etc.) zitiert wurden
   2. Tatsächlich im FileSearchStore/RAG-Kontext verfügbar sind
   3. Tatsächlich während des Generierungsprozesses abgerufen wurden
-- Das Literaturverzeichnis MUSS alle im Text zitierten Quellen enthalten (keine darf fehlen).
+- Das Literaturverzeichnis MUSS ALLE im Text zitierten Quellen enthalten (keine darf fehlen).
 - Das Literaturverzeichnis DARF KEINE Quellen enthalten, die nicht im Text zitiert wurden.
-- ABSOLUT VERBOTEN: Ein leeres Literaturverzeichnis zu erstellen.
 - ABSOLUT VERBOTEN: Quellen mit "(Hypothetische Quelle)", "(Hypothetical Source)" oder Platzhalter-Quellen aufzunehmen.
 - ABSOLUT VERBOTEN: Quellen zu erfinden oder zu erstellen, die nicht im RAG-Kontext sind.
 - Wenn du eine Quelle nicht im RAG-Kontext findest, DARFST du sie NICHT ins Literaturverzeichnis aufnehmen, aber du MUSST alle Quellen aufnehmen, die du tatsächlich mit Fußnoten zitiert hast.
@@ -1601,7 +1607,7 @@ Fußnoten:
 - DOI, URL und Journal-Metadaten verwenden, sofern in den tatsächlichen Quellen-Metadaten vorhanden.
 - Keine doppelten Einträge.
 - Wenn eine Quelle im RAG-Kontext fehlt, zitiere sie einfach nicht - erstelle KEINE hypothetische Version.
-- WICHTIG: Das Literaturverzeichnis ist ein PFLICHT-Teil der Arbeit - es MUSS vorhanden sein und NUR zitierten Quellen enthalten.
+- WICHTIG: Das Literaturverzeichnis ist ein PFLICHT-Teil der Arbeit - es MUSS vorhanden sein, darf NICHT leer sein, und muss NUR zitierten Quellen enthalten.
 
 **RAG-Nutzung (PFLICHT):**
 - Nutze aktiv die Inhalte der bereitgestellten Quellen (File Search / Embeddings).
@@ -1752,13 +1758,18 @@ ${thesisData.language === 'german' ? sourceUsageGuidance : sourceUsageGuidance.r
 })}
 
 **Concrete Instructions for Source Usage:**
-- Use a maximum of ${recommendedSourceCount} sources in the entire text.
+- You MUST cite at least ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} different sources in the text - NOT just 2 or 3 sources!
+- Use ${recommendedSourceCount}-${recommendedSourceCount + 3} different sources throughout the entire text.
 - Each source must make a clear, essential contribution.
+- Distribute citations evenly throughout the thesis - not all sources in one chapter.
+- Each main chapter should cite multiple different sources (at least 2-3 different sources per chapter).
+- ABSOLUTELY FORBIDDEN: Using only 1-2 sources - this is insufficient for an academic thesis.
+- ABSOLUTELY FORBIDDEN: Concentrating all citations in a single chapter.
 - No "filler sources" - no sources just to increase the count.
 - For short theses: Less is more. ${targetPages < 15 ? `A ${targetPages}-page thesis with 30+ sources looks unprofessional and excessive.` : ''}
-- Quality over quantity: Better 10 high-quality, relevant sources than 30 superficial ones.
+- Quality over quantity: Better ${recommendedSourceCount} high-quality, relevant sources than 30 superficial ones.
 - The number of sources must match the length of the thesis. A short paper should not be cited like a dissertation.
-- In the bibliography, list ONLY the sources actually cited in the text (maximum ${recommendedSourceCount}).
+- In the bibliography, you MUST list ALL sources actually cited in the text (at least ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} sources, maximum ${recommendedSourceCount + 3}).
 
 **HUMAN STYLE AND AI DETECTION AVOIDANCE (CRITICAL):**
 
@@ -1834,18 +1845,20 @@ The text must sound like written by a human author from the start and must not b
 - If the page number is not explicitly in the context, use a plausible page number based on context (e.g., chapter, section).
 - NEVER output a citation without a page number.
 
-**Bibliography (ABSOLUTELY CRITICAL - ONLY CITED SOURCES - NO UNCITED SOURCES):**
+**Bibliography (ABSOLUTELY CRITICAL - MUST BE COMPLETE - ONLY CITED SOURCES):**
 - At the end of the document, you MUST output a complete, correctly formatted bibliography with ACTUAL sources.
+- ABSOLUTELY CRITICAL: The bibliography MUST be present and MUST NOT be empty.
+- ABSOLUTELY CRITICAL: The bibliography must contain at least ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} sources (based on the number of sources cited in the text).
 - ABSOLUTELY CRITICAL: The bibliography may ONLY contain sources that were ACTUALLY cited in the text with a footnote (^1, ^2, etc.).
+- ABSOLUTELY FORBIDDEN: Creating an empty bibliography.
 - ABSOLUTELY FORBIDDEN: Including sources in the bibliography that were NOT cited in the text.
 - ABSOLUTELY FORBIDDEN: Including sources in the bibliography that do not have a footnote in the text.
 - Include ONLY sources that are:
   1. Actually cited in the text with a footnote (^1, ^2, etc.)
   2. Actually available in the FileSearchStore/RAG context
   3. Actually retrieved during the generation process
-- The bibliography MUST contain all sources cited in the text (none may be missing).
+- The bibliography MUST contain ALL sources cited in the text (none may be missing).
 - The bibliography MUST NOT contain any sources that were not cited in the text.
-- ABSOLUTELY FORBIDDEN: Creating an empty bibliography.
 - ABSOLUTELY FORBIDDEN: Including sources marked as "(Hypothetische Quelle)", "(Hypothetical Source)", or any placeholder sources.
 - ABSOLUTELY FORBIDDEN: Creating or inventing sources that are not in the RAG context.
 - If you cannot find a source in the RAG context, you MUST NOT include it in the bibliography, but you MUST include all sources you actually cited with footnotes.
@@ -1857,7 +1870,7 @@ The text must sound like written by a human author from the start and must not b
 - Use DOI, URL and journal metadata if available from the actual source metadata.
 - No duplicate entries.
 - If a source is missing from the RAG context, simply do not cite it - do NOT create a hypothetical version.
-- IMPORTANT: The bibliography is a MANDATORY part of the work - it MUST be present and contain ONLY cited sources.
+- IMPORTANT: The bibliography is a MANDATORY part of the work - it MUST be present, MUST NOT be empty, and must contain ONLY cited sources.
 
 **RAG Usage:**
 - Actively use the contents of the provided sources (File Search / Embeddings).

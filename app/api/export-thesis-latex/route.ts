@@ -579,7 +579,123 @@ function processFootnotesInText(
       const footnoteNum = parseInt(num, 10)
       const footnoteText = footnotes[footnoteNum]
       if (footnoteText) {
-        return `\\footnote{${escapeLaTeX(footnoteText)}}`
+        // Clean and prepare footnote text
+        let cleanText = footnoteText.trim()
+        
+        // Protect LaTeX commands before escaping
+        const latexCmdPlaceholders: string[] = []
+        let cmdIndex = 0
+        
+        // Process text to find and protect LaTeX commands
+        let protectedText = ''
+        let i = 0
+        while (i < cleanText.length) {
+          // Check if we're at the start of a LaTeX command
+          if (cleanText[i] === '\\' && i + 1 < cleanText.length) {
+            const cmdStart = i
+            i++ // Skip backslash
+            
+            // Match command name
+            const cmdNameMatch = cleanText.substring(i).match(/^(?:textbf|textit|texttt|underline|textsubscript|textsuperscript|emph|em|textsc|textsl|textmd|textup|textnormal|textrm|textsf|textbackslash)/)
+            if (cmdNameMatch) {
+              i += cmdNameMatch[0].length
+              
+              // Skip whitespace
+              while (i < cleanText.length && /\s/.test(cleanText[i])) i++
+              
+              // Find the opening brace
+              if (i < cleanText.length && cleanText[i] === '{') {
+                i++ // Skip opening brace
+                
+                // Find matching closing brace
+                let depth = 1
+                const argStart = i
+                while (i < cleanText.length && depth > 0) {
+                  if (cleanText[i] === '{') depth++
+                  else if (cleanText[i] === '}') depth--
+                  i++
+                }
+                
+                if (depth === 0) {
+                  // Complete command found
+                  const fullCmd = cleanText.substring(cmdStart, i)
+                  const placeholder = `FOOTNOTECMD${cmdIndex}FOOTNOTECMD`
+                  latexCmdPlaceholders[cmdIndex] = fullCmd
+                  protectedText += placeholder
+                  cmdIndex++
+                  continue
+                } else {
+                  // Incomplete command - close it
+                  const fullCmd = cleanText.substring(cmdStart) + '}'
+                  const placeholder = `FOOTNOTECMD${cmdIndex}FOOTNOTECMD`
+                  latexCmdPlaceholders[cmdIndex] = fullCmd
+                  protectedText += placeholder
+                  cmdIndex++
+                  break // End of text
+                }
+              } else {
+                // No opening brace - not a valid command, treat as regular text
+                protectedText += cleanText[cmdStart]
+                i = cmdStart + 1
+              }
+            } else {
+              // Not a recognized command, treat as regular text
+              protectedText += cleanText[i]
+              i++
+            }
+          } else {
+            // Regular character
+            protectedText += cleanText[i]
+            i++
+          }
+        }
+        
+        // Escape the rest of the text (but not the protected commands)
+        let escapedText = escapeLaTeXForText(protectedText)
+        
+        // Restore LaTeX commands (in reverse order to avoid conflicts)
+        for (let i = latexCmdPlaceholders.length - 1; i >= 0; i--) {
+          const placeholder = `FOOTNOTECMD${i}FOOTNOTECMD`
+          const cmd = latexCmdPlaceholders[i]
+          escapedText = escapedText.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), cmd)
+        }
+        
+        // Final validation: ensure balanced braces in the footnote content
+        // Count braces that are NOT part of LaTeX commands
+        let openBraces = 0
+        let closeBraces = 0
+        i = 0
+        while (i < escapedText.length) {
+          if (escapedText[i] === '\\' && i + 1 < escapedText.length) {
+            // Skip LaTeX command
+            i++
+            // Skip command name
+            while (i < escapedText.length && /[a-zA-Z]/.test(escapedText[i])) i++
+            // Skip whitespace
+            while (i < escapedText.length && /\s/.test(escapedText[i])) i++
+            // Skip command argument (braces are part of the command)
+            if (i < escapedText.length && escapedText[i] === '{') {
+              i++
+              let depth = 1
+              while (i < escapedText.length && depth > 0) {
+                if (escapedText[i] === '{') depth++
+                else if (escapedText[i] === '}') depth--
+                i++
+              }
+            }
+          } else {
+            if (escapedText[i] === '{') openBraces++
+            else if (escapedText[i] === '}') closeBraces++
+            i++
+          }
+        }
+        
+        // Balance braces if needed
+        if (openBraces > closeBraces) {
+          escapedText = escapedText + '}'.repeat(openBraces - closeBraces)
+        }
+        
+        return `\\footnote{${escapedText}}`
       }
       return match
     })
@@ -615,13 +731,15 @@ function processFootnotesInText(
   processed = processed.replace(/\[(.+?)\]\((.+?)\)/g, '\\href{$2}{$1}')
   
   // Protect LaTeX commands from being escaped
+  // Use a placeholder format that won't be escaped (no underscores, use a unique pattern)
   const latexCommandPlaceholders: string[] = []
   let commandIndex = 0
   
   // Protect LaTeX commands (e.g., \textbf{...}, \textit{...}, \texttt{...}, \href{...}{...}, \footnote{...})
   // Match commands with one or two arguments
+  // Use a placeholder that won't conflict with LaTeX escaping (no underscores)
   processed = processed.replace(/\\(?:textbf|textit|texttt|underline|textsubscript|textsuperscript|footnote)\{([^}]*)\}/g, (match) => {
-    const placeholder = `__LATEX_CMD_${commandIndex}__`
+    const placeholder = `LATEXCMDPROTECT${commandIndex}LATEXCMDPROTECT`
     latexCommandPlaceholders[commandIndex] = match
     commandIndex++
     return placeholder
@@ -629,7 +747,7 @@ function processFootnotesInText(
   
   // Protect \href{url}{text} (two arguments)
   processed = processed.replace(/\\href\{([^}]*)\}\{([^}]*)\}/g, (match) => {
-    const placeholder = `__LATEX_CMD_${commandIndex}__`
+    const placeholder = `LATEXCMDPROTECT${commandIndex}LATEXCMDPROTECT`
     latexCommandPlaceholders[commandIndex] = match
     commandIndex++
     return placeholder
@@ -640,8 +758,8 @@ function processFootnotesInText(
   
   // Restore LaTeX commands
   for (let i = 0; i < latexCommandPlaceholders.length; i++) {
-    const placeholder = `__LATEX_CMD_${i}__`
-    processed = processed.replace(placeholder, latexCommandPlaceholders[i])
+    const placeholder = `LATEXCMDPROTECT${i}LATEXCMDPROTECT`
+    processed = processed.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), latexCommandPlaceholders[i])
   }
   
   // Restore math expressions (convert to LaTeX format)
