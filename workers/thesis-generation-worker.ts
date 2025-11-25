@@ -1435,7 +1435,7 @@ ${JSON.stringify(thesisData.outline, null, 2)}
 - **CRITICAL: Du MUSST die FileSearchStore-Quellen aktiv nutzen und zitieren!**
 - **CRITICAL: Eine Thesis OHNE Zitationen wird ABGELEHNT und du musst neu generieren!**
 - **CRITICAL: Das Literaturverzeichnis DARF KEINE Platzhalter oder Beispieltexte enthalten!**
-- Nutze ausschließlich die im Kontext bereitgestellten Quellen (File Search / RAG).
+- **CRITICAL: Nutze ausschließlich die im Kontext bereitgestellten Quellen (File Search / RAG).
 - Verwende nur Informationen, die eindeutig in diesen Quellen enthalten sind.
 - **JEDER Absatz mit Forschungsergebnissen MUSS Zitationen enthalten.**
 - **Minimum: ~1 Zitation pro 500 Wörter (10.000 Wörter = mindestens 20 Zitationen).**
