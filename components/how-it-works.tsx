@@ -38,29 +38,41 @@ export function HowItWorks() {
   const [hasAnimated, setHasAnimated] = useState(false)
   const timelineRef = useRef<gsap.core.Timeline | null>(null)
 
-  // Generate wobbly path for hand-drawn effect
+  // Generate wobbly curved path for playful hand-drawn effect
   const createWobblyPath = (startX: number, startY: number, endX: number, endY: number, wobble: number = 3): string => {
-    const midX = (startX + endX) / 2
-    const midY = (startY + endY) / 2
     const distance = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2)
-    const segments = Math.max(3, Math.floor(distance / 15))
-    
+
+    // Create a curved path using quadratic bezier curves for more playfulness
+    const angle = Math.atan2(endY - startY, endX - startX)
+    const perpAngle = angle + Math.PI / 2
+
+    // Control point offset - creates the curve
+    const curveOffset = distance * 0.3 * (Math.random() > 0.5 ? 1 : -1)
+    const midX = (startX + endX) / 2 + Math.cos(perpAngle) * curveOffset
+    const midY = (startY + endY) / 2 + Math.sin(perpAngle) * curveOffset
+
+    // Add wobble to the curve for hand-drawn effect
+    const segments = Math.max(5, Math.floor(distance / 20))
     let path = `M ${startX} ${startY}`
-    
+
     for (let i = 1; i <= segments; i++) {
       const t = i / segments
-      const x = startX + (endX - startX) * t
-      const y = startY + (endY - startY) * t
-      
-      // Add wobble perpendicular to the line
-      const angle = Math.atan2(endY - startY, endX - startX) + Math.PI / 2
-      const wobbleAmount = wobble * (Math.random() - 0.5) * (1 - Math.abs(t - 0.5) * 2)
-      const wobbleX = x + Math.cos(angle) * wobbleAmount
-      const wobbleY = y + Math.sin(angle) * wobbleAmount
-      
-      path += ` L ${wobbleX} ${wobbleY}`
+      // Quadratic bezier formula
+      const x = (1 - t) * (1 - t) * startX + 2 * (1 - t) * t * midX + t * t * endX
+      const y = (1 - t) * (1 - t) * startY + 2 * (1 - t) * t * midY + t * t * endY
+
+      // Add slight wobble
+      const wobbleAmount = wobble * (Math.random() - 0.5)
+      const wobbleX = x + Math.cos(perpAngle) * wobbleAmount
+      const wobbleY = y + Math.sin(perpAngle) * wobbleAmount
+
+      if (i === 1) {
+        path += ` Q ${wobbleX} ${wobbleY}`
+      } else {
+        path += ` ${wobbleX} ${wobbleY}`
+      }
     }
-    
+
     return path
   }
 
@@ -70,11 +82,11 @@ export function HowItWorks() {
     const centerY = y + height / 2
     const radiusX = width / 2
     const radiusY = height / 2
-    
+
     // Create wobbly ellipse with multiple control points
     const points = 16
     let path = ''
-    
+
     for (let i = 0; i <= points; i++) {
       const angle = (i / points) * Math.PI * 2
       const wobble = 3 + Math.random() * 4
@@ -82,14 +94,14 @@ export function HowItWorks() {
       const rY = radiusY + (Math.random() - 0.5) * wobble
       const px = centerX + Math.cos(angle) * rX
       const py = centerY + Math.sin(angle) * rY
-      
+
       if (i === 0) {
         path += `M ${px} ${py}`
       } else {
         path += ` L ${px} ${py}`
       }
     }
-    
+
     path += ' Z'
     return path
   }
@@ -102,14 +114,14 @@ export function HowItWorks() {
     const textWidth = text.length * fontSize * 0.6
     const segments = Math.max(8, Math.floor(textWidth / 10))
     let path = `M ${x} ${y + fontSize * 0.3}`
-    
+
     for (let i = 1; i <= segments; i++) {
       const t = i / segments
       const px = x + textWidth * t
       const py = y + fontSize * 0.3 + (Math.random() - 0.5) * 2
       path += ` L ${px} ${py}`
     }
-    
+
     return path
   }
 
@@ -409,26 +421,27 @@ export function HowItWorks() {
           const endX = nextPos.x
           const endY = nextPos.y + nextPos.height / 2
 
-          // Create wobbly arrow path
-          const arrowPath = createWobblyPath(startX, startY, endX, endY, 4)
+          // Create playful curved arrow path
+          const arrowPath = createWobblyPath(startX, startY, endX, endY, 5)
           const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'path')
           arrow.setAttribute('d', arrowPath)
           arrow.setAttribute('fill', 'none')
           arrow.setAttribute('stroke', '#EAB308') // Gold
-          arrow.setAttribute('stroke-width', '3')
+          arrow.setAttribute('stroke-width', '4')
           arrow.setAttribute('stroke-linecap', 'round')
           arrow.setAttribute('stroke-linejoin', 'round')
           arrow.style.filter = 'url(#sketchy)'
           stepGroup.appendChild(arrow)
 
-          // Draw arrowhead
+          // Draw arrowhead with more playful shape
           const arrowhead = document.createElementNS('http://www.w3.org/2000/svg', 'path')
           const arrowAngle = Math.atan2(endY - startY, endX - startX)
-          const arrowheadSize = 12
+          const arrowheadSize = 16
           const arrowheadPath = `
             M ${endX} ${endY}
-            L ${endX - arrowheadSize * Math.cos(arrowAngle - Math.PI / 6)} ${endY - arrowheadSize * Math.sin(arrowAngle - Math.PI / 6)}
-            L ${endX - arrowheadSize * Math.cos(arrowAngle + Math.PI / 6)} ${endY - arrowheadSize * Math.sin(arrowAngle + Math.PI / 6)}
+            L ${endX - arrowheadSize * Math.cos(arrowAngle - Math.PI / 5)} ${endY - arrowheadSize * Math.sin(arrowAngle - Math.PI / 5)}
+            L ${endX - arrowheadSize * 0.6 * Math.cos(arrowAngle)} ${endY - arrowheadSize * 0.6 * Math.sin(arrowAngle)}
+            L ${endX - arrowheadSize * Math.cos(arrowAngle + Math.PI / 5)} ${endY - arrowheadSize * Math.sin(arrowAngle + Math.PI / 5)}
             Z
           `
           arrowhead.setAttribute('d', arrowheadPath.trim())
@@ -438,6 +451,60 @@ export function HowItWorks() {
           arrowhead.style.filter = 'url(#sketchy)'
           stepGroup.appendChild(arrowhead)
 
+          // Add playful decorative elements around the arrow
+          // Sparkle 1
+          const sparkle1 = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+          const sparkle1X = startX + (endX - startX) * 0.3
+          const sparkle1Y = startY + (endY - startY) * 0.3 - 20
+          const sparkle1Path = `
+            M ${sparkle1X} ${sparkle1Y - 8}
+            L ${sparkle1X} ${sparkle1Y + 8}
+            M ${sparkle1X - 8} ${sparkle1Y}
+            L ${sparkle1X + 8} ${sparkle1Y}
+            M ${sparkle1X - 6} ${sparkle1Y - 6}
+            L ${sparkle1X + 6} ${sparkle1Y + 6}
+            M ${sparkle1X - 6} ${sparkle1Y + 6}
+            L ${sparkle1X + 6} ${sparkle1Y - 6}
+          `
+          sparkle1.setAttribute('d', sparkle1Path.trim())
+          sparkle1.setAttribute('stroke', '#EAB308')
+          sparkle1.setAttribute('stroke-width', '2')
+          sparkle1.setAttribute('stroke-linecap', 'round')
+          sparkle1.setAttribute('opacity', '0')
+          stepGroup.appendChild(sparkle1)
+
+          // Sparkle 2
+          const sparkle2 = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+          const sparkle2X = startX + (endX - startX) * 0.7
+          const sparkle2Y = startY + (endY - startY) * 0.7 + 25
+          const sparkle2Path = `
+            M ${sparkle2X} ${sparkle2Y - 6}
+            L ${sparkle2X} ${sparkle2Y + 6}
+            M ${sparkle2X - 6} ${sparkle2Y}
+            L ${sparkle2X + 6} ${sparkle2Y}
+          `
+          sparkle2.setAttribute('d', sparkle2Path.trim())
+          sparkle2.setAttribute('stroke', '#EAB308')
+          sparkle2.setAttribute('stroke-width', '2.5')
+          sparkle2.setAttribute('stroke-linecap', 'round')
+          sparkle2.setAttribute('opacity', '0')
+          stepGroup.appendChild(sparkle2)
+
+          // Add handwritten annotation
+          const annotationText = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+          const annotationX = startX + (endX - startX) * 0.5
+          const annotationY = startY + (endY - startY) * 0.5 - 30
+          const annotations = ['Weiter!', 'Los!', 'Dann...', 'Und...']
+          annotationText.setAttribute('x', annotationX.toString())
+          annotationText.setAttribute('y', annotationY.toString())
+          annotationText.setAttribute('font-size', '14')
+          annotationText.setAttribute('font-family', 'Comic Sans MS, cursive')
+          annotationText.setAttribute('fill', '#666666')
+          annotationText.setAttribute('text-anchor', 'middle')
+          annotationText.setAttribute('opacity', '0')
+          annotationText.textContent = annotations[index % annotations.length]
+          stepGroup.appendChild(annotationText)
+
           // Animate arrow drawing
           const arrowLength = arrow.getTotalLength()
           arrow.style.strokeDasharray = `${arrowLength}`
@@ -445,16 +512,49 @@ export function HowItWorks() {
 
           tl.to(arrow, {
             strokeDashoffset: 0,
-            duration: 0.8,
-            ease: 'none',
+            duration: 1.2,
+            ease: 'power1.inOut',
           }, index * 1.5 + 5.0)
 
-          // Animate arrowhead appearing
+          // Animate arrowhead appearing with bounce
+          arrowhead.style.opacity = '0'
           tl.to(arrowhead, {
             opacity: 1,
             scale: 1,
+            duration: 0.5,
+            ease: 'back.out(2)',
+          }, index * 1.5 + 6.2)
+
+          // Animate sparkles appearing
+          tl.to(sparkle1, {
+            opacity: 0.8,
+            duration: 0.3,
+            ease: 'power2.out',
+          }, index * 1.5 + 6.0)
+
+          tl.to(sparkle1, {
+            opacity: 0,
+            duration: 0.3,
+            ease: 'power2.in',
+          }, index * 1.5 + 6.6)
+
+          tl.to(sparkle2, {
+            opacity: 0.7,
+            duration: 0.3,
+            ease: 'power2.out',
+          }, index * 1.5 + 6.3)
+
+          tl.to(sparkle2, {
+            opacity: 0,
+            duration: 0.3,
+            ease: 'power2.in',
+          }, index * 1.5 + 6.9)
+
+          // Animate annotation text
+          tl.to(annotationText, {
+            opacity: 0.6,
             duration: 0.4,
-            ease: 'back.out(1.5)',
+            ease: 'power2.out',
           }, index * 1.5 + 5.8)
         }
       })
@@ -532,14 +632,14 @@ export function HowItWorks() {
             Von der Idee zur Einreichung in vier einfachen Schritten
           </p>
         </div>
-        
+
         {/* SVG Container with notebook paper background */}
-        <div 
+        <div
           ref={containerRef}
           className="relative w-full mx-auto"
-          style={{ 
-            minHeight: '800px', 
-            height: '90vh',
+          style={{
+            minHeight: '1200px',
+            height: '120vh',
             backgroundImage: `
               linear-gradient(to right, transparent 0%, transparent 48px, #E8E8E8 48px, #E8E8E8 50px, transparent 50px),
               linear-gradient(to bottom, transparent 0%, transparent 40px, #E8E8E8 40px, #E8E8E8 42px, transparent 42px)
@@ -555,11 +655,11 @@ export function HowItWorks() {
           <svg
             ref={svgRef}
             className="absolute inset-0 w-full h-full"
-            style={{ 
+            style={{
               mixBlendMode: 'multiply',
             }}
           />
-          
+
           {/* Restart Animation Button */}
           <button
             onClick={() => {
@@ -600,7 +700,7 @@ export function HowItWorks() {
                       {step.number}
                     </span>
                   </div>
-                  
+
                   <h3 className="text-xl font-bold mb-3 text-black dark:text-white">
                     {step.title}
                   </h3>

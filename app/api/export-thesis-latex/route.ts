@@ -641,14 +641,62 @@ function processFootnotesInText(
         // Clean and prepare footnote text
         let cleanText = footnoteText.trim()
 
-        // Normalize LaTeX commands: remove spaces between command and opening brace
-        // e.g., \textit {text} -> \textit{text}
-        cleanText = cleanText.replace(/\\(?:textbf|textit|texttt|underline|textsubscript|textsuperscript|emph|em|textsc|textsl|textmd|textup|textnormal|textrm|textsf|textbackslash)\s+\{/g, (match) => {
-          return match.replace(/\s+\{/, '{')
-        })
+        console.log('[LaTeX Export] Processing footnote:', cleanText.substring(0, 100))
 
-        // Remove placeholder text like "\ETC." that might indicate truncation
-        cleanText = cleanText.replace(/\\ETC\./gi, '')
+        // CRITICAL: Remove placeholder text like "\ETC." FIRST before any other processing
+        // This prevents incomplete LaTeX commands from causing runaway arguments
+        // Handle all possible forms of ETC placeholder - be VERY aggressive
+        cleanText = cleanText.replace(/\\ETC\./gi, '')  // \ETC.
+        cleanText = cleanText.replace(/\bETC\./gi, '')   // ETC.
+        cleanText = cleanText.replace(/\.\.\./g, '')     // ...
+        cleanText = cleanText.replace(/…/g, '')          // Unicode ellipsis
+        cleanText = cleanText.replace(/\betc\./gi, '')   // etc.
+
+        // Also remove any text that looks like a truncation marker
+        cleanText = cleanText.replace(/\s*\\?ETC\.?\s*$/gi, '')
+        cleanText = cleanText.replace(/\s*etc\.?\s*$/gi, '')
+
+        // Fix spaces in LaTeX commands GLOBALLY (not just at start)
+        // This handles cases like: \textit {text} anywhere in the string
+        cleanText = cleanText.replace(/\\(textbf|textit|texttt|underline|textsubscript|textsuperscript|emph|em|textsc|textsl|textmd|textup|textnormal|textrm|textsf|textbackslash)\s+\{/g, '\\$1{')
+
+        // AGGRESSIVE FIX: Close ALL unclosed LaTeX commands
+        // Count opening braces in LaTeX commands and ensure they're all closed
+        const latexCmdRegex = /\\(textbf|textit|texttt|underline|textsubscript|textsuperscript|emph|em|textsc|textsl|textmd|textup|textnormal|textrm|textsf)\{/g
+        let match
+        let unclosedCommands = 0
+        let tempText = cleanText
+
+        while ((match = latexCmdRegex.exec(tempText)) !== null) {
+          const cmdStart = match.index
+          const cmdName = match[1]
+          let braceDepth = 1
+          let i = cmdStart + match[0].length
+
+          while (i < tempText.length && braceDepth > 0) {
+            if (tempText[i] === '\\' && i + 1 < tempText.length) {
+              i += 2 // Skip escaped character
+              continue
+            }
+            if (tempText[i] === '{') braceDepth++
+            else if (tempText[i] === '}') braceDepth--
+            i++
+          }
+
+          if (braceDepth > 0) {
+            unclosedCommands += braceDepth
+          }
+        }
+
+        // Add closing braces for any unclosed commands
+        if (unclosedCommands > 0) {
+          console.log(`[LaTeX Export] Found ${unclosedCommands} unclosed LaTeX commands, adding closing braces`)
+          cleanText = cleanText + '}'.repeat(unclosedCommands)
+        }
+
+        console.log('[LaTeX Export] After cleaning:', cleanText.substring(0, 100))
+
+
 
         // Protect LaTeX commands before escaping
         const latexCmdPlaceholders: string[] = []
@@ -699,11 +747,10 @@ function processFootnotesInText(
                   continue
                 } else {
                   // Incomplete command - close it properly
-                  // Extract what we have so far
-                  const partialContent = cleanText.substring(argStart)
-                  // Remove any trailing incomplete commands or placeholders
-                  const cleanedContent = partialContent.replace(/\\ETC\./gi, '').trim()
-                  const fullCmd = cleanText.substring(cmdStart, argStart) + cleanedContent + '}'
+                  // Extract what we have so far and add closing brace
+                  const partialContent = cleanText.substring(argStart).trim()
+                  const cmdName = cmdNameMatch[0]
+                  const fullCmd = `\\${cmdName}{${partialContent}}`
                   const placeholder = `FOOTNOTECMD${cmdIndex}FOOTNOTECMD`
                   latexCmdPlaceholders[cmdIndex] = fullCmd
                   protectedText += placeholder
@@ -783,6 +830,19 @@ function processFootnotesInText(
         // Balance braces if needed
         if (openBraces > closeBraces) {
           escapedText = escapedText + '}'.repeat(openBraces - closeBraces)
+          console.log(`[LaTeX Export] Added ${openBraces - closeBraces} closing braces to balance`)
+        }
+
+        console.log('[LaTeX Export] Final footnote text:', escapedText.substring(0, 150))
+
+        // FINAL SAFETY CHECK: Ensure the footnote doesn't have obvious syntax errors
+        // Count all braces (not just in LaTeX commands)
+        const totalOpen = (escapedText.match(/\{/g) || []).length
+        const totalClose = (escapedText.match(/\}/g) || []).length
+
+        if (totalOpen > totalClose) {
+          console.log(`[LaTeX Export] WARNING: Unbalanced braces detected (${totalOpen} open, ${totalClose} close), adding ${totalOpen - totalClose} closing braces`)
+          escapedText = escapedText + '}'.repeat(totalOpen - totalClose)
         }
 
         return `\\footnote{${escapedText}}`
@@ -892,7 +952,7 @@ function normalizeText(text: string): string {
   normalized = normalized.replace(/\bÄny\b/gi, 'Any')
   normalized = normalized.replace(/\bÄll\b/gi, 'All')
   normalized = normalized.replace(/\bÄre\s+You\b/gi, 'Are You')
-  
+
   // Fix standalone "Ä" at start of English words (followed by lowercase letters)
   // Only if it's clearly an English word pattern
   normalized = normalized.replace(/\bÄ([a-z]{2,})\b/g, (match, rest) => {
@@ -931,7 +991,7 @@ function escapeLaTeXForText(text: string): string {
 
   // Ensure proper UTF-8 encoding - convert to string and normalize
   let textStr = String(text)
-  
+
   // Normalize Unicode characters (NFC normalization)
   try {
     textStr = textStr.normalize('NFC')
@@ -974,7 +1034,7 @@ function escapeLaTeX(text: string): string {
 
   // Ensure proper UTF-8 encoding - convert to string and normalize
   let textStr = String(text)
-  
+
   // Normalize Unicode characters (NFC normalization)
   try {
     textStr = textStr.normalize('NFC')

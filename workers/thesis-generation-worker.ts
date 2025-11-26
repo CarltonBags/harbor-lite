@@ -925,7 +925,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     const pageExtractStart = Date.now()
     let pageStart: string | null = null
     let pageEnd: string | null = null
-    
+
     if (fileType.type === 'pdf') {
       try {
         const pageNumbers = await extractPageNumbers(docBuffer)
@@ -1390,7 +1390,88 @@ async function sendCompletionEmail(thesisId: string, thesisTitle: string): Promi
 /**
  * Step 7: Generate thesis content using Gemini Pro
  */
-async function generateThesisContent(thesisData: ThesisData, rankedSources: Source[]): Promise<string> {
+/**
+ * Step 6.5: Generate a detailed thesis plan before writing
+ * This creates a blueprint mapping sources to chapters to prevent hallucinations
+ */
+async function generateThesisPlan(thesisData: ThesisData, sources: Source[]): Promise<string> {
+  console.log('[ThesisPlan] Generating detailed thesis plan...')
+
+  // Format sources for the prompt
+  const sourcesList = sources.map((s, i) =>
+    `[${i + 1}] ${s.title} (${s.year || 'n.d.'}) - ${s.authors.join(', ')}\n   Abstract: ${s.abstract ? s.abstract.substring(0, 300) + '...' : 'No abstract'}`
+  ).join('\n\n')
+
+  const outlineStr = thesisData.outline?.map((ch: any) =>
+    `${ch.number} ${ch.title}\n${ch.subchapters?.map((sub: any) => `  ${sub.number} ${sub.title}`).join('\n') || ''}`
+  ).join('\n')
+
+  const prompt = `
+You are an expert academic research planner. Your task is to create a detailed **Thesis Plan** (Blueprint) for a thesis titled "${thesisData.title}".
+
+**GOAL:**
+Create a detailed roadmap for writing the thesis. For each chapter in the outline, you must:
+1. Define the key arguments and logical flow.
+2. **CRITICAL:** Select specific sources from the provided list that MUST be used in that chapter.
+3. Map specific findings/concepts from the sources to the chapter sections.
+
+**INPUTS:**
+1. **Thesis Title:** ${thesisData.title}
+2. **Topic/Question:** ${thesisData.topic}
+3. **Outline:**
+${outlineStr}
+
+4. **Available Sources:**
+${sourcesList}
+
+**RULES:**
+- **STRICTLY NO HALLUCINATIONS:** You must ONLY use the sources provided in the list above. Do not invent sources.
+- **MAPPING:** Explicitly state which sources (use their numbers [1], [2], etc.) should be used for which chapter.
+- **CONTENT:** Briefly summarize what content from the source should be used (e.g., "Use Source [1] to define Concept X", "Contrast Source [2] and [3] regarding Method Y").
+- **STRUCTURE:** Follow the provided outline exactly.
+
+**OUTPUT FORMAT:**
+Return a structured plan in Markdown:
+
+# Thesis Plan: ${thesisData.title}
+
+## Chapter 1: [Title]
+- **Goal:** [Brief goal]
+- **Key Sources:** [1], [4], [7]
+- **Plan:**
+  - Section 1.1: Use Source [1] to define...
+  - Section 1.2: Compare findings from [4] and [7]...
+
+## Chapter 2: [Title]
+...
+
+(Repeat for all chapters)
+`
+
+  try {
+    const response = await retryApiCall(
+      () => ai.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents: prompt,
+        config: {
+          temperature: 0.2, // Low temperature for precise planning
+          maxOutputTokens: 8192,
+        },
+      }),
+      'Generate Thesis Plan',
+      2,
+      2000
+    )
+
+    console.log('[ThesisPlan] Plan generated successfully')
+    return response.text || ''
+  } catch (error) {
+    console.error('[ThesisPlan] Error generating plan:', error)
+    return '' // Fallback to no plan if it fails
+  }
+}
+
+async function generateThesisContent(thesisData: ThesisData, rankedSources: Source[], thesisPlan: string = ''): Promise<string> {
   console.log('[ThesisGeneration] Starting thesis content generation...')
   console.log(`[ThesisGeneration] Thesis: "${thesisData.title}"`)
   console.log(`[ThesisGeneration] Target length: ${thesisData.targetLength} ${thesisData.lengthUnit}`)
@@ -1473,6 +1554,11 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 - Zitationsstil: ${citationStyleLabel}
 - Ziel-Länge: ${thesisData.targetLength} ${thesisData.lengthUnit} (ca. ${targetPages} Seiten)
 - Sprache: ${thesisData.language}
+
+${thesisPlan ? `**DETAILLIERTER THESIS-PLAN (BLUEPRINT) - STRIKTE BEFOLGUNG:**
+Folge diesem Plan strikt für die Struktur und die Verwendung der Quellen. Dies ist dein Bauplan:
+${thesisPlan}
+` : ''}
 
 **Gliederung:**
 ${JSON.stringify(thesisData.outline, null, 2)}
@@ -1800,6 +1886,11 @@ STOPPE NICHT, bis alle Anforderungen erfüllt sind. Die Arbeit muss VOLLSTÄNDIG
 - Target Length: ${thesisData.targetLength} ${thesisData.lengthUnit} (approx. ${targetPages} pages)
 - Language: ${thesisData.language}
 
+${thesisPlan ? `**DETAILED THESIS PLAN (BLUEPRINT) - STRICT ADHERENCE:**
+Follow this plan strictly for structure and source usage. This is your blueprint:
+${thesisPlan}
+` : ''}
+
 **Outline:**
 ${JSON.stringify(thesisData.outline, null, 2)}
 
@@ -1968,10 +2059,16 @@ The text must sound like written by a human author from the start and must not b
 - If a source is missing from the RAG context, simply do not cite it - do NOT create a hypothetical version.
 - IMPORTANT: The bibliography is a MANDATORY part of the work - it MUST be present, MUST NOT be empty, and must contain ONLY cited sources.
 
-**RAG Usage:**
-- Actively use the contents of the provided sources (File Search / Embeddings).
-- Extract relevant statements and process them scientifically.
-- No content outside the provided data except generally accepted basic knowledge (definitions, methodology).
+**STRICT SOURCE USAGE (ANTI-HALLUCINATION) - ABSOLUTELY CRITICAL:**
+- **YOU MUST ONLY USE THE SOURCES PROVIDED IN THE FILE SEARCH CONTEXT.**
+- **ABSOLUTELY FORBIDDEN:** Inventing studies, data, statistics, or citations.
+- **ABSOLUTELY FORBIDDEN:** Claiming to have analyzed media, conducted interviews, or performed experiments unless these are explicitly described in the provided source text.
+- **ABSOLUTELY FORBIDDEN:** Hallucinating "online articles", "blog posts", or "news reports" that are not in the context.
+- **ABSOLUTELY FORBIDDEN:** Writing sentences like "We analyzed 500 articles..." or "Our study shows..." - you are writing a literature review based on the provided texts, not conducting primary research.
+- If a specific detail is missing in the sources, state that there is no data available or generalize based on the available theory. **DO NOT INVENT DATA.**
+- Every factual claim MUST be supported by a citation from the provided sources.
+- If you claim "Studies show...", you MUST cite the specific study from the context.
+- **VERIFICATION:** Before writing any paragraph, ask yourself: "Is this information present in the provided files?" If not, DO NOT WRITE IT.
 
 **IMPORTANT - Table of Contents:**
 - DO NOT CREATE a table of contents (Table of Contents / Inhaltsverzeichnis) in the generated text.
@@ -2410,6 +2507,20 @@ M. **VERBOTENE WÖRTER UND FORMULIERUNGEN (ABSOLUT KRITISCH):**
      * "Dabei handelt es sich um..." statt "Wir haben es hier mit... zu tun"
      * "Die Untersuchung ergab..." statt "Wir haben festgestellt..."
 
+OUTPUT-REGELN:
+
+- **ABSOLUT KRITISCH: Gib NUR den umgeschriebenen Text selbst aus. KEINE Einleitungen, KEINE Erklärungen, KEINE Meta-Kommentare.**
+- **VERBOTEN: Schreibe NICHT Dinge wie "Hier ist die überarbeitete Fassung...", "Der folgende Text wurde umgeschrieben...", "Nachfolgend die überarbeitete Version...", oder IRGENDWELCHE ähnlichen Meta-Texte.**
+- **BEGINNE SOFORT mit dem eigentlichen Inhalt - das erste Wort sollte aus dem Thesis-Text selbst stammen, NICHT ein Kommentar über das Umschreiben.**
+
+- Behalte alle Zitate genau so bei, wie sie erscheinen: (Müller, 2021, S. 14), [12], (Schmidt et al., 2019), etc.
+
+- Behalte alle Abschnittsüberschriften unverändert bei.
+
+- Behalte alle Aufzählungspunkte und Listen unverändert bei, es sei denn, eine geringfügige menschenähnliche Umstrukturierung ist erforderlich.
+
+- Kürze den Text nicht oder erweitere ihn nicht erheblich; die Länge sollte ungefähr gleich bleiben.
+
 Dein Ziel ist es, Text zu produzieren, der wie von einem kompetenten menschlichen akademischen Autor geschrieben klingt, während alle Informationsinhalte erhalten bleiben.`
 
     : `You are an academic text humanizer. Your job is to rewrite the provided text so that it cannot be detected as AI-generated by tools such as ZeroGPT, GPTZero, Turnitin AI detection, Hive, or similar classifiers.
@@ -2521,6 +2632,10 @@ M. **FORBIDDEN WORDS AND FORMULATIONS (ABSOLUTELY CRITICAL):**
 
 OUTPUT RULES:
 
+- **ABSOLUTELY CRITICAL: Output ONLY the rewritten text itself. NO introductions, NO explanations, NO meta-commentary.**
+- **FORBIDDEN: Do NOT write things like "Hier ist die überarbeitete Fassung...", "Here is the revised version...", "The following text has been rewritten...", or ANY similar meta-text.**
+- **START IMMEDIATELY with the actual content - the first word should be from the thesis text itself, NOT commentary about the rewriting.**
+
 - Keep all citations exactly as they appear: (Müller, 2021, p. 14), [12], (Smith et al., 2019), etc.
 
 - Keep all section headings unchanged.
@@ -2528,8 +2643,6 @@ OUTPUT RULES:
 - Keep all bullet points and lists unchanged unless minor human-like restructuring is needed.
 
 - Do not shorten the text or expand it significantly; the length should stay approximately the same.
-
-- Output ONLY the rewritten text, without explanation.
 
 Your goal is to produce text that reads like it was written by a competent human academic author while preserving all informational content.`
 
@@ -3269,6 +3382,20 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       console.log(`[PROCESS]   Relevance scores: min=${Math.min(...sourcesForGeneration.map(s => s.relevanceScore || 0))}, max=${Math.max(...sourcesForGeneration.map(s => s.relevanceScore || 0))}`)
     }
 
+    // Step 6.5: Generate Thesis Plan
+    console.log('\n[PROCESS] ========== Step 6.5: Generate Thesis Plan ==========')
+    const step65Start = Date.now()
+    let thesisPlan = ''
+    try {
+      thesisPlan = await generateThesisPlan(thesisData, sourcesForGeneration)
+      const step65Duration = Date.now() - step65Start
+      console.log(`[PROCESS] Step 6.5 completed in ${step65Duration}ms`)
+      console.log(`[PROCESS] Thesis Plan length: ${thesisPlan.length} characters`)
+    } catch (error) {
+      console.error('[PROCESS] ERROR generating thesis plan:', error)
+      console.log('[PROCESS] Continuing without plan (fallback)')
+    }
+
     // Step 7: Generate thesis content using successfully uploaded sources
     // This step has built-in retries and fallbacks
     console.log('\n[PROCESS] ========== Step 7: Generate Thesis Content ==========')
@@ -3278,7 +3405,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
 
     let thesisContent = ''
     try {
-      thesisContent = await generateThesisContent(thesisData, sourcesForGeneration)
+      thesisContent = await generateThesisContent(thesisData, sourcesForGeneration, thesisPlan)
       const step7Duration = Date.now() - step7Start
       console.log(`[PROCESS] Step 7 completed in ${step7Duration}ms`)
     } catch (error) {
