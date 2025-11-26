@@ -1739,7 +1739,12 @@ ${thesisData.lengthUnit === 'words' ? `- Bei wortbasierter Länge kannst du bis 
 - Jedes Kapitel sollte proportional zur Gesamtlänge ausführlich sein.
 
 **4. STRUKTURELLE VOLLSTÄNDIGKEIT:**
-- Einleitung: Vollständig mit Hinführung, Problemstellung, Forschungsfrage, Aufbau
+- Einleitung: Vollständig mit Hinführung, Problemstellung, Forschungsfrage, Aufbau der Arbeit
+  **WICHTIG - Aufbau der Arbeit:**
+  - Der Abschnitt "Aufbau der Arbeit" oder "Methodische Vorgehensweise" beschreibt NUR die nachfolgenden Kapitel (Kapitel 2, 3, 4, etc.), NICHT das aktuelle Kapitel 1.
+  - FALSCH: "Das erste Kapitel führt ins Thema ein..." (Kapitel 1 ist bereits geschrieben, es sollte nicht beschrieben werden)
+  - RICHTIG: "Das zweite Kapitel untersucht...", "Im dritten Kapitel wird...", "Das vierte Kapitel behandelt..."
+  - Beginne die Beschreibung mit dem zweiten Kapitel, da Kapitel 1 bereits vorliegt.
 - Hauptkapitel: Jedes Kapitel vollständig ausgearbeitet
 - Diskussion/Fazit: Vollständig mit Zusammenfassung, Beantwortung der Forschungsfrage, Ausblick
 - Literaturverzeichnis: Vollständig mit allen zitierten Quellen
@@ -2022,7 +2027,12 @@ ${thesisData.lengthUnit === 'words' ? `- For word-based length, you can be up to
 - Continue writing until ALL requirements are met: all chapters complete, target length reached, bibliography with sources present.
 
 **4. STRUCTURAL COMPLETENESS:**
-- Introduction: Complete with introduction, problem statement, research question, structure
+- Introduction: Complete with introduction, problem statement, research question, structure of the work
+  **IMPORTANT - Structure of the Work:**
+  - The "Structure of the Work" or "Methodological Approach" section describes ONLY the following chapters (Chapter 2, 3, 4, etc.), NOT the current Chapter 1.
+  - WRONG: "The first chapter introduces the topic..." (Chapter 1 is already written, it should not be described)
+  - CORRECT: "The second chapter examines...", "In the third chapter...", "The fourth chapter addresses..."
+  - Begin the description with the second chapter, since Chapter 1 is already present.
 - Main chapters: Each chapter fully developed
 - Discussion/Conclusion: Complete with summary, answer to research question, outlook
 - Bibliography: Complete with all cited sources
