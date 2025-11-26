@@ -30,12 +30,36 @@ export async function POST(request: Request) {
       )
     }
 
-    const content = thesis.latex_content || ''
+    let content = thesis.latex_content || ''
     if (!content) {
       return NextResponse.json(
         { error: 'Thesis content is empty' },
         { status: 400 }
       )
+    }
+
+    // Ensure content is properly decoded as UTF-8 string
+    // Handle potential encoding issues
+    if (typeof content !== 'string') {
+      // If content is a Buffer or other type, decode it
+      try {
+        if (Buffer.isBuffer(content)) {
+          content = content.toString('utf-8')
+        } else {
+          content = String(content)
+        }
+      } catch (e) {
+        console.error('Error decoding content:', e)
+        content = String(content)
+      }
+    }
+
+    // Normalize Unicode to ensure proper character encoding
+    try {
+      content = content.normalize('NFC')
+    } catch (e) {
+      // If normalization fails, continue with original
+      console.warn('Unicode normalization failed, using original content')
     }
 
     // Get language from metadata or default to german
@@ -905,14 +929,25 @@ function normalizeText(text: string): string {
 function escapeLaTeXForText(text: string): string {
   if (!text) return ''
 
+  // Ensure proper UTF-8 encoding - convert to string and normalize
+  let textStr = String(text)
+  
+  // Normalize Unicode characters (NFC normalization)
+  try {
+    textStr = textStr.normalize('NFC')
+  } catch (e) {
+    // If normalization fails, continue with original string
+  }
+
   // First, normalize the string to fix encoding issues
-  let normalized = normalizeText(text)
-    .replace(/^\uFEFF/, '')
-    .replace(/\u0000/g, '')
-    .replace(/[\uFFFE\uFFFF]/g, '')
+  let normalized = normalizeText(textStr)
+    .replace(/^\uFEFF/, '') // Remove BOM
+    .replace(/\u0000/g, '') // Remove null bytes
+    .replace(/[\uFFFE\uFFFF]/g, '') // Remove invalid UTF-16 characters
 
   // Escape LaTeX special characters
   // Note: $ is NOT escaped here because math expressions are handled separately
+  // IMPORTANT: Do NOT escape German umlauts (ä, ö, ü, Ä, Ö, Ü, ß) - they are valid UTF-8 and will be handled by inputenc
   return normalized
     .replace(/\\/g, '\\textbackslash{}')
     .replace(/{/g, '\\{')
@@ -927,19 +962,34 @@ function escapeLaTeXForText(text: string): string {
     .replace(/</g, '\\textless{}')
     .replace(/>/g, '\\textgreater{}')
     .replace(/\|/g, '\\textbar{}')
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+    // Only remove actual control characters, NOT extended ASCII or Unicode characters
+    // Remove: NULL, control chars 1-31, DEL (127), but preserve extended ASCII and Unicode
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    // Remove invalid surrogate pairs and other invalid Unicode
+    .replace(/[\uD800-\uDFFF]/g, '')
 }
 
 function escapeLaTeX(text: string): string {
   if (!text) return ''
 
+  // Ensure proper UTF-8 encoding - convert to string and normalize
+  let textStr = String(text)
+  
+  // Normalize Unicode characters (NFC normalization)
+  try {
+    textStr = textStr.normalize('NFC')
+  } catch (e) {
+    // If normalization fails, continue with original string
+  }
+
   // First, normalize the string to fix encoding issues and remove BOM
-  let normalized = normalizeText(text)
+  let normalized = normalizeText(textStr)
     .replace(/^\uFEFF/, '') // Remove UTF-8 BOM if present
     .replace(/\u0000/g, '') // Remove null bytes
     .replace(/[\uFFFE\uFFFF]/g, '') // Remove invalid UTF-16 characters
 
   // Then escape LaTeX special characters in the correct order
+  // IMPORTANT: Do NOT escape German umlauts (ä, ö, ü, Ä, Ö, Ü, ß) - they are valid UTF-8
   return normalized
     .replace(/\\/g, '\\textbackslash{}')
     .replace(/{/g, '\\{')
@@ -954,6 +1004,10 @@ function escapeLaTeX(text: string): string {
     .replace(/</g, '\\textless{}')
     .replace(/>/g, '\\textgreater{}')
     .replace(/\|/g, '\\textbar{}')
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+    // Only remove actual control characters, NOT extended ASCII or Unicode characters
+    // Remove: NULL, control chars 1-31, DEL (127), but preserve extended ASCII and Unicode
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    // Remove invalid surrogate pairs and other invalid Unicode
+    .replace(/[\uD800-\uDFFF]/g, '')
 }
 
