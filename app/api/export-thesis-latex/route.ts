@@ -184,7 +184,12 @@ function generateLaTeXDocument(
   let lastIndexToRemove = -1
 
   // Regex for a citation line: Name, Initials. (Year) ...
-  const citationRegex = /^[A-Za-z\u00C0-\u017F\-]+,\s+[A-Z]\.?\s*.*?\((?:\d{4}|o\.J\.|\d{4}\/\d{4})\)/
+  // More robust regex to catch academic citations with various author patterns:
+  // - Single author: "Smith, J. (2020)."
+  // - Multiple authors: "Smith, J. & Jones, K. (2020)."
+  // - Complex names: "Castro Varela, M. (2020)."
+  // - German "ohne Jahr": "Author (o.J.)."
+  const citationRegex = /^[A-Za-zÄÖÜäöüß\u00C0-\u017F\-\s&.,]+\(\d{4}(?:\/\d{4})?\)|^[A-Za-zÄÖÜäöüß\u00C0-\u017F\-\s&.,]+\(o\.J\.\)/
   const pageNumRegex = /^\d+$/
   const emptyRegex = /^\s*$/
 
@@ -262,7 +267,7 @@ function generateLaTeXDocument(
         const processed = processFootnotesInText(trimmed, citationStyle, footnotes)
         // Format as bibliography entry (remove list markers if present)
         const cleaned = processed.replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, '')
-        latex += cleaned + '\n\n'
+        latex += cleaned + '\n\n\\vspace{0.5em}\n\n'
       }
     }
   } else {
@@ -398,19 +403,16 @@ function convertMarkdownToLaTeX(
       if (hashCount === 1) {
         // H1: Main chapter - add page break
         latex += '\\newpage\n'
-        latex += `\\section*{${escapeLaTeX(headingText)}}\n`
-        latex += `\\addcontentsline{toc}{section}{${escapeLaTeX(headingText)}}\n\n`
+        latex += `\\section{${escapeLaTeX(headingText)}}\n\n`
       } else if (hashCount === 2) {
         // H2: Section
-        latex += `\\subsection*{${escapeLaTeX(headingText)}}\n`
-        latex += `\\addcontentsline{toc}{subsection}{${escapeLaTeX(headingText)}}\n\n`
+        latex += `\\subsection{${escapeLaTeX(headingText)}}\n\n`
       } else if (hashCount === 3) {
         // H3: Subsection
-        latex += `\\subsubsection*{${escapeLaTeX(headingText)}}\n`
-        latex += `\\addcontentsline{toc}{subsubsection}{${escapeLaTeX(headingText)}}\n\n`
+        latex += `\\subsubsection{${escapeLaTeX(headingText)}}\n\n`
       } else {
         // H4-H6: Use paragraph style (smaller)
-        latex += `\\paragraph*{${escapeLaTeX(headingText)}}\n\n`
+        latex += `\\paragraph{${escapeLaTeX(headingText)}}\n\n`
       }
       continue
     }

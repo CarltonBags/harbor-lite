@@ -2271,17 +2271,32 @@ H. **Vermeide KI-typische Phrasen (ABSOLUT KRITISCH):**
    - Stattdessen: Direkte Aussagen ohne solche Einleitungen.
    - Vermeide übermäßig höfliche oder erklärende Phrasen.
 
-AUSGABE-REGELN:
+I. **Aggressive Burstiness (ABSOLUT KRITISCH FÜR ZEROGPT):**
+   - Erstelle extreme Satzlängenvariationen: 3-Wort-Satz, dann 30-Wort-Satz, dann 12-Wort-Satz.
+   - Mindestens 20% der Sätze sollten unter 10 Wörter sein.
+   - Mindestens 15% der Sätze sollten über 25 Wörter sein.
+   - Vermeide 3+ aufeinanderfolgende Sätze mit ähnlicher Länge (±3 Wörter).
+   - Erstelle bewusst "holprige" Rhythmen - nicht glatt fließend.
 
-- Behalte alle Zitate genau wie sie erscheinen: (Müller, 2021, S. 14), [12], (Smith et al., 2019), etc.
+J. **Mikro-Imperfektionen (KRITISCH):**
+   - Verwende gelegentlich leicht umständliche, aber korrekte Formulierungen.
+   - Variiere Interpunktion: manchmal Gedankenstrich, manchmal Klammern, manchmal Komma.
+   - Verwende gelegentlich Doppelpunkt für Aufzählungen statt immer gleicher Struktur.
+   - Baue bewusst leichte syntaktische "Unebenheiten" ein (aber grammatisch korrekt).
+   - Verwende manchmal längere Nominalphrasen, manchmal kürzere Verbalphrasen.
 
-- Behalte alle Abschnittsüberschriften unverändert.
+K. **Lexikalische Diversität (SEHR WICHTIG):**
+   - Verwende pro Absatz mindestens 3-4 verschiedene Satzanfänge.
+   - Vermeide Wiederholung derselben Konjunktionen (nicht immer "und", "aber", "denn").
+   - Verwende Synonyme aktiv: nicht 5x "zeigt", sondern "zeigt", "verdeutlicht", "legt nahe", "weist auf", "macht deutlich".
+   - Variiere zwischen Fachbegriffen und Umschreibungen.
 
-- Behalte alle Aufzählungspunkte und Listen unverändert, es sei denn, eine geringfügige menschliche Umstrukturierung ist erforderlich.
-
-- Kürze den Text nicht oder erweitere ihn erheblich; die Länge sollte ungefähr gleich bleiben.
-
-- Gib NUR den umgeschriebenen Text aus, ohne Erklärung.
+L. **Unvorhersehbare Strukturen (KRITISCH):**
+   - Beginne manche Absätze mit Hauptsatz, andere mit Nebensatz.
+   - Verwende gelegentlich rhetorische Fragen (sparsam, akademisch angemessen).
+   - Baue manchmal Einschübe ein (in Gedankenstrichen oder Klammern).
+   - Variiere zwischen deduktiver und induktiver Argumentation.
+   - Vermeide perfekt symmetrische Absatzlängen.
 
 Dein Ziel ist es, Text zu produzieren, der wie von einem kompetenten menschlichen akademischen Autor geschrieben klingt, während alle Informationsinhalte erhalten bleiben.`
 
@@ -2348,6 +2363,33 @@ H. **Avoid AI-typical Phrases (ABSOLUTELY CRITICAL):**
    - DO NOT: "It is important to note that...", "It should be mentioned that...", "It is noteworthy that...", "It is interesting to observe that...", "It is worth mentioning that...".
    - Instead: Direct statements without such introductions.
    - Avoid overly polite or explanatory phrases.
+
+I. **Aggressive Burstiness (ABSOLUTELY CRITICAL FOR ZEROGPT):**
+   - Create extreme sentence length variations: 3-word sentence, then 30-word sentence, then 12-word sentence.
+   - At least 20% of sentences should be under 10 words.
+   - At least 15% of sentences should be over 25 words.
+   - Avoid 3+ consecutive sentences with similar length (±3 words).
+   - Create consciously "bumpy" rhythms - not smoothly flowing.
+
+J. **Micro-Imperfections (CRITICAL):**
+   - Occasionally use slightly roundabout but correct formulations.
+   - Vary punctuation: sometimes em-dash, sometimes parentheses, sometimes comma.
+   - Occasionally use colon for lists instead of always same structure.
+   - Build in conscious slight syntactic "unevenness" (but grammatically correct).
+   - Sometimes use longer noun phrases, sometimes shorter verb phrases.
+
+K. **Lexical Diversity (VERY IMPORTANT):**
+   - Use at least 3-4 different sentence beginnings per paragraph.
+   - Avoid repeating same conjunctions (not always "and", "but", "because").
+   - Use synonyms actively: not 5x "shows", but "shows", "demonstrates", "suggests", "indicates", "reveals".
+   - Vary between technical terms and paraphrasing.
+
+L. **Unpredictable Structures (CRITICAL):**
+   - Start some paragraphs with main clause, others with subordinate clause.
+   - Occasionally use rhetorical questions (sparingly, academically appropriate).
+   - Sometimes build in parenthetical insertions (in em-dashes or parentheses).
+   - Vary between deductive and inductive argumentation.
+   - Avoid perfectly symmetrical paragraph lengths.
 
 OUTPUT RULES:
 
