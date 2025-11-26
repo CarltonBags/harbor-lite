@@ -289,6 +289,8 @@ function convertMarkdownToLaTeX(
   footnotes: Record<number, string>,
   isGerman: boolean
 ): string {
+  // Normalize content first to fix encoding issues
+  content = normalizeText(content)
   const lines = content.split('\n')
   let latex = ''
   let inCodeBlock = false
@@ -849,12 +851,62 @@ function processFootnotesInText(
   return processed
 }
 
+// Normalize text to fix common encoding issues
+function normalizeText(text: string): string {
+  if (!text) return ''
+
+  let normalized = text
+
+  // Fix "SZ" that should be a space in compound words
+  // Pattern: lowercase letter + SZ + capital letter (e.g., "posthumaneSZivilisation" -> "posthumane Zivilisation")
+  normalized = normalized.replace(/([a-zäöü])SZ([A-ZÄÖÜ])/g, '$1 Z$2')
+
+  // Fix incorrect umlauts in English words
+  // "Äre" -> "Are" (common English word pattern)
+  normalized = normalized.replace(/\bÄre\b/gi, 'Are')
+  normalized = normalized.replace(/\bÄnd\b/gi, 'And')
+  normalized = normalized.replace(/\bÄny\b/gi, 'Any')
+  normalized = normalized.replace(/\bÄll\b/gi, 'All')
+  normalized = normalized.replace(/\bÄre\s+You\b/gi, 'Are You')
+  
+  // Fix standalone "Ä" at start of English words (followed by lowercase letters)
+  // Only if it's clearly an English word pattern
+  normalized = normalized.replace(/\bÄ([a-z]{2,})\b/g, (match, rest) => {
+    // Common English word patterns that start with "A"
+    const englishPatterns = ['re', 'nd', 'ny', 'll', 'nd', 're', 'ct', 'ble', 'bout', 'fter', 'gain', 'lso', 'mong', 'nother', 'lready', 'lways', 'lthough', 'mong', 'nswer', 'ppear', 'pply', 'pproach', 'rrange', 'rticle', 'spect', 'ssume', 'ttach', 'ttack', 'ttempt', 'ttend', 'ttitude', 'ttract', 'udience', 'uthor', 'vailable', 'verage', 'void', 'ward', 'ware', 'wake', 'ward', 'way']
+    if (englishPatterns.some(pattern => rest.toLowerCase().startsWith(pattern))) {
+      return 'A' + rest
+    }
+    return match
+  })
+
+  // Fix "Ö" that should be "O" in English contexts
+  normalized = normalized.replace(/\bÖ([a-z]{2,})\b/g, (match, rest) => {
+    const englishPatterns = ['nly', 'nce', 'pen', 'ver', 'ther', 'rder', 'ffer', 'ffice', 'ften', 'ther', 'wner', 'bject', 'bserve', 'btain', 'bvious', 'ccur', 'cean', 'ctober', 'ffice', 'fficer', 'ften', 'nion', 'nly', 'pen', 'peration', 'pinion', 'pportunity', 'pposite', 'ption', 'rder', 'rganization', 'riginal', 'ther', 'utcome', 'utside', 'ver', 'wner']
+    if (englishPatterns.some(pattern => rest.toLowerCase().startsWith(pattern))) {
+      return 'O' + rest
+    }
+    return match
+  })
+
+  // Fix "Ü" that should be "U" in English contexts
+  normalized = normalized.replace(/\bÜ([a-z]{2,})\b/g, (match, rest) => {
+    const englishPatterns = ['nder', 'nion', 'nique', 'nit', 'nited', 'niversity', 'nless', 'ntil', 'pdate', 'pon', 'pper', 'rban', 'rge', 'rgent', 'sually', 'tilize']
+    if (englishPatterns.some(pattern => rest.toLowerCase().startsWith(pattern))) {
+      return 'U' + rest
+    }
+    return match
+  })
+
+  return normalized
+}
+
 // Escape LaTeX for text (but preserve $ for math mode - math is handled separately)
 function escapeLaTeXForText(text: string): string {
   if (!text) return ''
 
-  // First, normalize the string
-  let normalized = text
+  // First, normalize the string to fix encoding issues
+  let normalized = normalizeText(text)
     .replace(/^\uFEFF/, '')
     .replace(/\u0000/g, '')
     .replace(/[\uFFFE\uFFFF]/g, '')
@@ -881,8 +933,8 @@ function escapeLaTeXForText(text: string): string {
 function escapeLaTeX(text: string): string {
   if (!text) return ''
 
-  // First, normalize the string to remove any BOM or encoding issues
-  let normalized = text
+  // First, normalize the string to fix encoding issues and remove BOM
+  let normalized = normalizeText(text)
     .replace(/^\uFEFF/, '') // Remove UTF-8 BOM if present
     .replace(/\u0000/g, '') // Remove null bytes
     .replace(/[\uFFFE\uFFFF]/g, '') // Remove invalid UTF-16 characters

@@ -48,6 +48,7 @@
     "date-fns": "^3.0.0",
     "docx": "^8.5.0",
     "embla-carousel-react": "^8.0.0",
+    "gsap": "^3.13.0",
     "input-otp": "^1.2.4",
     "katex": "^0.16.25",
     "lucide-react": "^0.303.0",

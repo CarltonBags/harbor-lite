@@ -825,104 +825,144 @@ If you cannot determine the page numbers, return:
 }
 
 /**
- * Step 6: Download PDF and upload to FileSearchStore
+ * Detect file type from buffer
+ */
+function detectFileType(buffer: Buffer): { type: 'pdf' | 'doc' | 'docx' | 'unknown'; mimeType: string } {
+  const header = buffer.subarray(0, 4)
+  const headerHex = header.toString('hex').toUpperCase()
+  const headerAscii = header.toString('ascii')
+
+  // PDF: %PDF
+  if (headerAscii === '%PDF') {
+    return { type: 'pdf', mimeType: 'application/pdf' }
+  }
+
+  // DOCX: ZIP format (50 4B 03 04 = PK..)
+  if (headerHex === '504B0304') {
+    return { type: 'docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
+  }
+
+  // DOC: OLE2 format (D0 CF 11 E0)
+  if (headerHex === 'D0CF11E0') {
+    return { type: 'doc', mimeType: 'application/msword' }
+  }
+
+  return { type: 'unknown', mimeType: 'application/octet-stream' }
+}
+
+/**
+ * Step 6: Download document (PDF, DOC, DOCX) and upload to FileSearchStore
  */
 async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, thesisId: string): Promise<boolean> {
   if (!source.pdfUrl) {
-    console.log(`[PDFUpload] Skipping ${source.title} - no PDF URL`)
+    console.log(`[DocUpload] Skipping ${source.title} - no document URL`)
     return false
   }
 
   try {
-    console.log(`[PDFUpload] Starting upload for: "${source.title}"`)
-    console.log(`[PDFUpload]   DOI: ${source.doi || 'N/A'}`)
-    console.log(`[PDFUpload]   PDF URL: ${source.pdfUrl}`)
-    console.log(`[PDFUpload]   FileSearchStore: ${fileSearchStoreId}`)
+    console.log(`[DocUpload] Starting upload for: "${source.title}"`)
+    console.log(`[DocUpload]   DOI: ${source.doi || 'N/A'}`)
+    console.log(`[DocUpload]   Document URL: ${source.pdfUrl}`)
+    console.log(`[DocUpload]   FileSearchStore: ${fileSearchStoreId}`)
 
-    // Always download the PDF first to extract page numbers
-    console.log(`[PDFUpload] Downloading PDF...`)
+    // Always download the document first to extract page numbers and validate format
+    console.log(`[DocUpload] Downloading document...`)
     if (!source.pdfUrl) {
-      console.error(`[PDFUpload] ERROR: No PDF URL for source: ${source.title}`)
+      console.error(`[DocUpload] ERROR: No document URL for source: ${source.title}`)
       return false
     }
 
     const downloadStart = Date.now()
-    const pdfResponse = await retryApiCall(
+    const docResponse = await retryApiCall(
       () => fetch(source.pdfUrl!),
-      `Download PDF: ${source.title}`
+      `Download document: ${source.title}`
     )
     const downloadDuration = Date.now() - downloadStart
 
-    if (!pdfResponse.ok) {
-      console.error(`[PDFUpload] ERROR: Failed to download PDF: ${pdfResponse.status} ${pdfResponse.statusText}`)
+    if (!docResponse.ok) {
+      console.error(`[DocUpload] ERROR: Failed to download document: ${docResponse.status} ${docResponse.statusText}`)
       return false
     }
 
-    const contentLength = pdfResponse.headers.get('content-length')
-    console.log(`[PDFUpload] PDF downloaded (${downloadDuration}ms, ${contentLength ? `${(parseInt(contentLength) / 1024).toFixed(2)} KB` : 'size unknown'})`)
+    const contentLength = docResponse.headers.get('content-length')
+    console.log(`[DocUpload] Document downloaded (${downloadDuration}ms, ${contentLength ? `${(parseInt(contentLength) / 1024).toFixed(2)} KB` : 'size unknown'})`)
 
     // Use arrayBuffer() instead of deprecated buffer() method
-    const arrayBuffer = await pdfResponse.arrayBuffer()
-    const pdfBuffer = Buffer.from(arrayBuffer)
-    const fileSizeKB = pdfBuffer.length / 1024
+    const arrayBuffer = await docResponse.arrayBuffer()
+    const docBuffer = Buffer.from(arrayBuffer)
+    const fileSizeKB = docBuffer.length / 1024
     const fileSizeMB = fileSizeKB / 1024
-    console.log(`[PDFUpload] PDF buffer created: ${fileSizeKB.toFixed(2)} KB (${fileSizeMB.toFixed(2)} MB)`)
+    console.log(`[DocUpload] Document buffer created: ${fileSizeKB.toFixed(2)} KB (${fileSizeMB.toFixed(2)} MB)`)
 
-    // Validate PDF before processing
+    // Validate document before processing
     // Check 1: File size - Google FileSearchStore has a 20MB limit per file
     const MAX_FILE_SIZE_MB = 20
     if (fileSizeMB > MAX_FILE_SIZE_MB) {
-      console.error(`[PDFUpload] ERROR: PDF too large (${fileSizeMB.toFixed(2)} MB > ${MAX_FILE_SIZE_MB} MB limit)`)
+      console.error(`[DocUpload] ERROR: Document too large (${fileSizeMB.toFixed(2)} MB > ${MAX_FILE_SIZE_MB} MB limit)`)
       return false
     }
 
     // Check 2: Minimum size - ensure it's not empty or corrupted
     const MIN_FILE_SIZE_KB = 1
     if (fileSizeKB < MIN_FILE_SIZE_KB) {
-      console.error(`[PDFUpload] ERROR: PDF too small (${fileSizeKB.toFixed(2)} KB < ${MIN_FILE_SIZE_KB} KB) - likely corrupted or empty`)
+      console.error(`[DocUpload] ERROR: Document too small (${fileSizeKB.toFixed(2)} KB < ${MIN_FILE_SIZE_KB} KB) - likely corrupted or empty`)
       return false
     }
 
-    // Check 3: Validate PDF header - should start with %PDF
-    const pdfHeader = pdfBuffer.subarray(0, 4).toString('ascii')
-    if (pdfHeader !== '%PDF') {
-      console.error(`[PDFUpload] ERROR: Invalid PDF format (header: "${pdfHeader}", expected: "%PDF")`)
+    // Check 3: Validate file format - should be PDF, DOC, or DOCX
+    const fileType = detectFileType(docBuffer)
+    if (fileType.type === 'unknown') {
+      const headerHex = docBuffer.subarray(0, 4).toString('hex').toUpperCase()
+      const headerAscii = docBuffer.subarray(0, 4).toString('ascii')
+      console.error(`[DocUpload] ERROR: Unsupported file format (header: "${headerAscii}" / 0x${headerHex})`)
+      console.error(`[DocUpload]   Supported formats: PDF (%PDF), DOCX (ZIP/PK..), DOC (OLE2/D0CF11E0)`)
       return false
     }
-    console.log(`[PDFUpload] PDF validation passed: valid PDF format, size OK`)
+    console.log(`[DocUpload] Document validation passed: valid ${fileType.type.toUpperCase()} format, size OK`)
 
-    // Extract page numbers using Gemini 2.5 Flash
-    console.log(`[PDFUpload] Extracting page numbers...`)
+    // Extract page numbers using Gemini 2.5 Flash (only for PDFs)
+    console.log(`[DocUpload] Extracting page numbers...`)
     const pageExtractStart = Date.now()
     let pageStart: string | null = null
     let pageEnd: string | null = null
-    try {
-      const pageNumbers = await extractPageNumbers(pdfBuffer)
-      pageStart = pageNumbers.pageStart
-      pageEnd = pageNumbers.pageEnd
-      const pageExtractDuration = Date.now() - pageExtractStart
-      console.log(`[PDFUpload] Page extraction completed (${pageExtractDuration}ms)`)
-    } catch (error) {
-      console.warn(`[PDFUpload] WARNING: Page number extraction failed, using fallback estimation:`, error)
-      // Fallback: Estimate page count from PDF size
-      // Average academic PDF page is ~50-75 KB, use conservative 50 KB per page
-      const estimatedPages = Math.max(1, Math.ceil(fileSizeKB / 50))
+    
+    if (fileType.type === 'pdf') {
+      try {
+        const pageNumbers = await extractPageNumbers(docBuffer)
+        pageStart = pageNumbers.pageStart
+        pageEnd = pageNumbers.pageEnd
+        const pageExtractDuration = Date.now() - pageExtractStart
+        console.log(`[DocUpload] Page extraction completed (${pageExtractDuration}ms)`)
+      } catch (error) {
+        console.warn(`[DocUpload] WARNING: Page number extraction failed, using fallback estimation:`, error)
+        // Fallback: Estimate page count from PDF size
+        // Average academic PDF page is ~50-75 KB, use conservative 50 KB per page
+        const estimatedPages = Math.max(1, Math.ceil(fileSizeKB / 50))
+        pageStart = "1"
+        pageEnd = estimatedPages.toString()
+        console.log(`[DocUpload] Using fallback: estimated ${estimatedPages} pages based on file size (${fileSizeKB.toFixed(2)} KB / 50 KB per page)`)
+      }
+    } else {
+      // For DOC/DOCX, estimate pages based on file size
+      // DOC/DOCX files are typically larger per page than PDFs
+      // Average academic DOC/DOCX page is ~75-100 KB, use conservative 75 KB per page
+      const estimatedPages = Math.max(1, Math.ceil(fileSizeKB / 75))
       pageStart = "1"
       pageEnd = estimatedPages.toString()
-      console.log(`[PDFUpload] Using fallback: estimated ${estimatedPages} pages based on file size (${fileSizeKB.toFixed(2)} KB / 50 KB per page)`)
+      console.log(`[DocUpload] Estimated ${estimatedPages} pages for ${fileType.type.toUpperCase()} based on file size (${fileSizeKB.toFixed(2)} KB / 75 KB per page)`)
     }
 
     // Ensure we have page numbers (fallback if extraction returned null)
     if (!pageStart || !pageEnd) {
-      console.warn(`[PDFUpload] WARNING: Page extraction returned null, using fallback estimation`)
-      const estimatedPages = Math.max(1, Math.ceil(fileSizeKB / 50))
+      console.warn(`[DocUpload] WARNING: Page extraction returned null, using fallback estimation`)
+      const estimatedPages = Math.max(1, Math.ceil(fileSizeKB / (fileType.type === 'pdf' ? 50 : 75)))
       pageStart = "1"
       pageEnd = estimatedPages.toString()
-      console.log(`[PDFUpload] Using fallback: estimated ${estimatedPages} pages based on file size`)
+      console.log(`[DocUpload] Using fallback: estimated ${estimatedPages} pages based on file size`)
     }
 
-    // Create a Blob from Buffer for SDK compatibility
-    const fileSource = new Blob([pdfBuffer], { type: 'application/pdf' })
+    // Create a Blob from Buffer for SDK compatibility with correct MIME type
+    const fileSource = new Blob([docBuffer], { type: fileType.mimeType })
 
     // Prepare metadata for FileSearchStore
     const customMetadata: any[] = []
@@ -961,10 +1001,11 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     }
 
     // Upload to FileSearchStore
-    console.log(`[PDFUpload] Uploading to FileSearchStore...`)
-    console.log(`[PDFUpload]   File size: ${fileSizeMB.toFixed(2)} MB`)
-    console.log(`[PDFUpload]   Metadata fields: ${customMetadata.length}`)
-    console.log(`[PDFUpload]   Display name: ${source.title.substring(0, 100) || 'Untitled'}`)
+    console.log(`[DocUpload] Uploading to FileSearchStore...`)
+    console.log(`[DocUpload]   File type: ${fileType.type.toUpperCase()}`)
+    console.log(`[DocUpload]   File size: ${fileSizeMB.toFixed(2)} MB`)
+    console.log(`[DocUpload]   Metadata fields: ${customMetadata.length}`)
+    console.log(`[DocUpload]   Display name: ${source.title.substring(0, 100) || 'Untitled'}`)
     const uploadStart = Date.now()
 
     let operation: any
@@ -988,15 +1029,16 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
         3, // 3 retries
         2000 // 2 second base delay
       )
-      console.log(`[PDFUpload] Upload operation started, polling for completion...`)
+      console.log(`[DocUpload] Upload operation started, polling for completion...`)
     } catch (error: any) {
       // Handle specific 500 errors from Google API
       if (error?.status === 500) {
-        console.error(`[PDFUpload] ERROR: Google API returned 500 Internal Server Error`)
-        console.error(`[PDFUpload]   This usually means the PDF is corrupted, too large, or in an invalid format`)
-        console.error(`[PDFUpload]   File size: ${fileSizeMB.toFixed(2)} MB`)
-        console.error(`[PDFUpload]   PDF header validated: Yes`)
-        console.error(`[PDFUpload]   Error details:`, error.message || error)
+        console.error(`[DocUpload] ERROR: Google API returned 500 Internal Server Error`)
+        console.error(`[DocUpload]   This usually means the document is corrupted, too large, or in an invalid format`)
+        console.error(`[DocUpload]   File type: ${fileType.type.toUpperCase()}`)
+        console.error(`[DocUpload]   File size: ${fileSizeMB.toFixed(2)} MB`)
+        console.error(`[DocUpload]   Document header validated: Yes`)
+        console.error(`[DocUpload]   Error details:`, error.message || error)
         return false
       }
       // Re-throw other errors
@@ -1004,14 +1046,14 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     }
 
     // Poll until complete
-    const maxWaitTime = 300000 // 5 minutes
+    const maxWaitTime = 100000 // 5 minutes
     const pollInterval = 2000 // 2 seconds
     const startTime = Date.now()
     let pollCount = 0
 
     while (!operation.done) {
       if (Date.now() - startTime > maxWaitTime) {
-        console.error(`[PDFUpload] ERROR: Upload operation timeout after ${maxWaitTime}ms`)
+        console.error(`[DocUpload] ERROR: Upload operation timeout after ${maxWaitTime}ms`)
         return false
       }
 
@@ -1024,17 +1066,20 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
       Object.assign(operation, updatedOperation)
 
       if (pollCount % 5 === 0) {
-        console.log(`[PDFUpload] Still processing... (poll ${pollCount}, ${Math.round((Date.now() - startTime) / 1000)}s elapsed)`)
+        console.log(`[DocUpload] Still processing... (poll ${pollCount}, ${Math.round((Date.now() - startTime) / 1000)}s elapsed)`)
       }
     }
 
     const uploadDuration = Date.now() - uploadStart
-    console.log(`[PDFUpload] Upload completed (${uploadDuration}ms, ${pollCount} polls)`)
+    console.log(`[DocUpload] Upload completed (${uploadDuration}ms, ${pollCount} polls)`)
 
     if (operation.error) {
-      console.error(`[PDFUpload] ERROR: Upload operation failed:`, operation.error)
+      console.error(`[DocUpload] ERROR: Upload operation failed:`, operation.error)
       return false
     }
+
+    // Determine file extension based on detected type
+    const fileExtension = fileType.type === 'pdf' ? 'pdf' : fileType.type === 'docx' ? 'docx' : 'doc'
 
     // Update database
     const { data: thesis } = await retryApiCall(
@@ -1054,7 +1099,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     const newSource = {
       doi: source.doi,
       title: source.title,
-      fileName: `${source.title.substring(0, 50)}.pdf`,
+      fileName: `${source.title.substring(0, 50)}.${fileExtension}`,
       uploadedAt: new Date().toISOString(),
       metadata: {
         title: source.title,
@@ -1066,6 +1111,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
         pageStart: pageStart,
         pageEnd: pageEnd,
         pages: pageStart && pageEnd ? `${pageStart}-${pageEnd}` : null,
+        fileType: fileType.type,
       },
       sourceType: 'url' as const,
       sourceUrl: source.pdfUrl,
@@ -1073,7 +1119,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
 
     existingSources.push(newSource)
 
-    console.log(`[PDFUpload] Updating database with uploaded source...`)
+    console.log(`[DocUpload] Updating database with uploaded source...`)
     await retryApiCall(
       async () => {
         const result = await supabase
@@ -1086,10 +1132,10 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
       `Update thesis in database: ${thesisId}`
     )
 
-    console.log(`[PDFUpload] ✓ Successfully uploaded and indexed: "${source.title}"`)
+    console.log(`[DocUpload] ✓ Successfully uploaded and indexed: "${source.title}" (${fileType.type.toUpperCase()})`)
     return true
   } catch (error) {
-    console.error(`[PDFUpload] ERROR downloading/uploading PDF for "${source.title}":`, error)
+    console.error(`[DocUpload] ERROR downloading/uploading document for "${source.title}":`, error)
     return false
   }
 }
@@ -1438,7 +1484,7 @@ ${JSON.stringify(thesisData.outline, null, 2)}
 - **CRITICAL: Nutze ausschließlich die im Kontext bereitgestellten Quellen (File Search / RAG).
 - Verwende nur Informationen, die eindeutig in diesen Quellen enthalten sind.
 - **JEDER Absatz mit Forschungsergebnissen MUSS Zitationen enthalten.**
-- **Minimum: ~1 Zitation pro 500 Wörter (10.000 Wörter = mindestens 20 Zitationen).**
+- **Minimum: ~1 Zitation pro 300 Wörter (10.000 Wörter = mindestens 33 Zitationen).**
 - Keine erfundenen Seitenzahlen, keine erfundenen Zitate, keine erfundenen Quellen.
 - ABSOLUT VERBOTEN: Hypothetische Quellen, Platzhalter-Quellen oder Quellen mit "(Hypothetische Quelle)" oder "(Hypothetical Source)" zu erstellen.
 - ABSOLUT VERBOTEN: Quellen zu zitieren, die NICHT im FileSearchStore/RAG-Kontext sind.
@@ -1518,9 +1564,12 @@ Der Text muss von Anfang an wie von einem menschlichen Autor geschrieben klingen
 - Variiere zwischen aktiver und passiver Sprache (aber nicht zu viel Passiv).
 - Verwende manchmal direkte Aussagen, manchmal indirekte Formulierungen.
 - Sei facettenreich in deiner Formulierung - keine monotonen Wiederholungen.
+- 
 
 **8. Wissenschaftlicher Ton beibehalten:**
-- Objektiv, präzise, sachlich.
+- Behandele Informationen aus Quellen objektiv und kritisch.
+- Vermeide absolute Statements. wie "Die Zahle der x sind wachsend..." sondern verwende die Quelle wie "Die Autoren XYZ haben festgestellt, dass die Zahl der x wachsend ist...". Dies ist nur ein Beispiel, um dir zu zeigen, dass du objektiv und kritisch mit Informationen umgehen musst.
+- Objektiv, präzise, sachlich, aber kritisch und vorsichtig mit Informationen.
 - Keine Meinungen, kein Marketing, keine Füllsätze.
 - Klare Struktur, klarer roter Faden.
 - Saubere Definitionen, methodische Klarheit, kritische Reflexion.
@@ -1821,7 +1870,9 @@ The text must sound like written by a human author from the start and must not b
 - Be multifaceted in your formulation - no monotonous repetitions.
 
 **8. Maintain Scientific Tone:**
-- Objective, precise, factual.
+- Do not treat findings in your sources as facts that are set in stone. Avoid absolute statements like "The number of x are growing...", but use the source like "Authors XYZ found that the number of x is growing...". This is just an example to show you to be nuanced with information.
+- Approach information with an objective critical mindset. 
+- Objective, precise, factual, yet nuanced and critical about absoluteness of statements.
 - No opinions, no marketing, no filler sentences.
 - Clear structure, clear red thread.
 - Clean definitions, methodological clarity, critical reflection.
@@ -2211,7 +2262,7 @@ async function humanizeThesisContent(content: string, thesisData: ThesisData): P
 
 Folge diesen Regeln strikt:
 
-1. Ändere, füge hinzu oder entferne KEINE Fakten, Argumente, Behauptungen, Zitate, Theorien, Namen, Zahlen, Daten, Tabellen oder Referenzen.
+1. NIEMALS ändern, hinzufügen oder entfernen von Fakten, Argumenten, Behauptungen, Zitaten, Theorien, Namen, Zahlen, Daten, Tabellen oder Referenzen.
 
 2. Führe KEINE neuen Informationen oder neuen Interpretationen ein.
 
