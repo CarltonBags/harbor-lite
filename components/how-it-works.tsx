@@ -43,7 +43,7 @@ export function HowItWorks() {
     const midX = (startX + endX) / 2
     const midY = (startY + endY) / 2
     const distance = Math.sqrt((endX - startX) ** 2 + (endY - startY) ** 2)
-    const segments = Math.max(3, Math.floor(distance / 20))
+    const segments = Math.max(3, Math.floor(distance / 15))
     
     let path = `M ${startX} ${startY}`
     
@@ -59,6 +59,55 @@ export function HowItWorks() {
       const wobbleY = y + Math.sin(angle) * wobbleAmount
       
       path += ` L ${wobbleX} ${wobbleY}`
+    }
+    
+    return path
+  }
+
+  // Create organic blob shape instead of rigid box
+  const createOrganicBlob = (x: number, y: number, width: number, height: number): string => {
+    const centerX = x + width / 2
+    const centerY = y + height / 2
+    const radiusX = width / 2
+    const radiusY = height / 2
+    
+    // Create wobbly ellipse with multiple control points
+    const points = 16
+    let path = ''
+    
+    for (let i = 0; i <= points; i++) {
+      const angle = (i / points) * Math.PI * 2
+      const wobble = 3 + Math.random() * 4
+      const rX = radiusX + (Math.random() - 0.5) * wobble
+      const rY = radiusY + (Math.random() - 0.5) * wobble
+      const px = centerX + Math.cos(angle) * rX
+      const py = centerY + Math.sin(angle) * rY
+      
+      if (i === 0) {
+        path += `M ${px} ${py}`
+      } else {
+        path += ` L ${px} ${py}`
+      }
+    }
+    
+    path += ' Z'
+    return path
+  }
+
+  // Convert text to path for writing animation
+  const createTextPath = (text: string, x: number, y: number, fontSize: number, fontFamily: string = 'Arial'): string => {
+    // For simplicity, we'll create a path that represents the text outline
+    // In a real implementation, you'd use a library like opentype.js or canvas text-to-path
+    // For now, we'll create a wobbly underline path that animates
+    const textWidth = text.length * fontSize * 0.6
+    const segments = Math.max(8, Math.floor(textWidth / 10))
+    let path = `M ${x} ${y + fontSize * 0.3}`
+    
+    for (let i = 1; i <= segments; i++) {
+      const t = i / segments
+      const px = x + textWidth * t
+      const py = y + fontSize * 0.3 + (Math.random() - 0.5) * 2
+      path += ` L ${px} ${py}`
     }
     
     return path
@@ -147,107 +196,210 @@ export function HowItWorks() {
         stepGroup.setAttribute('class', `step-${index}`)
         g.appendChild(stepGroup)
 
-        // Draw wobbly box (card outline) - make it more hand-drawn
-        const boxPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-        const boxRadius = 16
-        // Add slight wobble to corners for hand-drawn effect
-        const wobbleAmount = 2
-        const boxPathData = `
-          M ${pos.x + boxRadius + (Math.random() - 0.5) * wobbleAmount} ${pos.y + (Math.random() - 0.5) * wobbleAmount}
-          L ${pos.x + pos.width - boxRadius + (Math.random() - 0.5) * wobbleAmount} ${pos.y + (Math.random() - 0.5) * wobbleAmount}
-          Q ${pos.x + pos.width + (Math.random() - 0.5) * wobbleAmount} ${pos.y + (Math.random() - 0.5) * wobbleAmount} ${pos.x + pos.width + (Math.random() - 0.5) * wobbleAmount} ${pos.y + boxRadius + (Math.random() - 0.5) * wobbleAmount}
-          L ${pos.x + pos.width + (Math.random() - 0.5) * wobbleAmount} ${pos.y + pos.height - boxRadius + (Math.random() - 0.5) * wobbleAmount}
-          Q ${pos.x + pos.width + (Math.random() - 0.5) * wobbleAmount} ${pos.y + pos.height + (Math.random() - 0.5) * wobbleAmount} ${pos.x + pos.width - boxRadius + (Math.random() - 0.5) * wobbleAmount} ${pos.y + pos.height + (Math.random() - 0.5) * wobbleAmount}
-          L ${pos.x + boxRadius + (Math.random() - 0.5) * wobbleAmount} ${pos.y + pos.height + (Math.random() - 0.5) * wobbleAmount}
-          Q ${pos.x + (Math.random() - 0.5) * wobbleAmount} ${pos.y + pos.height + (Math.random() - 0.5) * wobbleAmount} ${pos.x + (Math.random() - 0.5) * wobbleAmount} ${pos.y + pos.height - boxRadius + (Math.random() - 0.5) * wobbleAmount}
-          L ${pos.x + (Math.random() - 0.5) * wobbleAmount} ${pos.y + boxRadius + (Math.random() - 0.5) * wobbleAmount}
-          Q ${pos.x + (Math.random() - 0.5) * wobbleAmount} ${pos.y + (Math.random() - 0.5) * wobbleAmount} ${pos.x + boxRadius + (Math.random() - 0.5) * wobbleAmount} ${pos.y + (Math.random() - 0.5) * wobbleAmount}
-          Z
-        `
-        boxPath.setAttribute('d', boxPathData.trim())
-        boxPath.setAttribute('fill', 'none')
-        boxPath.setAttribute('stroke', '#000000')
-        boxPath.setAttribute('stroke-width', '2.5')
-        boxPath.setAttribute('stroke-linecap', 'round')
-        boxPath.setAttribute('stroke-linejoin', 'round')
-        boxPath.style.filter = 'url(#sketchy)'
-        stepGroup.appendChild(boxPath)
+        // Draw organic blob shape instead of rigid box
+        const blobPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+        const blobData = createOrganicBlob(pos.x, pos.y, pos.width, pos.height)
+        blobPath.setAttribute('d', blobData)
+        blobPath.setAttribute('fill', 'none')
+        blobPath.setAttribute('stroke', '#000000')
+        blobPath.setAttribute('stroke-width', '2.5')
+        blobPath.setAttribute('stroke-linecap', 'round')
+        blobPath.setAttribute('stroke-linejoin', 'round')
+        blobPath.style.filter = 'url(#sketchy)'
+        stepGroup.appendChild(blobPath)
 
-        // Draw icon circle
+        // Draw organic icon circle (wobbly)
         const iconSize = Math.min(pos.width, pos.height) * 0.15
         const iconX = pos.x + pos.width * 0.1
         const iconY = pos.y + pos.height * 0.15
         const iconRadius = iconSize / 2
+        const iconCenterX = iconX + iconRadius
+        const iconCenterY = iconY + iconRadius
 
-        const iconCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
-        iconCircle.setAttribute('cx', (iconX + iconRadius).toString())
-        iconCircle.setAttribute('cy', (iconY + iconRadius).toString())
-        iconCircle.setAttribute('r', iconRadius.toString())
-        iconCircle.setAttribute('fill', '#000000')
-        iconCircle.setAttribute('stroke', 'none')
-        iconCircle.style.filter = 'url(#sketchy)'
-        stepGroup.appendChild(iconCircle)
+        // Create wobbly circle path
+        const iconCirclePath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+        const circlePoints = 20
+        let circlePath = ''
+        for (let i = 0; i <= circlePoints; i++) {
+          const angle = (i / circlePoints) * Math.PI * 2
+          const wobble = 2 + Math.random() * 3
+          const r = iconRadius + (Math.random() - 0.5) * wobble
+          const px = iconCenterX + Math.cos(angle) * r
+          const py = iconCenterY + Math.sin(angle) * r
+          if (i === 0) {
+            circlePath += `M ${px} ${py}`
+          } else {
+            circlePath += ` L ${px} ${py}`
+          }
+        }
+        circlePath += ' Z'
+        iconCirclePath.setAttribute('d', circlePath)
+        // Start with no fill for animation
+        iconCirclePath.setAttribute('fill', 'none')
+        iconCirclePath.setAttribute('stroke', '#000000')
+        iconCirclePath.setAttribute('stroke-width', '2.5')
+        iconCirclePath.style.filter = 'url(#sketchy)'
+        stepGroup.appendChild(iconCirclePath)
 
-        // Draw step number (as text with sketchy style)
+        // Draw step number (as text that appears to be written)
         const numberText = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+        const numberFontSize = pos.width * 0.15
         numberText.setAttribute('x', (pos.x + pos.width * 0.9).toString())
         numberText.setAttribute('y', (pos.y + pos.height * 0.15).toString())
-        numberText.setAttribute('font-size', (pos.width * 0.15).toString())
+        numberText.setAttribute('font-size', numberFontSize.toString())
         numberText.setAttribute('font-weight', 'bold')
         numberText.setAttribute('fill', '#C0C0C0')
         numberText.setAttribute('text-anchor', 'end')
         numberText.setAttribute('dominant-baseline', 'hanging')
+        numberText.setAttribute('font-family', 'Arial, sans-serif')
         numberText.textContent = step.number
+        numberText.style.opacity = '0'
         numberText.style.filter = 'url(#sketchy)'
         stepGroup.appendChild(numberText)
 
-        // Draw title (as text)
+        // Create underline path for number (writing effect)
+        const numberUnderline = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+        const numberX = pos.x + pos.width * 0.9
+        const numberY = pos.y + pos.height * 0.15 + numberFontSize * 0.3
+        const numberWidth = numberFontSize * step.number.length * 0.6
+        const numberPath = createTextPath(step.number, numberX - numberWidth, numberY, numberFontSize)
+        numberUnderline.setAttribute('d', numberPath)
+        numberUnderline.setAttribute('fill', 'none')
+        numberUnderline.setAttribute('stroke', '#C0C0C0')
+        numberUnderline.setAttribute('stroke-width', '2')
+        numberUnderline.setAttribute('stroke-linecap', 'round')
+        numberUnderline.style.filter = 'url(#sketchy)'
+        stepGroup.appendChild(numberUnderline)
+
+        // Draw title (as text that appears to be written)
         const titleText = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+        const titleFontSize = Math.min(pos.width * 0.06, 24)
         titleText.setAttribute('x', (pos.x + pos.width * 0.1).toString())
         titleText.setAttribute('y', (pos.y + pos.height * 0.4).toString())
-        titleText.setAttribute('font-size', Math.min(pos.width * 0.06, 24).toString())
+        titleText.setAttribute('font-size', titleFontSize.toString())
         titleText.setAttribute('font-weight', 'bold')
         titleText.setAttribute('fill', '#000000')
+        titleText.setAttribute('font-family', 'Arial, sans-serif')
         titleText.textContent = step.title
+        titleText.style.opacity = '0'
         titleText.style.filter = 'url(#sketchy)'
         stepGroup.appendChild(titleText)
 
-        // Draw description (simplified - first line only for sketchy effect)
+        // Create underline path for title (writing effect)
+        const titleUnderline = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+        const titleX = pos.x + pos.width * 0.1
+        const titleY = pos.y + pos.height * 0.4 + titleFontSize * 0.3
+        const titlePath = createTextPath(step.title, titleX, titleY, titleFontSize)
+        titleUnderline.setAttribute('d', titlePath)
+        titleUnderline.setAttribute('fill', 'none')
+        titleUnderline.setAttribute('stroke', '#000000')
+        titleUnderline.setAttribute('stroke-width', '2')
+        titleUnderline.setAttribute('stroke-linecap', 'round')
+        titleUnderline.style.filter = 'url(#sketchy)'
+        stepGroup.appendChild(titleUnderline)
+
+        // Draw description (as text that appears to be written)
         const descText = document.createElementNS('http://www.w3.org/2000/svg', 'text')
-        const descWords = step.description.split(' ').slice(0, 8).join(' ') + '...'
+        const descWords = step.description.split(' ').slice(0, 10).join(' ') + '...'
+        const descFontSize = Math.min(pos.width * 0.035, 16)
         descText.setAttribute('x', (pos.x + pos.width * 0.1).toString())
         descText.setAttribute('y', (pos.y + pos.height * 0.55).toString())
-        descText.setAttribute('font-size', Math.min(pos.width * 0.035, 16).toString())
+        descText.setAttribute('font-size', descFontSize.toString())
         descText.setAttribute('fill', '#666666')
+        descText.setAttribute('font-family', 'Arial, sans-serif')
         descText.textContent = descWords
+        descText.style.opacity = '0'
         descText.style.filter = 'url(#sketchy)'
         stepGroup.appendChild(descText)
 
-        // Animate drawing the box
-        const boxLength = boxPath.getTotalLength()
-        boxPath.style.strokeDasharray = `${boxLength}`
-        boxPath.style.strokeDashoffset = `${boxLength}`
+        // Create underline path for description (writing effect)
+        const descUnderline = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+        const descX = pos.x + pos.width * 0.1
+        const descY = pos.y + pos.height * 0.55 + descFontSize * 0.3
+        const descPath = createTextPath(descWords, descX, descY, descFontSize)
+        descUnderline.setAttribute('d', descPath)
+        descUnderline.setAttribute('fill', 'none')
+        descUnderline.setAttribute('stroke', '#666666')
+        descUnderline.setAttribute('stroke-width', '1.5')
+        descUnderline.setAttribute('stroke-linecap', 'round')
+        descUnderline.style.filter = 'url(#sketchy)'
+        stepGroup.appendChild(descUnderline)
 
-        tl.to(boxPath, {
+        // Animate drawing the blob
+        const blobLength = blobPath.getTotalLength()
+        blobPath.style.strokeDasharray = `${blobLength}`
+        blobPath.style.strokeDashoffset = `${blobLength}`
+
+        tl.to(blobPath, {
+          strokeDashoffset: 0,
+          duration: 1.0,
+          ease: 'none',
+        }, index * 1.5)
+
+        // Animate icon circle being drawn
+        const iconLength = iconCirclePath.getTotalLength()
+        iconCirclePath.style.strokeDasharray = `${iconLength}`
+        iconCirclePath.style.strokeDashoffset = `${iconLength}`
+
+        tl.to(iconCirclePath, {
           strokeDashoffset: 0,
           duration: 0.8,
           ease: 'none',
-        }, index * 1.2)
+        }, index * 1.5 + 1.0)
 
-        // Animate icon circle appearing
-        tl.to(iconCircle, {
-          scale: 1,
+        // Fill icon circle after drawing
+        tl.to(iconCirclePath, {
+          attr: { fill: '#000000' },
+          duration: 0.3,
+        }, index * 1.5 + 1.8)
+
+        // Animate text being "written" (underline draws first, then text appears)
+        const numberUnderlineLength = numberUnderline.getTotalLength()
+        numberUnderline.style.strokeDasharray = `${numberUnderlineLength}`
+        numberUnderline.style.strokeDashoffset = `${numberUnderlineLength}`
+
+        tl.to(numberUnderline, {
+          strokeDashoffset: 0,
+          duration: 0.4,
+          ease: 'none',
+        }, index * 1.5 + 2.0)
+
+        tl.to(numberText, {
+          opacity: 1,
+          duration: 0.3,
+        }, index * 1.5 + 2.4)
+
+        // Animate title being written
+        const titleUnderlineLength = titleUnderline.getTotalLength()
+        titleUnderline.style.strokeDasharray = `${titleUnderlineLength}`
+        titleUnderline.style.strokeDashoffset = `${titleUnderlineLength}`
+
+        tl.to(titleUnderline, {
+          strokeDashoffset: 0,
+          duration: 0.6,
+          ease: 'none',
+        }, index * 1.5 + 2.7)
+
+        tl.to(titleText, {
+          opacity: 1,
+          duration: 0.4,
+        }, index * 1.5 + 3.3)
+
+        // Animate description being written
+        const descUnderlineLength = descUnderline.getTotalLength()
+        descUnderline.style.strokeDasharray = `${descUnderlineLength}`
+        descUnderline.style.strokeDashoffset = `${descUnderlineLength}`
+
+        tl.to(descUnderline, {
+          strokeDashoffset: 0,
+          duration: 0.8,
+          ease: 'none',
+        }, index * 1.5 + 3.7)
+
+        tl.to(descText, {
           opacity: 1,
           duration: 0.5,
-          ease: 'back.out(1.7)',
-        }, index * 1.2 + 0.8)
-
-        // Animate text appearing (with slight delay for sketchy effect)
-        tl.to([numberText, titleText, descText], {
-          opacity: 1,
-          duration: 0.6,
-          ease: 'power2.out',
-        }, index * 1.2 + 1.0)
+        }, index * 1.5 + 4.5)
 
         // Draw connecting arrow to next step (if not last)
         if (index < steps.length - 1) {
@@ -293,17 +445,17 @@ export function HowItWorks() {
 
           tl.to(arrow, {
             strokeDashoffset: 0,
-            duration: 0.6,
+            duration: 0.8,
             ease: 'none',
-          }, index * 1.2 + 1.5)
+          }, index * 1.5 + 5.0)
 
           // Animate arrowhead appearing
           tl.to(arrowhead, {
             opacity: 1,
             scale: 1,
-            duration: 0.3,
+            duration: 0.4,
             ease: 'back.out(1.5)',
-          }, index * 1.2 + 2.0)
+          }, index * 1.5 + 5.8)
         }
       })
 
@@ -386,8 +538,8 @@ export function HowItWorks() {
           ref={containerRef}
           className="relative w-full mx-auto"
           style={{ 
-            minHeight: '600px', 
-            height: '70vh',
+            minHeight: '800px', 
+            height: '90vh',
             backgroundImage: `
               linear-gradient(to right, transparent 0%, transparent 48px, #E8E8E8 48px, #E8E8E8 50px, transparent 50px),
               linear-gradient(to bottom, transparent 0%, transparent 40px, #E8E8E8 40px, #E8E8E8 42px, transparent 42px)

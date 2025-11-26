@@ -1567,12 +1567,29 @@ Der Text muss von Anfang an wie von einem menschlichen Autor geschrieben klingen
 - 
 
 **8. Wissenschaftlicher Ton beibehalten:**
-- Behandele Informationen aus Quellen objektiv und kritisch.
-- Vermeide absolute Statements. wie "Die Zahle der x sind wachsend..." sondern verwende die Quelle wie "Die Autoren XYZ haben festgestellt, dass die Zahl der x wachsend ist...". Dies ist nur ein Beispiel, um dir zu zeigen, dass du objektiv und kritisch mit Informationen umgehen musst.
-- Objektiv, präzise, sachlich, aber kritisch und vorsichtig mit Informationen.
-- Keine Meinungen, kein Marketing, keine Füllsätze.
-- Klare Struktur, klarer roter Faden.
-- Saubere Definitionen, methodische Klarheit, kritische Reflexion.
+- Wenn du über Ergebnisse aus Quellen schreibst, schreibe sie den Autoren zu, anstatt sie als absolute Fakten darzustellen. Schreibe beispielsweise "Müller (2021) hat festgestellt, dass..." statt "Die Zahl der x wächst..." wenn du Forschungsergebnisse diskutierst.
+- Schreibe mit einem objektiven, kritischen akademischen Mindset durchgehend im Text.
+- Verwende präzise, sachliche Sprache, bleibe dabei aber differenziert und vermeide absolute Aussagen über Forschungsergebnisse.
+- Füge keine persönlichen Meinungen, Marketing-Sprache oder Füllsätze ein.
+- Halte eine klare Struktur und einen klaren roten Faden durchgehend ein.
+- Biete saubere Definitionen, methodische Klarheit und kritische Reflexion, wo angemessen.
+
+**9. VERBOTENE WÖRTER UND FORMULIERUNGEN (ABSOLUT KRITISCH):**
+- ABSOLUT VERBOTEN: Unprofessionelle Wörter wie "freilich", "gewiss", "sicherlich" (in umgangssprachlicher Verwendung), "natürlich" (als Füllwort), "selbstverständlich", "ohne Frage", "zweifellos".
+- ABSOLUT VERBOTEN: Persönliche Pronomen wie "wir", "ich", "uns", "unser" - verwende stattdessen passive oder unpersönliche Konstruktionen.
+  FALSCH: "Wir werden im nächsten Abschnitt darauf eingehen..."
+  RICHTIG: "Im nächsten Abschnitt wird darauf eingegangen..."
+  FALSCH: "Wir müssen beachten, dass..."
+  RICHTIG: "Es ist zu beachten, dass..." oder "Zu beachten ist, dass..."
+  FALSCH: "Wir können feststellen, dass..."
+  RICHTIG: "Es lässt sich feststellen, dass..." oder "Festzustellen ist, dass..."
+- ABSOLUT VERBOTEN: Direkte Ansprache des Lesers ("man", "Sie" in direkter Anrede).
+- Verwende stattdessen: Passivkonstruktionen, unpersönliche Formulierungen, Nominalisierungen.
+- Beispiele für korrekte Formulierungen:
+  - "Im Folgenden wird untersucht..." statt "Wir werden im Folgenden untersuchen..."
+  - "Es zeigt sich, dass..." statt "Wir sehen, dass..."
+  - "Dabei handelt es sich um..." statt "Wir haben es hier mit... zu tun"
+  - "Die Untersuchung ergab..." statt "Wir haben festgestellt..."
 
 **Wissenschaftlicher Stil (${thesisData.language === 'german' ? 'deutsch' : 'englisch'}):**
 - Objektiv, präzise, sachlich.
@@ -1870,12 +1887,28 @@ The text must sound like written by a human author from the start and must not b
 - Be multifaceted in your formulation - no monotonous repetitions.
 
 **8. Maintain Scientific Tone:**
-- Do not treat findings in your sources as facts that are set in stone. Avoid absolute statements like "The number of x are growing...", but use the source like "Authors XYZ found that the number of x is growing...". This is just an example to show you to be nuanced with information.
-- Approach information with an objective critical mindset. 
-- Objective, precise, factual, yet nuanced and critical about absoluteness of statements.
-- No opinions, no marketing, no filler sentences.
-- Clear structure, clear red thread.
-- Clean definitions, methodological clarity, critical reflection.
+- When writing about findings from sources, attribute them to the authors rather than stating them as absolute facts. For example, write "Müller (2021) found that..." instead of "The number of x is growing..." when discussing research findings.
+- Write with an objective, critical academic mindset throughout the text.
+- Use precise, factual language while remaining nuanced and avoiding absolute statements about research findings.
+- Do not include personal opinions, marketing language, or filler sentences.
+- Maintain clear structure and logical flow throughout.
+- Provide clean definitions, methodological clarity, and critical reflection where appropriate.
+
+**9. FORBIDDEN WORDS AND FORMULATIONS (ABSOLUTELY CRITICAL):**
+- ABSOLUTELY FORBIDDEN: Personal pronouns like "we", "I", "us", "our" - use passive or impersonal constructions instead.
+  WRONG: "We will address this in the next section..."
+  CORRECT: "This will be addressed in the next section..." or "The next section addresses..."
+  WRONG: "We must note that..."
+  CORRECT: "It should be noted that..." or "Note that..."
+  WRONG: "We can observe that..."
+  CORRECT: "It can be observed that..." or "Observation shows that..."
+- ABSOLUTELY FORBIDDEN: Direct address to the reader ("you", "one" in direct address).
+- Use instead: Passive constructions, impersonal formulations, nominalizations.
+- Examples of correct formulations:
+  - "The following section examines..." instead of "We will examine in the following section..."
+  - "It becomes apparent that..." instead of "We see that..."
+  - "The investigation revealed..." instead of "We found that..."
+  - "This concerns..." instead of "We are dealing with..."
 
 **Structure:**
 - Use the provided outline.
@@ -2349,6 +2382,24 @@ L. **Unvorhersehbare Strukturen (KRITISCH):**
    - Variiere zwischen deduktiver und induktiver Argumentation.
    - Vermeide perfekt symmetrische Absatzlängen.
 
+M. **VERBOTENE WÖRTER UND FORMULIERUNGEN (ABSOLUT KRITISCH):**
+   - ABSOLUT VERBOTEN: Unprofessionelle Wörter wie "freilich", "gewiss", "sicherlich" (in umgangssprachlicher Verwendung), "natürlich" (als Füllwort), "selbstverständlich", "ohne Frage", "zweifellos".
+   - ABSOLUT VERBOTEN: Persönliche Pronomen wie "wir", "ich", "uns", "unser" - verwende stattdessen passive oder unpersönliche Konstruktionen.
+     FALSCH: "Wir werden im nächsten Abschnitt darauf eingehen..."
+     RICHTIG: "Im nächsten Abschnitt wird darauf eingegangen..."
+     FALSCH: "Wir müssen beachten, dass..."
+     RICHTIG: "Es ist zu beachten, dass..." oder "Zu beachten ist, dass..."
+     FALSCH: "Wir können feststellen, dass..."
+     RICHTIG: "Es lässt sich feststellen, dass..." oder "Festzustellen ist, dass..."
+   - ABSOLUT VERBOTEN: Direkte Ansprache des Lesers ("man", "Sie" in direkter Anrede).
+   - KRITISCH: Wenn du solche Formulierungen im Originaltext findest, MUSST du sie in passive/unpersönliche Konstruktionen umwandeln.
+   - Verwende stattdessen: Passivkonstruktionen, unpersönliche Formulierungen, Nominalisierungen.
+   - Beispiele für korrekte Formulierungen:
+     * "Im Folgenden wird untersucht..." statt "Wir werden im Folgenden untersuchen..."
+     * "Es zeigt sich, dass..." statt "Wir sehen, dass..."
+     * "Dabei handelt es sich um..." statt "Wir haben es hier mit... zu tun"
+     * "Die Untersuchung ergab..." statt "Wir haben festgestellt..."
+
 Dein Ziel ist es, Text zu produzieren, der wie von einem kompetenten menschlichen akademischen Autor geschrieben klingt, während alle Informationsinhalte erhalten bleiben.`
 
     : `You are an academic text humanizer. Your job is to rewrite the provided text so that it cannot be detected as AI-generated by tools such as ZeroGPT, GPTZero, Turnitin AI detection, Hive, or similar classifiers.
@@ -2441,6 +2492,22 @@ L. **Unpredictable Structures (CRITICAL):**
    - Sometimes build in parenthetical insertions (in em-dashes or parentheses).
    - Vary between deductive and inductive argumentation.
    - Avoid perfectly symmetrical paragraph lengths.
+
+M. **FORBIDDEN WORDS AND FORMULATIONS (ABSOLUTELY CRITICAL):**
+   - ABSOLUTELY FORBIDDEN: Personal pronouns like "we", "I", "us", "our" - use passive or impersonal constructions instead.
+     WRONG: "We will address this in the next section..."
+     CORRECT: "This will be addressed in the next section..." or "The next section addresses..."
+     WRONG: "We must note that..."
+     CORRECT: "It should be noted that..." or "Note that..."
+     WRONG: "We can observe that..."
+     CORRECT: "It can be observed that..." or "Observation shows that..."
+   - ABSOLUTELY FORBIDDEN: Direct address to the reader ("you", "one" in direct address).
+   - CRITICAL: If you find such formulations in the original text, you MUST convert them to passive/impersonal constructions.
+   - Use instead: Passive constructions, impersonal formulations, nominalizations.
+   - Examples of correct formulations:
+     * "The following section examines..." instead of "We will examine in the following section..."
+     * "It becomes apparent that..." instead of "We see that..."
+     * "The investigation revealed..." instead of "We found that..."
 
 OUTPUT RULES:
 
