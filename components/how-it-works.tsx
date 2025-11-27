@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowRight, ArrowDown, FileText, Upload, Sparkles, Wand2, Eye, Download, CheckCircle } from 'lucide-react'
+import { FileText, Upload, Sparkles, Wand2, Eye, Download, CheckCircle } from 'lucide-react'
 
 const steps = [
   {
@@ -74,13 +74,14 @@ export function HowItWorks() {
           </p>
         </div>
 
-        {/* Desktop Layout: Clear Grid Flow */}
-        <div className="hidden lg:block">
-          <div className="grid grid-cols-4 gap-8 mb-16">
-            {steps.slice(0, 4).map((step, index) => {
+        {/* Desktop Layout: Snake Pattern with Connecting Lines */}
+        <div className="hidden lg:block relative">
+          {/* Row 1: Steps 1-3 (Left to Right) */}
+          <div className="grid grid-cols-3 gap-8 mb-12 relative">
+            {steps.slice(0, 3).map((step, index) => {
               const Icon = step.icon
               return (
-                <div key={index} className="relative group">
+                <div key={index} className="relative">
                   <div className="h-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-700 overflow-hidden">
                     <div className={`h-1.5 bg-gradient-to-r ${step.color}`} />
                     <div className="p-8">
@@ -101,65 +102,111 @@ export function HowItWorks() {
                     </div>
                   </div>
 
-                  {/* Connector Arrow */}
-                  {index < 3 && (
-                    <div className="absolute top-1/2 -right-4 transform -translate-y-1/2 z-10 hidden xl:block">
-                      <ArrowRight className="w-6 h-6 text-gray-300 dark:text-gray-600" />
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Connector Down */}
-          <div className="flex justify-center mb-16 -mt-8">
-            <ArrowDown className="w-8 h-8 text-gray-300 dark:text-gray-600 animate-bounce" />
-          </div>
-
-          <div className="grid grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {steps.slice(4, 7).map((step, index) => {
-              const Icon = step.icon
-              return (
-                <div key={index} className="relative group">
-                  <div className="h-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-700 overflow-hidden">
-                    <div className={`h-1.5 bg-gradient-to-r ${step.color}`} />
-                    <div className="p-8">
-                      <div className="flex justify-between items-start mb-6">
-                        <div className={`p-3 rounded-xl ${step.iconBg}`}>
-                          <Icon className="w-8 h-8 text-gray-700 dark:text-gray-300" />
-                        </div>
-                        <span className="text-4xl font-bold text-gray-100 dark:text-gray-800 select-none">
-                          {step.number}
-                        </span>
-                      </div>
-                      <h3 className="text-xl font-bold mb-3 text-gray-900 dark:text-white">
-                        {step.title}
-                      </h3>
-                      <p className="text-gray-600 dark:text-gray-400 leading-relaxed text-sm">
-                        {step.description}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Connector Arrow */}
+                  {/* Horizontal connecting line to next step */}
                   {index < 2 && (
-                    <div className="absolute top-1/2 -right-4 transform -translate-y-1/2 z-10 hidden xl:block">
-                      <ArrowRight className="w-6 h-6 text-gray-300 dark:text-gray-600" />
+                    <div className="absolute top-1/2 -right-4 w-8 h-0.5 bg-gradient-to-r from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-500 transform -translate-y-1/2">
+                      <div className="absolute right-0 top-1/2 transform -translate-y-1/2">
+                        <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
+                      </div>
                     </div>
                   )}
                 </div>
               )
             })}
+
+            {/* Vertical line down from step 3 */}
+            <div className="absolute right-[16.66%] top-full w-0.5 h-12 bg-gradient-to-b from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-500 transform -translate-x-1/2">
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2">
+                <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: Steps 4-6 (Right to Left) */}
+          <div className="grid grid-cols-3 gap-8 mb-12 relative">
+            {steps.slice(3, 6).reverse().map((step, index) => {
+              const Icon = step.icon
+              const originalIndex = 5 - index
+              return (
+                <div key={originalIndex} className="relative">
+                  <div className="h-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-700 overflow-hidden">
+                    <div className={`h-1.5 bg-gradient-to-r ${step.color}`} />
+                    <div className="p-8">
+                      <div className="flex justify-between items-start mb-6">
+                        <div className={`p-3 rounded-xl ${step.iconBg}`}>
+                          <Icon className="w-8 h-8 text-gray-700 dark:text-gray-300" />
+                        </div>
+                        <span className="text-4xl font-bold text-gray-100 dark:text-gray-800 select-none">
+                          {step.number}
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-bold mb-3 text-gray-900 dark:text-white">
+                        {step.title}
+                      </h3>
+                      <p className="text-gray-600 dark:text-gray-400 leading-relaxed text-sm">
+                        {step.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Horizontal connecting line to next step (going left) */}
+                  {index < 2 && (
+                    <div className="absolute top-1/2 -left-4 w-8 h-0.5 bg-gradient-to-l from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-500 transform -translate-y-1/2">
+                      <div className="absolute left-0 top-1/2 transform -translate-y-1/2">
+                        <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Vertical line down from step 6 (leftmost in this row) */}
+            <div className="absolute left-[16.66%] top-full w-0.5 h-12 bg-gradient-to-b from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-500 transform -translate-x-1/2">
+              <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2">
+                <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 3: Step 7 (Centered) */}
+          <div className="flex justify-center">
+            <div className="w-full max-w-sm">
+              {(() => {
+                const step = steps[6]
+                const Icon = step.icon
+                return (
+                  <div className="h-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-yellow-400 dark:border-yellow-600 overflow-hidden">
+                    <div className={`h-1.5 bg-gradient-to-r ${step.color}`} />
+                    <div className="p-8">
+                      <div className="flex justify-between items-start mb-6">
+                        <div className={`p-3 rounded-xl ${step.iconBg}`}>
+                          <Icon className="w-8 h-8 text-gray-700 dark:text-gray-300" />
+                        </div>
+                        <span className="text-4xl font-bold text-gray-100 dark:text-gray-800 select-none">
+                          {step.number}
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-bold mb-3 text-gray-900 dark:text-white">
+                        {step.title}
+                      </h3>
+                      <p className="text-gray-600 dark:text-gray-400 leading-relaxed text-sm">
+                        {step.description}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
           </div>
         </div>
 
-        {/* Tablet/Mobile Layout */}
+        {/* Mobile Layout: Simple Top to Bottom without Lines */}
         <div className="lg:hidden space-y-6">
           {steps.map((step, index) => {
             const Icon = step.icon
             return (
-              <div key={index} className="relative">
+              <div key={index}>
                 <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-gray-100 dark:border-gray-700 overflow-hidden">
                   <div className={`h-1.5 bg-gradient-to-r ${step.color}`} />
                   <div className="p-6 flex gap-6">
@@ -183,12 +230,6 @@ export function HowItWorks() {
                     </div>
                   </div>
                 </div>
-
-                {index < steps.length - 1 && (
-                  <div className="flex justify-center py-2">
-                    <ArrowDown className="w-5 h-5 text-gray-300 dark:text-gray-600" />
-                  </div>
-                )}
               </div>
             )
           })}

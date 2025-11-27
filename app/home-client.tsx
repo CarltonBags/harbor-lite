@@ -16,9 +16,9 @@ export function HomePageClient() {
       <main>
         <Hero />
         <Services />
-        <Pricing />
         <Features />
         <HowItWorks />
+        <Pricing />
         <Testimonials />
       </main>
       <Footer />

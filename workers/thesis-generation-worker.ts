@@ -3730,7 +3730,10 @@ app.get('/health', (req: Request, res: Response) => {
 import { Worker } from 'bullmq'
 import IORedis from 'ioredis'
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
+const REDIS_URL_RAW = process.env.REDIS_URL || 'redis://localhost:6379'
+// Clean up the URL: remove any leading " --tls -u " or similar garbage from copy-paste errors
+// Also trim whitespace
+const REDIS_URL = REDIS_URL_RAW.replace(/^.*?(redis:\/\/|rediss:\/\/)/, '$1').trim()
 const THESIS_QUEUE_NAME = 'thesis-generation'
 
 // Create Redis connection for worker
