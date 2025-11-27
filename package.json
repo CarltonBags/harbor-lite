@@ -7,7 +7,8 @@
     "dev:webpack": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "worker": "npx tsx workers/thesis-generation-worker.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.1",
@@ -42,6 +43,7 @@
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.81.1",
     "@webcontainer/api": "^1.6.1",
+    "bullmq": "^5.65.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "cmdk": "^1.0.0",
@@ -50,9 +52,12 @@
     "embla-carousel-react": "^8.0.0",
     "gsap": "^3.13.0",
     "input-otp": "^1.2.4",
+    "ioredis": "^5.8.2",
     "katex": "^0.16.25",
     "lucide-react": "^0.303.0",
     "next": "^14.2.33",
+    "pandoc": "^0.2.0",
+    "pandoc-binary": "^2.14.0",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.0",
     "react-dom": "^18.3.1",

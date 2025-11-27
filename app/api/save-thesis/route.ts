@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     }
 
     const supabase = createSupabaseServerClient()
-    
+
     // Get current version number
     const { data: versions, error: versionError } = await supabase
       .from('thesis_versions')
@@ -22,18 +22,23 @@ export async function POST(request: Request) {
       .eq('thesis_id', thesisId)
       .order('version_number', { ascending: false })
       .limit(1)
-    
-    const nextVersionNumber = versions && versions.length > 0 
-      ? versions[0].version_number + 1 
+
+    const nextVersionNumber = versions && versions.length > 0
+      ? versions[0].version_number + 1
       : 1
 
-    // Create new version
+    // Generate clean Markdown version
+    const { convertToCleanMarkdown } = await import('@/lib/markdown-utils')
+    const cleanMarkdownContent = convertToCleanMarkdown(content)
+
+    // Create new version (store both versions)
     const { error: versionInsertError } = await supabase
       .from('thesis_versions')
       .insert({
         thesis_id: thesisId,
         version_number: nextVersionNumber,
         latex_content: content,
+        clean_markdown_content: cleanMarkdownContent,
         change_description: `Version ${nextVersionNumber} - Gespeichert am ${new Date().toLocaleString('de-DE')}`,
       })
 
@@ -45,11 +50,12 @@ export async function POST(request: Request) {
       )
     }
 
-    // Update thesis content
+    // Update thesis content (both versions)
     const { error } = await supabase
       .from('theses')
-      .update({ 
+      .update({
         latex_content: content,
+        clean_markdown_content: cleanMarkdownContent,
         updated_at: new Date().toISOString(),
       })
       .eq('id', thesisId)
@@ -62,7 +68,7 @@ export async function POST(request: Request) {
       )
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       versionNumber: nextVersionNumber,
     })

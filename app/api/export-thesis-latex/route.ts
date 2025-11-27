@@ -291,7 +291,16 @@ function generateLaTeXDocument(
         const processed = processFootnotesInText(trimmed, citationStyle, footnotes)
         // Format as bibliography entry (remove list markers if present)
         const cleaned = processed.replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, '')
-        latex += cleaned + '\n\n\\vspace{0.5em}\n\n'
+        // Sanitize non-Latin characters
+        let sanitized = sanitizeForLaTeX(cleaned)
+        // Escape special characters that aren't part of LaTeX commands
+        // Use negative lookbehind to avoid double-escaping
+        sanitized = sanitized
+          .replace(/(?<!\\)&/g, '\\&')
+          .replace(/(?<!\\)%/g, '\\%')
+          .replace(/(?<!\\)#/g, '\\#')
+          .replace(/(?<!\\)_/g, '\\_')
+        latex += sanitized + '\n\n\\vspace{0.5em}\n\n'
       }
     }
   } else {
@@ -426,16 +435,19 @@ function convertMarkdownToLaTeX(
       }
 
       // Map heading levels to LaTeX commands
+      // Use unnumbered versions (*) since content already has numbers (e.g., "1. Introduction")
       if (hashCount === 1) {
         // H1: Main chapter - add page break
         latex += '\\newpage\n'
-        latex += `\\section{${escapeLaTeX(headingText)}}\n\n`
+        latex += `\\section*{${escapeLaTeX(headingText)}}\n`
+        latex += `\\addcontentsline{toc}{section}{${escapeLaTeX(headingText)}}\n\n`
       } else if (hashCount === 2) {
         // H2: Section
-        latex += `\\subsection{${escapeLaTeX(headingText)}}\n\n`
+        latex += `\\subsection*{${escapeLaTeX(headingText)}}\n`
+        latex += `\\addcontentsline{toc}{subsection}{${escapeLaTeX(headingText)}}\n\n`
       } else if (hashCount === 3) {
         // H3: Subsection
-        latex += `\\subsubsection{${escapeLaTeX(headingText)}}\n\n`
+        latex += `\\subsubsection*{${escapeLaTeX(headingText)}}\n\n`
       } else {
         // H4-H6: Use paragraph style (smaller)
         latex += `\\paragraph{${escapeLaTeX(headingText)}}\n\n`
@@ -469,6 +481,98 @@ function convertMarkdownToLaTeX(
       continue
     }
 
+    // Handle lines that look like chapter headings but aren't markdown headings
+    // This MUST be done before list detection to prevent chapters like "1. Einleitung" from becoming list items
+
+    // We need to handle three cases:
+    // 1. "**1. Title**" (Bold Number & Title)
+    // 2. "1. **Title**" (Number, Bold Title) - Common in lists too!
+    // 3. "1. Title" (Plain)
+
+    let headingMatchData = null
+
+    // Clean bold markers for detection
+    const cleanLine = trimmedLine.replace(/^\*\*/, '').replace(/\*\*$/, '').trim()
+
+    // Case 1: "**1. Title** Text"
+    const matchBoldFull = trimmedLine.match(/^\*\*(\d+(?:\.\d+)*\.?)\s+([^*]+)\*\*\s*(.*)$/)
+    if (matchBoldFull) {
+      headingMatchData = { number: matchBoldFull[1], title: matchBoldFull[2], rest: matchBoldFull[3] }
+    }
+    // Case 2: "1. **Title** Text"
+    else {
+      const matchBoldTitle = trimmedLine.match(/^(\d+(?:\.\d+)*\.?)\s+\*\*([^*]+)\*\*\s*(.*)$/)
+      if (matchBoldTitle) {
+        headingMatchData = { number: matchBoldTitle[1], title: matchBoldTitle[2], rest: matchBoldTitle[3] }
+      }
+      // Case 3: "1. Title" (Plain)
+      else {
+        const matchPlain = trimmedLine.match(/^(\d+(?:\.\d+)*\.?)\s+(.+)$/)
+        if (matchPlain) {
+          headingMatchData = { number: matchPlain[1], title: matchPlain[2], rest: '' }
+          // For plain matches, we assume 'rest' is empty (whole line is title) unless we want to split by length?
+          // But plain text splitting is dangerous. We'll rely on length check later.
+        }
+      }
+    }
+
+    if (headingMatchData && !headingMatch) {
+      const { number, title, rest } = headingMatchData
+
+      // Determine level
+      const normalizedNumber = number.replace(/\.$/, '')
+      const level = (normalizedNumber.match(/\./g) || []).length
+
+      // HEURISTIC: When to treat as Heading vs List Item?
+      // 1. If 'rest' is empty (no following text) -> Always Heading (e.g. "1. Einleitung")
+      // 2. If 'rest' exists (run-in text):
+      //    - Level 0 ("1.") -> Treat as List Item (e.g. "1. **Weak Form**...") to avoid polluting TOC
+      //    - Level 1+ ("1.1") -> Treat as Heading (e.g. "1.1 **Problem**...") to ensure subheadings are formatted
+
+      const isRunIn = rest.length > 0
+      const isHeading = !isRunIn || (isRunIn && level > 0)
+
+      // Additional safety: Plain matches must be short to be headings
+      const isPlain = !trimmedLine.includes('**')
+      if (isPlain && title.length > 100) {
+        // Too long for a heading, treat as text
+        // Fall through to list detection
+      } else if (isHeading && !inList) {
+        // It's a heading!
+
+        // Close any open lists first
+        if (inList) {
+          latex += (listIsOrdered ? '\\end{enumerate}\n' : '\\end{itemize}\n')
+          inList = false
+          listIsOrdered = false
+        }
+
+        const headingText = `${number} ${title}`
+
+        if (level === 0) {
+          latex += '\\newpage\n'
+          latex += `\\section*{${escapeLaTeX(headingText)}}\n`
+          latex += `\\addcontentsline{toc}{section}{${escapeLaTeX(headingText)}}\n\n`
+        } else if (level === 1) {
+          latex += `\\subsection*{${escapeLaTeX(headingText)}}\n`
+          latex += `\\addcontentsline{toc}{subsection}{${escapeLaTeX(headingText)}}\n\n`
+        } else {
+          latex += `\\subsubsection*{${escapeLaTeX(headingText)}}\n\n`
+        }
+
+        // If there was run-in text, add it as a paragraph
+        if (rest) {
+          // Process the rest of the line (quotes, footnotes, etc.)
+          let processedRest = rest
+          processedRest = processedRest.replace(/`([^`]+)`/g, '\\texttt{$1}')
+          processedRest = convertQuotesToLaTeX(processedRest)
+          processedRest = processFootnotesInText(processedRest, citationStyle, footnotes)
+          latex += processedRest + '\n\n'
+        }
+        continue
+      }
+    }
+
     // Handle lists
     const listMatch = trimmedLine.match(/^(\s*)([-*+]|\d+\.)\s+(.*)/)
     if (listMatch) {
@@ -492,12 +596,22 @@ function convertMarkdownToLaTeX(
       }
 
       // Process footnotes in list items
-      const processedText = processFootnotesInText(itemText, citationStyle, footnotes)
+      // 1. Inline code
+      let processedItem = itemText.replace(/`([^`]+)`/g, '\\texttt{$1}')
+      // 2. Quotes
+      processedItem = convertQuotesToLaTeX(processedItem)
+      // 3. Footnotes
+      const processedText = processFootnotesInText(processedItem, citationStyle, footnotes)
       latex += `\\item ${processedText}\n`
       continue
     } else if (inList && trimmedLine.length > 0 && (line.startsWith(' ') || line.startsWith('\t'))) {
       // Continuation of list item
-      const processedText = processFootnotesInText(trimmedLine, citationStyle, footnotes)
+      // 1. Inline code
+      let processedLine = trimmedLine.replace(/`([^`]+)`/g, '\\texttt{$1}')
+      // 2. Quotes
+      processedLine = convertQuotesToLaTeX(processedLine)
+      // 3. Footnotes
+      const processedText = processFootnotesInText(processedLine, citationStyle, footnotes)
       latex += processedText + '\n'
       continue
     } else if (inList && trimmedLine.length === 0) {
@@ -553,8 +667,16 @@ function convertMarkdownToLaTeX(
     }
 
     // Regular text - process footnotes and formatting
-    // Note: Any # characters in regular text will be escaped by processFootnotesInText -> escapeLaTeX
-    const processedText = processFootnotesInText(line, citationStyle, footnotes)
+
+    // 1. Handle inline code FIRST (before quote conversion adds backticks)
+    // `code` -> \texttt{code}
+    let processedLine = line.replace(/`([^`]+)`/g, '\\texttt{$1}')
+
+    // 2. Convert quotes
+    processedLine = convertQuotesToLaTeX(processedLine)
+
+    // 3. Process footnotes and other formatting
+    const processedText = processFootnotesInText(processedLine, citationStyle, footnotes)
     latex += processedText + '\n\n'
   }
 
@@ -874,8 +996,7 @@ function processFootnotesInText(
   // Italic: *text* -> \textit{text} (but not if it's part of **)
   processed = processed.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '\\textit{$1}')
 
-  // Inline code: `code` -> \texttt{code}
-  processed = processed.replace(/`(.+?)`/g, '\\texttt{$1}')
+  // Inline code handling moved to convertMarkdownToLaTeX to avoid conflicts with LaTeX quotes
 
   // Links: [text](url) -> \href{url}{text}
   processed = processed.replace(/\[(.+?)\]\((.+?)\)/g, '\\href{$2}{$1}')
@@ -888,17 +1009,40 @@ function processFootnotesInText(
   // Protect LaTeX commands (e.g., \textbf{...}, \textit{...}, \texttt{...}, \href{...}{...}, \footnote{...})
   // Match commands with one or two arguments
   // Use a placeholder that won't conflict with LaTeX escaping (no underscores)
-  processed = processed.replace(/\\(?:textbf|textit|texttt|underline|textsubscript|textsuperscript|footnote)\{([^}]*)\}/g, (match) => {
+  // Protect LaTeX commands but ESCAPE their content first
+  // This ensures that \textit{A & B} becomes \textit{A \& B}
+  processed = processed.replace(/\\(textbf|textit|texttt|underline|textsubscript|textsuperscript|footnote)\{([^}]*)\}/g, (match, cmd, content) => {
+    // Escape the content (special chars like &, %, #)
+    // We use a simplified escape that doesn't escape \ (to avoid breaking things if there are somehow nested commands)
+    // But since this regex is non-recursive ([^}]*), there shouldn't be nested commands anyway
+    const escapedContent = content
+      .replace(/&/g, '\\&')
+      .replace(/%/g, '\\%')
+      .replace(/#/g, '\\#')
+      .replace(/_/g, '\\_')
+
+    const newMatch = `\\${cmd}{${escapedContent}}`
+
     const placeholder = `LATEXCMDPROTECT${commandIndex}LATEXCMDPROTECT`
-    latexCommandPlaceholders[commandIndex] = match
+    latexCommandPlaceholders[commandIndex] = newMatch
     commandIndex++
     return placeholder
   })
 
   // Protect \href{url}{text} (two arguments)
-  processed = processed.replace(/\\href\{([^}]*)\}\{([^}]*)\}/g, (match) => {
+  // Protect \href{url}{text} (two arguments)
+  processed = processed.replace(/\\href\{([^}]*)\}\{([^}]*)\}/g, (match, url, text) => {
+    // Escape the text part (special chars like &, %, #)
+    const escapedText = text
+      .replace(/&/g, '\\&')
+      .replace(/%/g, '\\%')
+      .replace(/#/g, '\\#')
+      .replace(/_/g, '\\_')
+
+    const newMatch = `\\href{${url}}{${escapedText}}`
+
     const placeholder = `LATEXCMDPROTECT${commandIndex}LATEXCMDPROTECT`
-    latexCommandPlaceholders[commandIndex] = match
+    latexCommandPlaceholders[commandIndex] = newMatch
     commandIndex++
     return placeholder
   })
@@ -933,6 +1077,48 @@ function processFootnotesInText(
   }
 
   return processed
+}
+
+/**
+ * Convert straight quotes to LaTeX quote syntax
+ * Opening: `` (two backticks)
+ * Closing: '' (two single quotes)
+ */
+function convertQuotesToLaTeX(text: string): string {
+  if (!text) return ''
+
+  // Replace pairs of straight quotes with LaTeX quotes
+  // Pattern: "word" → ``word''
+  // We need to distinguish opening from closing quotes
+
+  let result = text
+  let inQuote = false
+  let output = ''
+
+  for (let i = 0; i < result.length; i++) {
+    const char = result[i]
+    const prevChar = i > 0 ? result[i - 1] : ''
+    const nextChar = i < result.length - 1 ? result[i + 1] : ''
+
+    if (char === '"') {
+      // Determine if this is an opening or closing quote
+      // Opening quote: after space, start of string, or opening bracket
+      // Closing quote: before space, punctuation, or end of string
+      const isOpening = !inQuote || /[\s\(\[]/.test(prevChar) || i === 0
+
+      if (isOpening) {
+        output += '``'
+        inQuote = true
+      } else {
+        output += "''"
+        inQuote = false
+      }
+    } else {
+      output += char
+    }
+  }
+
+  return output
 }
 
 // Normalize text to fix common encoding issues
@@ -1029,8 +1215,45 @@ function escapeLaTeXForText(text: string): string {
     .replace(/[\uD800-\uDFFF]/g, '')
 }
 
+/**
+ * Remove all non-Latin characters except German umlauts and basic punctuation
+ * Keeps only: A-Z, a-z, 0-9, äöüßÄÖÜ, and basic punctuation
+ */
+function sanitizeForLaTeX(text: string): string {
+  if (!text) return ''
+
+  // Define allowed characters:
+  // - Latin alphabet: A-Z, a-z
+  // - Numbers: 0-9
+  // - German special characters: ä, ö, ü, ß, Ä, Ö, Ü
+  // - Basic punctuation: . , ; : ! ? - ( ) [ ] " ' / 
+  // - Spaces and newlines
+
+  return text.replace(/[^\x20-\x7E\xC0-\xFF\n\r\t]/g, (match) => {
+    // Check if it's a German umlaut or allowed extended ASCII
+    const code = match.charCodeAt(0)
+
+    // Allow German umlauts and common Western European characters
+    const allowedRanges = [
+      [0xC0, 0xFF], // Latin-1 Supplement (includes äöüÄÖÜß and French/Spanish chars)
+    ]
+
+    for (const [start, end] of allowedRanges) {
+      if (code >= start && code <= end) {
+        return match
+      }
+    }
+
+    // Remove everything else (Cyrillic, Greek, CJK, Arabic, etc.)
+    return ''
+  })
+}
+
 function escapeLaTeX(text: string): string {
   if (!text) return ''
+
+  // First, sanitize non-Latin characters
+  text = sanitizeForLaTeX(text)
 
   // Ensure proper UTF-8 encoding - convert to string and normalize
   let textStr = String(text)

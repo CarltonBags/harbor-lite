@@ -1397,6 +1397,12 @@ async function sendCompletionEmail(thesisId: string, thesisTitle: string): Promi
 async function generateThesisPlan(thesisData: ThesisData, sources: Source[]): Promise<string> {
   console.log('[ThesisPlan] Generating detailed thesis plan...')
 
+  // Calculate target word count
+  // Sanity check: If targetLength is > 500, it's definitely words, not pages
+  const isWords = thesisData.lengthUnit === 'words' || thesisData.targetLength > 500
+  const targetWordCount = isWords ? thesisData.targetLength : thesisData.targetLength * 250
+  const maxWordCount = Math.ceil(targetWordCount * 1.15) // Max 15% overshoot
+
   // Format sources for the prompt
   const sourcesList = sources.map((s, i) =>
     `[${i + 1}] ${s.title} (${s.year || 'n.d.'}) - ${s.authors.join(', ')}\n   Abstract: ${s.abstract ? s.abstract.substring(0, 300) + '...' : 'No abstract'}`
@@ -1414,29 +1420,34 @@ Create a detailed roadmap for writing the thesis. For each chapter in the outlin
 1. Define the key arguments and logical flow.
 2. **CRITICAL:** Select specific sources from the provided list that MUST be used in that chapter.
 3. Map specific findings/concepts from the sources to the chapter sections.
+4. **LENGTH PLANNING:** Assign a target word count to each chapter so the TOTAL equals approx. ${targetWordCount} words.
 
 **INPUTS:**
 1. **Thesis Title:** ${thesisData.title}
 2. **Topic/Question:** ${thesisData.topic}
-3. **Outline:**
+3. **Target Length:** ${targetWordCount} words (Max allowed: ${maxWordCount} words)
+4. **Outline:**
 ${outlineStr}
 
-4. **Available Sources:**
+5. **Available Sources:**
 ${sourcesList}
 
 **RULES:**
 - **STRICTLY NO HALLUCINATIONS:** You must ONLY use the sources provided in the list above. Do not invent sources.
 - **MAPPING:** Explicitly state which sources (use their numbers [1], [2], etc.) should be used for which chapter.
-- **CONTENT:** Briefly summarize what content from the source should be used (e.g., "Use Source [1] to define Concept X", "Contrast Source [2] and [3] regarding Method Y").
-- **STRUCTURE:** Follow the provided outline exactly.
+- **CONTENT:** Briefly summarize what content from the source should be used.
+- **LENGTH:** You MUST plan the length of each chapter. The sum of all chapters MUST be close to ${targetWordCount} words. Do NOT exceed ${maxWordCount} words.
+- **COMPLETENESS:** Ensure every chapter is fully planned. Do not cut off content to save words; adjust the depth instead.
 
 **OUTPUT FORMAT:**
 Return a structured plan in Markdown:
 
 # Thesis Plan: ${thesisData.title}
+**Total Target Words:** ${targetWordCount}
 
 ## Chapter 1: [Title]
 - **Goal:** [Brief goal]
+- **Target Words:** [e.g. 500]
 - **Key Sources:** [1], [4], [7]
 - **Plan:**
   - Section 1.1: Use Source [1] to define...
@@ -1489,6 +1500,12 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
   const citationStyleLabel = citationStyleLabels[thesisData.citationStyle] || thesisData.citationStyle
   console.log(`[ThesisGeneration] Citation style: ${citationStyleLabel}`)
+
+  // Calculate target word count with sanity check
+  const isWords = thesisData.lengthUnit === 'words' || thesisData.targetLength > 500
+  const targetWordCount = isWords ? thesisData.targetLength : thesisData.targetLength * 250
+  const maxWordCount = Math.ceil(targetWordCount * 1.15)
+  console.log(`[ThesisGeneration] Target words: ${targetWordCount}, Max words: ${maxWordCount}`)
 
   // Calculate appropriate number of sources based on thesis length
   // Rule: ~1-1.5 sources per page for short theses, up to 2-2.5 for longer theses
@@ -1552,7 +1569,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 - Art: ${thesisData.thesisType}
 - Forschungsfrage: ${thesisData.researchQuestion}
 - Zitationsstil: ${citationStyleLabel}
-- Ziel-Länge: ${thesisData.targetLength} ${thesisData.lengthUnit} (ca. ${targetPages} Seiten)
+- Ziel-Länge: ${targetWordCount} Wörter (Maximal ${maxWordCount} Wörter - NICHT ÜBERSCHREITEN!)
 - Sprache: ${thesisData.language}
 
 ${thesisPlan ? `**DETAILLIERTER THESIS-PLAN (BLUEPRINT) - STRIKTE BEFOLGUNG:**
@@ -1883,7 +1900,7 @@ STOPPE NICHT, bis alle Anforderungen erfüllt sind. Die Arbeit muss VOLLSTÄNDIG
 - Type: ${thesisData.thesisType}
 - Research Question: ${thesisData.researchQuestion}
 - Citation Style: ${citationStyleLabel}
-- Target Length: ${thesisData.targetLength} ${thesisData.lengthUnit} (approx. ${targetPages} pages)
+- Target Length: ${targetWordCount} words (Maximum ${maxWordCount} words - DO NOT EXCEED!)
 - Language: ${thesisData.language}
 
 ${thesisPlan ? `**DETAILED THESIS PLAN (BLUEPRINT) - STRICT ADHERENCE:**
@@ -2176,12 +2193,16 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
       // We set it to the maximum to ensure generation is NEVER truncated
       // Even for a very long thesis (e.g., 100 pages = 25,000 words ≈ 33,333 tokens),
       // we have plenty of room with 1,000,000 tokens
-      const expectedWords = thesisData.lengthUnit === 'words'
+      // Sanity check: If targetLength is > 500, it's definitely words, not pages
+      // This prevents issues where unit is 'pages' but value is in words (e.g. 10000 pages -> 2.5m words)
+      const isWords = thesisData.lengthUnit === 'words' || thesisData.targetLength > 500
+
+      const expectedWords = isWords
         ? thesisData.targetLength
         : thesisData.targetLength * 250
       // For word-based lengths, allow up to 5% longer (as per requirements)
       // But we set maxOutputTokens to maximum to ensure it NEVER stops generation
-      const maxExpectedWords = thesisData.lengthUnit === 'words'
+      const maxExpectedWords = isWords
         ? Math.ceil(thesisData.targetLength * 1.25) // 25% buffer (was 15%) to ensure complete generation
         : Math.ceil(thesisData.targetLength * 250 * 1.25)
       const estimatedTokens = Math.ceil(maxExpectedWords / 0.75)
@@ -2212,7 +2233,7 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
       content = response.text || ''
       const contentLength = content.length
       const wordCount = content.split(/\s+/).length
-      const expectedWordCount = thesisData.lengthUnit === 'words'
+      const expectedWordCount = isWords
         ? thesisData.targetLength
         : thesisData.targetLength * 250 // ~250 words per page
 
@@ -3454,10 +3475,18 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     // Update thesis in database
     console.log('[PROCESS] Updating thesis in database with generated content...')
     const dbUpdateStart = Date.now()
+
+    // Generate clean Markdown version for exports
+    console.log('[PROCESS] Generating clean Markdown version for exports...')
+    const { convertToCleanMarkdown } = await import('../lib/markdown-utils.js')
+    const cleanMarkdownContent = convertToCleanMarkdown(processedContent)
+    console.log(`[PROCESS] Clean Markdown generated: ${cleanMarkdownContent.length} characters`)
+
     await retryApiCall(
       async () => {
         const updateData: any = {
           latex_content: processedContent,
+          clean_markdown_content: cleanMarkdownContent,
           status: 'completed',
           completed_at: new Date().toISOString(),
         }
@@ -3693,6 +3722,108 @@ app.get('/health', (req: Request, res: Response) => {
   console.log('[API] Health check requested')
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
+
+// ============================================================================
+// BullMQ Worker Setup
+// ============================================================================
+
+import { Worker } from 'bullmq'
+import IORedis from 'ioredis'
+
+const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379'
+const THESIS_QUEUE_NAME = 'thesis-generation'
+
+// Create Redis connection for worker
+const workerConnection = new IORedis(REDIS_URL, {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+})
+
+console.log('[WORKER] Initializing BullMQ worker...')
+console.log('[WORKER] Redis URL:', REDIS_URL.replace(/:[^:]*@/, ':****@')) // Hide password in logs
+
+// Create the worker
+const worker = new Worker(
+  THESIS_QUEUE_NAME,
+  async (job) => {
+    console.log('\n[WORKER] ========== Processing Job ==========')
+    console.log('[WORKER] Job ID:', job.id)
+    console.log('[WORKER] Job Name:', job.name)
+    console.log('[WORKER] Attempt:', job.attemptsMade + 1)
+    console.log('[WORKER] Started at:', new Date().toISOString())
+
+    const { thesisId, thesisData } = job.data
+
+    try {
+      // Update job progress
+      await job.updateProgress(10)
+
+      // Call the main processing function
+      await processThesisGeneration(thesisId, thesisData)
+
+      await job.updateProgress(100)
+
+      console.log('[WORKER] ========== Job Completed Successfully ==========')
+      console.log('[WORKER] Job ID:', job.id)
+      console.log('[WORKER] Thesis ID:', thesisId)
+      console.log('[WORKER] Completed at:', new Date().toISOString())
+
+      return { success: true, thesisId }
+    } catch (error) {
+      console.error('[WORKER] ========== Job Failed ==========')
+      console.error('[WORKER] Job ID:', job.id)
+      console.error('[WORKER] Thesis ID:', thesisId)
+      console.error('[WORKER] Error:', error)
+
+      // Update thesis status to 'failed' in database
+      try {
+        await supabase
+          .from('theses')
+          .update({
+            status: 'failed',
+            metadata: {
+              error: error instanceof Error ? error.message : 'Unknown error',
+              failedAt: new Date().toISOString(),
+            }
+          })
+          .eq('id', thesisId)
+      } catch (dbError) {
+        console.error('[WORKER] Failed to update thesis status:', dbError)
+      }
+
+      throw error // Re-throw to mark job as failed
+    }
+  },
+  {
+    connection: workerConnection,
+    concurrency: 3, // Process up to 3 jobs concurrently
+    limiter: {
+      max: 10, // Max 10 jobs
+      duration: 60000, // per 60 seconds
+    },
+  }
+)
+
+// Worker event handlers
+worker.on('completed', (job) => {
+  console.log(`[WORKER] Job ${job.id} completed successfully`)
+})
+
+worker.on('failed', (job, err) => {
+  console.error(`[WORKER] Job ${job?.id} failed:`, err)
+})
+
+worker.on('error', (err) => {
+  console.error('[WORKER] Worker error:', err)
+})
+
+console.log('[WORKER] BullMQ worker initialized successfully')
+console.log('[WORKER] Concurrency:', 3)
+console.log('[WORKER] Queue name:', THESIS_QUEUE_NAME)
+
+// ============================================================================
+// Start Express Server
+// ============================================================================
 
 // Start server
 app.listen(PORT, () => {

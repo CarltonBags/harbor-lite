@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase/client'
 import { env } from '@/lib/env'
 import { GoogleGenAI } from '@google/genai'
+import { thesisQueue, type ThesisGenerationJob } from '@/lib/queue'
 
 /**
  * API endpoint to trigger background thesis generation job
- * This endpoint will be called from the frontend after file uploads are complete
- * It will trigger a background worker (deployed separately on Render) to:
+ * This endpoint adds a job to the BullMQ queue which is processed by the worker
+ * The worker will:
  * 1. Generate search queries per chapter
  * 2. Query OpenAlex and Semantic Scholar
  * 3. Deduplicate and rank sources
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
         }
 
         console.log('Creating FileSearchStore for thesis:', thesisId)
-        
+
         // Initialize Google Gen AI SDK
         const ai = new GoogleGenAI({ apiKey: env.GEMINI_KEY })
 
@@ -112,85 +113,53 @@ export async function POST(request: Request) {
       // Don't fail the whole request, just log it
     }
 
-    // Trigger background worker
-    // The worker URL should be set in environment variables
-    const workerUrl = env.THESIS_WORKER_URL || process.env.THESIS_WORKER_URL
+    // Add job to BullMQ queue
+    console.log('Adding thesis generation job to queue:', thesisId)
 
-    if (!workerUrl) {
-      console.error('THESIS_WORKER_URL is not configured')
-      return NextResponse.json(
-        { error: 'Background worker is not configured' },
-        { status: 500 }
-      )
-    }
-
-    // Get API key for worker authentication
-    const workerApiKey = env.THESIS_WORKER_API_KEY || process.env.THESIS_WORKER_API_KEY
-    
-    if (!workerApiKey) {
-      console.error('THESIS_WORKER_API_KEY is not configured')
-      return NextResponse.json(
-        { error: 'Worker API key is not configured' },
-        { status: 500 }
-      )
-    }
-
-    console.log('Sending request to worker:', { workerUrl, hasApiKey: !!workerApiKey })
-
-    // Send job to background worker
-    const workerResponse = await fetch(`${workerUrl}/jobs/thesis-generation`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${workerApiKey}`,
+    const jobData: ThesisGenerationJob = {
+      thesisId,
+      thesisData: {
+        title: thesis.title || thesis.topic,
+        topic: thesis.topic,
+        field: thesis.field,
+        thesisType: thesis.thesis_type,
+        researchQuestion: thesis.research_question,
+        citationStyle: thesis.citation_style,
+        targetLength: thesis.target_length,
+        lengthUnit: thesis.length_unit,
+        outline: thesis.outline,
+        fileSearchStoreId: fileSearchStoreId,
+        language: thesis.metadata?.language || 'german',
       },
-      body: JSON.stringify({
-        thesisId,
-        thesisData: {
-          title: thesis.title || thesis.topic,
-          topic: thesis.topic,
-          field: thesis.field,
-          thesisType: thesis.thesis_type,
-          researchQuestion: thesis.research_question,
-          citationStyle: thesis.citation_style,
-          targetLength: thesis.target_length,
-          lengthUnit: thesis.length_unit,
-          outline: thesis.outline,
-          fileSearchStoreId: fileSearchStoreId,
-          language: thesis.metadata?.language || 'german',
-        },
-      }),
+    }
+
+    const job = await thesisQueue.add('generate-thesis', jobData, {
+      jobId: thesisId, // Use thesisId as jobId to prevent duplicates
+      removeOnComplete: true,
+      removeOnFail: false,
     })
 
-    if (!workerResponse.ok) {
-      const errorText = await workerResponse.text()
-      console.error('Worker error:', errorText)
-      
-      // Update thesis status back to draft on error using server-side client
-      const { error: revertError } = await supabase
-        .from('theses')
-        .update({ status: 'draft' })
-        .eq('id', thesisId)
-      
-      if (revertError) {
-        console.error('Error reverting thesis status:', revertError)
-      }
-
-      return NextResponse.json(
-        { error: 'Failed to start background job', details: errorText },
-        { status: 500 }
-      )
-    }
-
-    const jobData = await workerResponse.json()
+    console.log('Job added to queue:', { jobId: job.id, thesisId })
 
     return NextResponse.json({
       success: true,
-      jobId: jobData.jobId,
-      message: 'Thesis generation job started',
+      jobId: job.id,
+      message: 'Thesis generation job queued successfully',
     })
   } catch (error) {
     console.error('Error starting thesis generation:', error)
+
+    // Try to revert thesis status on error
+    try {
+      const supabase = createSupabaseServerClient()
+      await supabase
+        .from('theses')
+        .update({ status: 'draft' })
+        .eq('id', (error as any).thesisId)
+    } catch (revertError) {
+      console.error('Error reverting thesis status:', revertError)
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
