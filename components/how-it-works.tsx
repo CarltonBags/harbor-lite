@@ -89,7 +89,7 @@ export function HowItWorks() {
                         <div className={`p-3 rounded-xl ${step.iconBg}`}>
                           <Icon className="w-8 h-8 text-gray-700 dark:text-gray-300" />
                         </div>
-                        <span className="text-4xl font-bold text-gray-100 dark:text-gray-800 select-none">
+                        <span className="text-4xl font-bold text-gray-300 dark:text-gray-800 select-none">
                           {step.number}
                         </span>
                       </div>
@@ -136,7 +136,7 @@ export function HowItWorks() {
                         <div className={`p-3 rounded-xl ${step.iconBg}`}>
                           <Icon className="w-8 h-8 text-gray-700 dark:text-gray-300" />
                         </div>
-                        <span className="text-4xl font-bold text-gray-100 dark:text-gray-800 select-none">
+                        <span className="text-4xl font-bold text-gray-300 dark:text-gray-800 select-none">
                           {step.number}
                         </span>
                       </div>
@@ -170,7 +170,7 @@ export function HowItWorks() {
           </div>
 
           {/* Row 3: Step 7 (Centered) */}
-          <div className="flex justify-center">
+          <div className="flex justify-start">
             <div className="w-full max-w-sm">
               {(() => {
                 const step = steps[6]
@@ -183,7 +183,7 @@ export function HowItWorks() {
                         <div className={`p-3 rounded-xl ${step.iconBg}`}>
                           <Icon className="w-8 h-8 text-gray-700 dark:text-gray-300" />
                         </div>
-                        <span className="text-4xl font-bold text-gray-100 dark:text-gray-800 select-none">
+                        <span className="text-4xl font-bold text-gray-300 dark:text-gray-800 select-none">
                           {step.number}
                         </span>
                       </div>

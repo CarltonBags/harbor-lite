@@ -3736,14 +3736,30 @@ const REDIS_URL_RAW = process.env.REDIS_URL || 'redis://localhost:6379'
 const REDIS_URL = REDIS_URL_RAW.replace(/^.*?(redis:\/\/|rediss:\/\/)/, '$1').trim()
 const THESIS_QUEUE_NAME = 'thesis-generation'
 
-// Create Redis connection for worker
+// Determine if we need TLS (Upstash uses rediss://)
+const useTLS = REDIS_URL.startsWith('rediss://')
+
+// Create Redis connection for worker with proper TLS config for Upstash
 const workerConnection = new IORedis(REDIS_URL, {
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
+  tls: useTLS ? {
+    rejectUnauthorized: false, // Upstash uses self-signed certs
+  } : undefined,
+  retryStrategy: (times) => {
+    const delay = Math.min(times * 50, 2000)
+    console.log(`[WORKER] Redis connection retry attempt ${times}, waiting ${delay}ms`)
+    return delay
+  },
+  reconnectOnError: (err) => {
+    console.error('[WORKER] Redis connection error:', err.message)
+    return true // Always try to reconnect
+  },
 })
 
 console.log('[WORKER] Initializing BullMQ worker...')
 console.log('[WORKER] Redis URL:', REDIS_URL.replace(/:[^:]*@/, ':****@')) // Hide password in logs
+console.log('[WORKER] TLS enabled:', useTLS)
 
 // Create the worker
 const worker = new Worker(

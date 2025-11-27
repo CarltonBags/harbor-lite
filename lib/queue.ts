@@ -13,9 +13,18 @@ export const THESIS_QUEUE_NAME = 'thesis-generation'
 // Create Redis connection
 // In serverless environments, this connection will be created per-request
 // In the worker (long-running process), it stays open
+const useTLS = env.REDIS_URL.startsWith('rediss://')
+
 const connection = new IORedis(env.REDIS_URL, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    tls: useTLS ? {
+        rejectUnauthorized: false, // Upstash uses self-signed certs
+    } : undefined,
+    retryStrategy: (times) => {
+        const delay = Math.min(times * 50, 2000)
+        return delay
+    },
 })
 
 // Export the queue instance for producers (Next.js API routes)
