@@ -142,6 +142,7 @@ async function createReferenceDocument(path: string) {
             font: 'Times New Roman',
             size: 24, // 12pt
             color: '000000',
+            bold: false,
           },
           paragraph: {
             spacing: { line: 360 }, // 1.5 spacing
@@ -158,6 +159,7 @@ async function createReferenceDocument(path: string) {
             font: 'Times New Roman',
             size: 24, // 12pt
             color: '000000',
+            bold: false,
           },
           paragraph: {
             spacing: { line: 360 },
