@@ -79,7 +79,7 @@ export function Navbar() {
   ]
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-transparent backdrop-blur-sm">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-white/40 backdrop-blur-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
@@ -92,7 +92,7 @@ export function Navbar() {
           <div className="hidden md:flex items-center space-x-8">
             <Link
               href="/"
-              className="text-gray-700 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors font-medium"
+              className="text-gray-700 dark:text-gray-700 hover:text-red-600 dark:hover:text-red-400 transition-colors font-medium"
             >
               Startseite
             </Link>
@@ -100,7 +100,7 @@ export function Navbar() {
               <a
                 key={item.name}
                 href={item.href}
-                className="text-gray-700 dark:text-gray-300 hover:text-yellow-600 dark:hover:text-yellow-500 transition-colors font-medium"
+                className="text-gray-700 dark:text-gray-700 hover:text-yellow-600 dark:hover:text-yellow-500 transition-colors font-medium"
               >
                 {item.name}
               </a>
@@ -124,7 +124,7 @@ export function Navbar() {
                   aria-label="Benutzermenü"
                 >
                   <User className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 hidden sm:block">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-700 hidden sm:block">
                     {user.email?.split('@')[0] || 'Benutzer'}
                   </span>
                   <ChevronDown className={`w-4 h-4 text-gray-700 dark:text-gray-300 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
@@ -213,7 +213,7 @@ export function Navbar() {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <div className="md:hidden py-4 border-t border-gray-200 dark:border-gray-800">
+          <div className="md:hidden py-4 border-t border-gray-200 dark:border-gray-800 max-h-[calc(100vh-4rem)] overflow-y-auto bg-white dark:bg-gray-900 shadow-lg">
             <Link
               href="/"
               onClick={() => setMobileMenuOpen(false)}

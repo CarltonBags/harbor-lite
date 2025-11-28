@@ -2489,36 +2489,38 @@ async function rewriteFlaggedSentences(
       ? `Du bist ein Experte darin, akademische Texte menschlicher klingen zu lassen, ohne die Bedeutung zu verändern.
 
 **Aufgabe:**
-Schreibe die folgenden Sätze so um, dass sie natürlicher und menschlicher klingen, aber:
-- Behalte ALLE Fakten, Daten und Informationen bei
-- Behalte ALLE Zitationen bei (z.B. (Autor, 2021, S. 15))
-- Ändere NICHT die Bedeutung
-- Mache die Sätze variabler in Länge und Struktur
-- Verwende natürlichere Formulierungen
-- Vermeide KI-typische Phrasen wie "zunächst", "ferner", "des Weiteren"
+Schreibe die folgenden Sätze so um, dass sie natürlicher und menschlicher klingen. Dein Ziel ist es, dass diese Sätze von KI-Detektoren (wie GPTZero) als "menschlich" erkannt werden.
+
+**Strikte Regeln für maximalen "Human Score":**
+1. **Aggressive Satz-Burstiness:** Variiere die Satzlänge extrem. Mische sehr kurze (3-5 Wörter) mit langen, komplexen Sätzen. Vermeide gleichförmige Rhythmen.
+2. **Perplexität erhöhen:** Verwende unerwartete, aber passende Synonyme. Vermeide die vorhersehbarsten Wortwahlen.
+3. **Syntax-Variation:** Nutze unterschiedliche Satzstrukturen (Inversionen, Einschübe, Ellipsen). Beginne Sätze nicht immer mit dem Subjekt.
+4. **KI-Marker VERBOTEN:** Verwende NIEMALS Wörter wie: "zunächst", "ferner", "des Weiteren", "zusammenfassend", "es ist wichtig zu beachten", "in diesem Zusammenhang", "darüber hinaus", "diesbezüglich".
+5. **Inhalt bewahren:** Behalte ALLE Fakten, Daten, Namen und vor allem Zitationen (z.B. (Müller, 2023)) exakt bei.
 
 **Zu überarbeitende Sätze:**
 ${batch.map((s, idx) => `${idx + 1}. ${s}`).join('\n\n')}
 
 **Format:**
-Antworte NUR mit einem JSON-Array der umgeschriebenen Sätze:
+Antworte NUR mit einem JSON-Array der umgeschriebenen Sätze. Keine Erklärungen.
 ["Umgeschriebener Satz 1", "Umgeschriebener Satz 2", ...]`
       : `You are an expert at making academic texts sound more human without changing their meaning.
 
 **Task:**
-Rewrite the following sentences to sound more natural and human, but:
-- Keep ALL facts, data, and information
-- Keep ALL citations (e.g., (Author, 2021, p. 15))
-- Do NOT change the meaning
-- Make sentences more varied in length and structure
-- Use more natural phrasing
-- Avoid AI-typical phrases like "firstly", "furthermore", "moreover"
+Rewrite the following sentences to sound more natural and human. Your goal is to make these sentences pass AI detectors (like GPTZero) as "human-written".
+
+**Strict Rules for Maximum "Human Score":**
+1. **Aggressive Sentence Burstiness:** Vary sentence length extremely. Mix very short (3-5 words) with long, complex sentences. Avoid uniform rhythms.
+2. **Increase Perplexity:** Use unexpected but appropriate synonyms. Avoid the most predictable word choices.
+3. **Syntax Variation:** Use different sentence structures (inversions, parentheticals, ellipses). Do not always start sentences with the subject.
+4. **FORBIDDEN AI Markers:** NEVER use words like: "firstly", "furthermore", "moreover", "in conclusion", "it is important to note", "in this context", "additionally", "regarding".
+5. **Preserve Content:** Keep ALL facts, data, names, and especially citations (e.g., (Smith, 2023)) exactly as they are.
 
 **Sentences to rewrite:**
 ${batch.map((s, idx) => `${idx + 1}. ${s}`).join('\n\n')}
 
 **Format:**
-Respond ONLY with a JSON array of rewritten sentences:
+Respond ONLY with a JSON array of rewritten sentences. No explanations.
 ["Rewritten sentence 1", "Rewritten sentence 2", ...]`
 
     try {
@@ -2589,7 +2591,7 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
   console.log('[HumanCheck] Starting GPTZero check and potential rewrite...')
 
   const MIN_HUMAN_SCORE = 70
-  const MAX_ITERATIONS = 2 // Limit iterations to avoid infinite loops
+  const MAX_ITERATIONS = 5 // Limit iterations to avoid infinite loops
 
   let currentContent = content
   let iteration = 0
