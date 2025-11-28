@@ -83,6 +83,80 @@ interface Source {
   chapterTitle?: string // Track chapter title for metadata
 }
 
+interface OutlineChapterInfo {
+  number: string
+  title: string
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function formatChapterLabel(chapter: OutlineChapterInfo): string {
+  const number = chapter.number?.trim()
+  const title = chapter.title?.trim()
+  return [number, title].filter(Boolean).join(' ').trim()
+}
+
+function detectChapters(content: string, outlineChapters: OutlineChapterInfo[]): string[] {
+  if (!content || !outlineChapters.length) return []
+
+  const found: string[] = []
+  outlineChapters.forEach((chapter) => {
+    const number = (chapter.number || '').trim()
+    const title = (chapter.title || '').trim()
+    const patterns: RegExp[] = []
+
+    if (number && title) {
+      patterns.push(
+        new RegExp(
+          `(?:^|\\n)#+\\s*${escapeRegex(number)}\\s+.*${escapeRegex(title)}`,
+          'i'
+        )
+      )
+    }
+
+    if (number) {
+      patterns.push(
+        new RegExp(`(?:^|\\n)#+\\s*${escapeRegex(number)}(?:\\s|$)`, 'i')
+      )
+    }
+
+    if (title) {
+      patterns.push(
+        new RegExp(`(?:^|\\n)#+\\s*.*${escapeRegex(title)}`, 'i')
+      )
+    }
+
+    if (patterns.some((pattern) => pattern.test(content))) {
+      found.push(number || title)
+    }
+  })
+
+  return found
+}
+
+function getMissingChapters(content: string, outlineChapters: OutlineChapterInfo[]): string[] {
+  if (!outlineChapters.length) return []
+  const found = new Set(detectChapters(content, outlineChapters))
+  return outlineChapters
+    .filter((chapter) => !found.has(chapter.number || chapter.title))
+    .map((chapter) => formatChapterLabel(chapter))
+}
+
+function getRecentExcerpt(content: string, maxChars: number = 8000): string {
+  if (!content) return ''
+  if (content.length <= maxChars) return content
+  return content.slice(-maxChars)
+}
+
+function buildOutlineSummary(outlineChapters: OutlineChapterInfo[]): string {
+  if (!outlineChapters.length) return ''
+  return outlineChapters
+    .map((chapter) => `- ${formatChapterLabel(chapter)}`)
+    .join('\n')
+}
+
 // Retry wrapper for API calls
 async function retryApiCall<T>(
   fn: () => Promise<T>,
@@ -1482,6 +1556,101 @@ Return a structured plan in Markdown:
   }
 }
 
+interface ExtendThesisParams {
+  thesisData: ThesisData
+  thesisPlan: string
+  currentContent: string
+  expectedWordCount: number
+  outlineChapters: OutlineChapterInfo[]
+  isGerman: boolean
+}
+
+async function extendThesisContent({
+  thesisData,
+  thesisPlan,
+  currentContent,
+  expectedWordCount,
+  outlineChapters,
+  isGerman,
+}: ExtendThesisParams): Promise<{ content: string; wordCount: number }> {
+  let updatedContent = currentContent
+  let wordCount = updatedContent.split(/\s+/).length
+  const maxPasses = 4
+
+  for (let pass = 1; pass <= maxPasses && wordCount < expectedWordCount; pass++) {
+    const remainingWords = expectedWordCount - wordCount
+    const roughTarget = Math.max(1500, Math.round(expectedWordCount * 0.1))
+    const extensionTargetWords = Math.min(
+      remainingWords,
+      Math.min(4500, Math.max(roughTarget, Math.ceil(remainingWords / (maxPasses - pass + 1))))
+    )
+
+    const missingChapters = getMissingChapters(updatedContent, outlineChapters)
+    const missingChapterSummary = missingChapters.length
+      ? missingChapters.map((chapter) => `- ${chapter}`).join('\n')
+      : isGerman
+        ? '- Vertiefe alle vorhandenen Kapitel, erweitere Analysen, Methodik, Diskussion und Ausblick.'
+        : '- Deepen all existing chapters and expand analysis, methodology, discussion, and outlook.'
+
+    const outlineSummary = buildOutlineSummary(outlineChapters)
+    const planSnippet = thesisPlan ? thesisPlan.slice(0, 4000) : ''
+    const recentExcerpt = getRecentExcerpt(updatedContent)
+
+    const extensionInstruction = isGerman
+      ? `Die Thesis muss mindestens ${expectedWordCount} Wörter umfassen, aktuell sind es nur ${wordCount} Wörter. Ergänze JETZT mindestens ${extensionTargetWords} neue Wörter (gern mehr).`
+      : `The thesis must contain at least ${expectedWordCount} words, but it currently has only ${wordCount} words. Add AT LEAST ${extensionTargetWords} new words now (more is welcome).`
+
+    const extensionPrompt = isGerman
+      ? `Du schreibst eine wissenschaftliche Arbeit mit dem Thema "${thesisData.title}" (${thesisData.field}).\n\nAktueller Umfang: ${wordCount} Wörter.\nZielumfang: mindestens ${expectedWordCount} Wörter.\nFehlende Wörter: mindestens ${remainingWords}.\n\nGliederung:\n${outlineSummary || '- (keine Gliederung verfügbar)'}\n\n${planSnippet ? `Blueprint/Auszug:\n${planSnippet}\n\n` : ''}Noch offene bzw. zu vertiefende Kapitel:\n${missingChapterSummary}\n\nDer bisherige Text endet mit folgendem Ausschnitt (bitte exakt daran anknüpfen und nichts wiederholen):\n<<<AUSZUG-BEGINN>>>\n${recentExcerpt}\n<<<AUSZUG-ENDE>>>\n\n${extensionInstruction}\n- Fahre exakt an der letzten Stelle fort.\n- Ergänze zusätzliche Unterkapitel, Argumentationen, empirische Beispiele, kritische Diskussionen und Übergänge.\n- Verwende weiterhin die Quellen aus dem FileSearchStore und setze konsistente Zitationen/Fußnoten ein.\n- Behalte das bisherige Überschriftsniveau bei (## Kapitel, ### Unterkapitel usw.).\n- Wiederhole keinen vorhandenen Text und gib ausschließlich den neuen Zusatztext zurück (keine Kommentare, keine Meta-Erklärungen).`
+      : `You are writing an academic thesis titled "${thesisData.title}" (${thesisData.field}).\n\nCurrent length: ${wordCount} words.\nTarget length: at least ${expectedWordCount} words.\nWords still missing: at least ${remainingWords}.\n\nOutline:\n${outlineSummary || '- (no outline provided)'}\n\n${planSnippet ? `Blueprint excerpt:\n${planSnippet}\n\n` : ''}Chapters that still need to be covered or expanded:\n${missingChapterSummary}\n\nThe current text ends with the following excerpt (continue seamlessly, never repeat content):\n<<<EXCERPT-START>>>\n${recentExcerpt}\n<<<EXCERPT-END>>>\n\n${extensionInstruction}\n- Continue exactly where the text stops.\n- Add new subchapters, analyses, empirical examples, critical discussions, and transitions.\n- Keep using the FileSearchStore sources and provide consistent citations/footnotes.\n- Preserve the existing heading hierarchy (## Chapter, ### Subchapter, etc.).\n- Output ONLY the additional text (no comments, no explanations).`
+
+    console.log(`[ThesisGeneration] [Extension] Starting pass ${pass}/${maxPasses} (target +${extensionTargetWords} words)`)
+
+    const extensionResponse = await retryApiCall(
+      () => ai.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents: extensionPrompt,
+        config: {
+          maxOutputTokens: Math.min(400000, Math.ceil(Math.max(extensionTargetWords * 2, 6000) / 0.75)),
+          tools: [{
+            fileSearch: {
+              fileSearchStoreNames: [thesisData.fileSearchStoreId],
+            },
+          }],
+        },
+      }),
+      `Extend thesis content (pass ${pass})`,
+      1,
+      2000
+    )
+
+    const extensionText = extensionResponse.text?.trim()
+
+    if (!extensionText || extensionText.length < 100) {
+      console.warn(`[ThesisGeneration] [Extension] Pass ${pass} returned insufficient text (${extensionText?.length || 0} chars)`)
+      break
+    }
+
+    const previousWordCount = wordCount
+    updatedContent += `\n\n${extensionText}`
+    wordCount = updatedContent.split(/\s+/).length
+    const addedWords = wordCount - previousWordCount
+
+    console.log(`[ThesisGeneration] [Extension] Pass ${pass} added ~${addedWords} words (total ${wordCount}/${expectedWordCount})`)
+
+    if (addedWords < extensionTargetWords * 0.3) {
+      console.warn(`[ThesisGeneration] [Extension] Pass ${pass} produced fewer words than requested (${addedWords}/${extensionTargetWords})`)
+    }
+  }
+
+  if (wordCount < expectedWordCount) {
+    throw new Error(`Extension process failed to reach target length (${wordCount}/${expectedWordCount} words)`)
+  }
+
+  return { content: updatedContent, wordCount }
+}
+
+
 async function generateThesisContent(thesisData: ThesisData, rankedSources: Source[], thesisPlan: string = ''): Promise<string> {
   console.log('[ThesisGeneration] Starting thesis content generation...')
   console.log(`[ThesisGeneration] Thesis: "${thesisData.title}"`)
@@ -1500,6 +1669,11 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
   const citationStyleLabel = citationStyleLabels[thesisData.citationStyle] || thesisData.citationStyle
   console.log(`[ThesisGeneration] Citation style: ${citationStyleLabel}`)
+
+  const outlineChapters: OutlineChapterInfo[] = (thesisData.outline || []).map((chapter: any, index: number) => ({
+    number: (chapter?.number ?? `${index + 1}.`).toString().trim(),
+    title: (chapter?.title ?? '').toString().trim(),
+  }))
 
   // Calculate target word count with sanity check
   const isWords = thesisData.lengthUnit === 'words' || thesisData.targetLength > 500
@@ -2237,8 +2411,8 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
       )
 
       content = response.text || ''
-      const contentLength = content.length
-      const wordCount = content.split(/\s+/).length
+      let contentLength = content.length
+      let wordCount = content.split(/\s+/).length
       const expectedWordCount = isWords
         ? thesisData.targetLength
         : thesisData.targetLength * 250 // ~250 words per page
@@ -2249,36 +2423,29 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
         console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
         console.log(`[ThesisGeneration] Expected word count: ~${expectedWordCount} words`)
 
+        if (wordCount < expectedWordCount) {
+          console.warn(`[ThesisGeneration] Content short by ~${expectedWordCount - wordCount} words. Starting extension process...`)
+          const extensionResult = await extendThesisContent({
+            thesisData,
+            thesisPlan: thesisPlan || '',
+            currentContent: content,
+            expectedWordCount,
+            outlineChapters,
+            isGerman,
+          })
+          content = extensionResult.content
+          contentLength = content.length
+          wordCount = extensionResult.wordCount
+          console.log(`[ThesisGeneration] ✓ Word count reached after extension: ~${wordCount}/${expectedWordCount} words`)
+        }
+
         // Validate completeness - check for bibliography and structure
         const hasBibliography = /(?:^|\n)#+\s*(?:Literaturverzeichnis|Bibliography|References)/i.test(content)
         const bibliographySection = content.match(/(?:^|\n)#+\s*(?:Literaturverzeichnis|Bibliography|References)\s*\n([\s\S]*?)(?=\n#+\s+|$)/i)
         const bibliographyContent = bibliographySection ? bibliographySection[1].trim() : ''
         const hasBibliographyContent = bibliographyContent.length > 50 // At least some content
 
-        // Check if all outline chapters are present - use more flexible matching
-        const outlineChapters = thesisData.outline?.map((ch: any) => {
-          const chapterTitle = ch.title || ''
-          const chapterNumber = ch.number || ''
-          return { number: chapterNumber, title: chapterTitle }
-        }) || []
-
-        const foundChapters: string[] = []
-        outlineChapters.forEach((ch: any) => {
-          // Try multiple patterns to find chapters
-          // Pattern 1: Exact match with number and title
-          const pattern1 = new RegExp(`(?:^|\\n)#+\\s*${ch.number.replace(/\./g, '\\.')}\\s+.*${ch.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i')
-          // Pattern 2: Just the number (more flexible)
-          const pattern2 = new RegExp(`(?:^|\\n)#+\\s*${ch.number.replace(/\./g, '\\.')}`, 'i')
-          // Pattern 3: Just the title (case-insensitive, partial match)
-          const titleWords = ch.title.split(/\s+/).filter((w: string) => w.length > 3) // Only significant words
-          const pattern3 = titleWords.length > 0
-            ? new RegExp(`(?:^|\\n)#+\\s*.*${titleWords[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i')
-            : null
-
-          if (pattern1.test(content) || pattern2.test(content) || (pattern3 && pattern3.test(content))) {
-            foundChapters.push(ch.number || ch.title)
-          }
-        })
+        const foundChapters = detectChapters(content, outlineChapters)
 
         // Check if content is significantly shorter than expected OR missing critical sections
         // If word count is met or exceeded, be more lenient with chapter detection
