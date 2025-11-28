@@ -2,9 +2,9 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { ThemeProvider } from '@/lib/theme-provider'
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://unilord.com'
-const siteName = 'UniLord'
-const defaultTitle = 'UniLord - KI-gestützter Wissenschaftlicher Thesis-Schreiber'
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://thesismeister.com'
+const siteName = 'ThesisMeister'
+const defaultTitle = 'ThesisMeister - KI-gestützter Wissenschaftlicher Thesis-Schreiber'
 const defaultDescription = 'Vom Thema zum Entwurf in Minuten statt Wochen. KI-gestützter Assistent zum Schreiben wissenschaftlicher Arbeiten für Studenten und Forscher. Hausarbeit, Bachelorarbeit, Masterarbeit oder Dissertation - wir helfen dir dabei.'
 
 export const metadata: Metadata = {
@@ -31,9 +31,9 @@ export const metadata: Metadata = {
     'Thesis Hilfe',
     'wissenschaftliche Arbeit',
   ],
-  authors: [{ name: 'UniLord' }],
-  creator: 'UniLord',
-  publisher: 'UniLord',
+  authors: [{ name: 'ThesisMeister' }],
+  creator: 'ThesisMeister',
+  publisher: 'ThesisMeister',
   formatDetection: {
     email: false,
     address: false,
@@ -51,7 +51,7 @@ export const metadata: Metadata = {
         url: `${siteUrl}/og-image.jpg`,
         width: 1200,
         height: 630,
-        alt: 'UniLord - KI-gestützter Thesis-Schreiber',
+        alt: 'ThesisMeister - KI-gestützter Thesis-Schreiber',
       },
     ],
   },
@@ -60,7 +60,7 @@ export const metadata: Metadata = {
     title: defaultTitle,
     description: defaultDescription,
     images: [`${siteUrl}/og-image.jpg`],
-    creator: '@unilord',
+    creator: '@thesismeister',
   },
   robots: {
     index: true,
@@ -93,18 +93,13 @@ export default function RootLayout({
   return (
     <html lang="de" suppressHydrationWarning>
       <head>
-        <link rel="icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-        <link rel="manifest" href="/site.webmanifest" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               '@context': 'https://schema.org',
               '@type': 'SoftwareApplication',
-              name: 'UniLord',
+              name: 'ThesisMeister',
               applicationCategory: 'EducationalApplication',
               operatingSystem: 'Web',
               offers: {
@@ -128,14 +123,14 @@ export default function RootLayout({
             __html: JSON.stringify({
               '@context': 'https://schema.org',
               '@type': 'Organization',
-              name: 'UniLord',
+              name: 'ThesisMeister',
               url: siteUrl,
               logo: `${siteUrl}/logo.png`,
               description: defaultDescription,
               sameAs: [
                 // Add your social media links here
-                // 'https://twitter.com/unilord',
-                // 'https://linkedin.com/company/unilord',
+                // 'https://twitter.com/thesismeister',
+                // 'https://linkedin.com/company/thesismeister',
               ],
             }),
           }}

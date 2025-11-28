@@ -2,7 +2,7 @@ import { Metadata } from 'next'
 import { HomePageClient } from './home-client'
 
 export const metadata: Metadata = {
-  title: 'UniLord - KI-gestützter Wissenschaftlicher Thesis-Schreiber',
+  title: 'ThesisMeister - KI-gestützter Wissenschaftlicher Thesis-Schreiber',
   description: 'Vom Thema zum Entwurf in Minuten statt Wochen. KI-gestützter Assistent zum Schreiben wissenschaftlicher Arbeiten für Studenten und Forscher. Hausarbeit, Bachelorarbeit, Masterarbeit oder Dissertation - wir helfen dir dabei.',
   keywords: [
     'Thesis schreiben',
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     'AI Thesis',
   ],
   openGraph: {
-    title: 'UniLord - KI-gestützter Wissenschaftlicher Thesis-Schreiber',
+    title: 'ThesisMeister - KI-gestützter Wissenschaftlicher Thesis-Schreiber',
     description: 'Vom Thema zum Entwurf in Minuten statt Wochen. KI-gestützter Assistent zum Schreiben wissenschaftlicher Arbeiten.',
     type: 'website',
     locale: 'de_DE',

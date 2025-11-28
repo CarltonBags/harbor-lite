@@ -7,7 +7,7 @@ const testimonials = [
     name: 'Sarah Chen',
     role: 'Doktorandin, Informatik',
     university: 'TU München',
-    content: 'UniLord hat meinen Thesis-Schreibprozess transformiert. Die KI half mir, meine Forschung zu strukturieren und die LaTeX-Formatierung sparte mir unzählige Stunden. Sehr empfehlenswert!',
+    content: 'ThesisMeister hat meinen Thesis-Schreibprozess transformiert. Die KI half mir, meine Forschung zu strukturieren und die LaTeX-Formatierung sparte mir unzählige Stunden. Sehr empfehlenswert!',
     rating: 5,
     avatar: 'SC',
   },
@@ -15,7 +15,7 @@ const testimonials = [
     name: 'Marcus Rodriguez',
     role: 'Masterstudent, Biologie',
     university: 'LMU München',
-    content: 'Als jemand, der mit akademischem Schreiben kämpfte, war UniLord ein Game-Changer. Die KI-Vorschläge waren punktgenau und halfen mir, meine Forschung klar zu artikulieren.',
+    content: 'Als jemand, der mit akademischem Schreiben kämpfte, war ThesisMeister ein Game-Changer. Die KI-Vorschläge waren punktgenau und halfen mir, meine Forschung klar zu artikulieren.',
     rating: 5,
     avatar: 'MR',
   },
@@ -31,7 +31,7 @@ const testimonials = [
     name: 'David Kim',
     role: 'Doktorand, Wirtschaftswissenschaften',
     university: 'Uni Heidelberg',
-    content: 'UniLord half mir, meine Thesis 3 Monate früher fertigzustellen. Die Kollaborations-Tools machten die Arbeit mit meinem Betreuer nahtlos.',
+    content: 'ThesisMeister half mir, meine Thesis 3 Monate früher fertigzustellen. Die Kollaborations-Tools machten die Arbeit mit meinem Betreuer nahtlos.',
     rating: 5,
     avatar: 'DK',
   },
@@ -47,7 +47,7 @@ const testimonials = [
     name: 'James Thompson',
     role: 'Postdoc, Chemie',
     university: 'Uni Freiburg',
-    content: 'Professionelle Formatierung und exzellenter Support. UniLord machte die mühsamen Teile des Thesis-Schreibens tatsächlich angenehm.',
+    content: 'Professionelle Formatierung und exzellenter Support. ThesisMeister machte die mühsamen Teile des Thesis-Schreibens tatsächlich angenehm.',
     rating: 5,
     avatar: 'JT',
   },
@@ -62,10 +62,10 @@ export function Testimonials() {
             Vertraut von Forschern weltweit
           </h2>
           <p className="text-xl text-gray-600 dark:text-gray-400">
-            Sieh, was Studenten und Forscher über UniLord sagen
+            Sieh, was Studenten und Forscher über ThesisMeister sagen
           </p>
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {testimonials.map((testimonial, index) => (
             <div
@@ -88,7 +88,7 @@ export function Testimonials() {
                   </p>
                 </div>
               </div>
-              
+
               <div className="flex mb-3">
                 {[...Array(testimonial.rating)].map((_, i) => (
                   <Star
@@ -97,7 +97,7 @@ export function Testimonials() {
                   />
                 ))}
               </div>
-              
+
               <Quote className="w-6 h-6 text-yellow-600 dark:text-yellow-500 mb-2 opacity-50" />
               <p className="text-gray-700 dark:text-gray-300 italic">
                 {testimonial.content}

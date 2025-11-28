@@ -27,7 +27,7 @@ export default function ThesisPreviewPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const thesisId = searchParams.get('id')
-  
+
   const [loading, setLoading] = useState(true)
   const [thesis, setThesis] = useState<any>(null)
   const [content, setContent] = useState<string>('')
@@ -50,7 +50,7 @@ export default function ThesisPreviewPage() {
   const [highlightedPassages, setHighlightedPassages] = useState<Array<{ text: string; paragraphId: string }>>([])
   const [selectionRange, setSelectionRange] = useState<Range | null>(null)
   const [bibliographySources, setBibliographySources] = useState<any[]>([])
-  
+
   const chatEndRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -59,7 +59,7 @@ export default function ThesisPreviewPage() {
   // Extract sources from bibliography section
   const extractBibliographySources = (content: string, uploadedSources: any[]): any[] => {
     if (!content || !uploadedSources || uploadedSources.length === 0) return []
-    
+
     // Find bibliography section - look for "Literaturverzeichnis" or "Bibliography" heading
     const bibliographyMarkers = [
       /^##\s+Literaturverzeichnis\s*$/mi,
@@ -67,7 +67,7 @@ export default function ThesisPreviewPage() {
       /^#\s+Literaturverzeichnis\s*$/mi,
       /^#\s+Bibliography\s*$/mi,
     ]
-    
+
     let bibliographyStart = -1
     for (const marker of bibliographyMarkers) {
       const match = content.search(marker)
@@ -76,7 +76,7 @@ export default function ThesisPreviewPage() {
         break
       }
     }
-    
+
     if (bibliographyStart < 0) {
       // If no explicit bibliography heading, look for common patterns at the end
       const endPatterns = [
@@ -92,35 +92,35 @@ export default function ThesisPreviewPage() {
         }
       }
     }
-    
+
     if (bibliographyStart < 0) return []
-    
+
     // Extract bibliography text (from marker to end or next major heading)
     const bibliographyText = content.substring(bibliographyStart)
     const nextMajorHeading = bibliographyText.search(/^##?\s+/m)
-    const bibliographyContent = nextMajorHeading > 0 
+    const bibliographyContent = nextMajorHeading > 0
       ? bibliographyText.substring(0, nextMajorHeading)
       : bibliographyText
-    
+
     // Match sources from bibliography with uploaded sources
     const matchedSources: any[] = []
-    
+
     for (const uploadedSource of uploadedSources) {
       // Try to find this source in the bibliography by matching key identifiers
       const sourceTitle = (uploadedSource.title || uploadedSource.metadata?.title || '').toLowerCase().trim()
       const sourceAuthors = uploadedSource.metadata?.authors || []
       const sourceDOI = uploadedSource.doi || ''
       const sourceYear = uploadedSource.metadata?.year || uploadedSource.year || ''
-      
+
       // Create search patterns
       const searchPatterns: string[] = []
-      
+
       // Add title (first 50 chars to avoid too long matches)
       if (sourceTitle) {
         const titleShort = sourceTitle.substring(0, 50)
         searchPatterns.push(titleShort)
       }
-      
+
       // Add author names (first author)
       if (Array.isArray(sourceAuthors) && sourceAuthors.length > 0) {
         const firstAuthor = String(sourceAuthors[0]).toLowerCase().trim()
@@ -137,19 +137,19 @@ export default function ThesisPreviewPage() {
           searchPatterns.push(lastName)
         }
       }
-      
+
       // Add DOI
       if (sourceDOI) {
         searchPatterns.push(sourceDOI)
       }
-      
+
       // Check if any pattern matches in bibliography
       const bibliographyLower = bibliographyContent.toLowerCase()
       const hasMatch = searchPatterns.some(pattern => {
         if (pattern.length < 3) return false
         return bibliographyLower.includes(pattern)
       })
-      
+
       // Also check for year if we have author/title match
       if (hasMatch && sourceYear) {
         const yearMatch = bibliographyContent.includes(String(sourceYear))
@@ -164,7 +164,7 @@ export default function ThesisPreviewPage() {
         matchedSources.push(uploadedSource)
       }
     }
-    
+
     return matchedSources
   }
 
@@ -205,17 +205,34 @@ export default function ThesisPreviewPage() {
       }
 
       const data = await response.json()
-      
+      console.log('ZeroGPT check completed:', data.result)
+
       // Reload thesis to get updated metadata
       await loadThesis()
-      
-      // Show success message or update UI
-      console.log('ZeroGPT check completed:', data.result)
+
+      // Show success message in chat
+      if (data.result) {
+        const successMessage: ChatMessage = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `✓ ZeroGPT-Check abgeschlossen:\n\n**Menschlich geschrieben:** ${data.result.isHumanWritten}%\n**KI-generiert:** ${data.result.isGptGenerated}%\n\nDas Ergebnis wurde gespeichert.`,
+          timestamp: new Date(),
+        }
+        setChatMessages(prev => [...prev, successMessage])
+      }
     } catch (error) {
       console.error('Error checking ZeroGPT:', error)
       const errorMessage = error instanceof Error ? error.message : 'Fehler beim ZeroGPT-Check'
       console.error('Full error:', error)
-      alert(errorMessage)
+
+      // Show error in chat instead of alert
+      const errorChatMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `❌ Fehler beim ZeroGPT-Check: ${errorMessage}`,
+        timestamp: new Date(),
+      }
+      setChatMessages(prev => [...prev, errorChatMessage])
     } finally {
       setIsCheckingZeroGpt(false)
     }
@@ -227,7 +244,7 @@ export default function ThesisPreviewPage() {
     try {
       setLoading(true)
       const thesisData = await getThesisById(thesisId)
-      
+
       if (!thesisData) {
         console.error('Thesis not found')
         return
@@ -237,7 +254,7 @@ export default function ThesisPreviewPage() {
       const thesisContent = thesisData.latex_content || ''
       setContent(thesisContent)
       setOriginalContent(thesisContent)
-      
+
       // Extract sources from bibliography
       const uploadedSources = thesisData.uploaded_sources || []
       const bibliographySources = extractBibliographySources(thesisContent, uploadedSources)
@@ -279,23 +296,23 @@ export default function ThesisPreviewPage() {
         const selectedText = selection.toString().trim()
         setSelectedText(selectedText)
         setTextAddedToChat(false) // Reset - text not yet added to chat
-        
+
         // Store the range to keep selection visible
         const range = selection.getRangeAt(0)
         setSelectionRange(range.cloneRange())
-        
+
         // Get selection position for button placement
         const rect = range.getBoundingClientRect()
-        
+
         // Calculate position relative to viewport (fixed positioning)
         const buttonTop = rect.top + window.scrollY - 45 // Above selection
         const buttonLeft = rect.right + 10 // Right of selection
-        
+
         setSelectionButtonPosition({
           top: buttonTop,
           left: buttonLeft,
         })
-        
+
         console.log('[Selection] Text selected:', {
           selectedText: selectedText.substring(0, 50),
           buttonTop,
@@ -374,7 +391,7 @@ export default function ThesisPreviewPage() {
       }
 
       const data = await response.json()
-      
+
       // Show diff preview instead of directly replacing
       if (data.oldText && data.newText) {
         setPendingEdit({
@@ -383,7 +400,7 @@ export default function ThesisPreviewPage() {
           oldContent: content,
           newContent: data.newContent,
         })
-        
+
         // Find related passages using semantic search
         if (data.relatedPassages && Array.isArray(data.relatedPassages)) {
           setHighlightedPassages(data.relatedPassages)
@@ -401,7 +418,7 @@ export default function ThesisPreviewPage() {
                 excludeText: data.oldText,
               }),
             })
-            
+
             if (searchResponse.ok) {
               const searchData = await searchResponse.json()
               setHighlightedPassages(searchData.passages || [])
@@ -424,7 +441,7 @@ export default function ThesisPreviewPage() {
       }
 
       setChatMessages(prev => [...prev, assistantMessage])
-      
+
       // Don't clear selection - keep it visible
     } catch (error) {
       console.error('Error processing edit:', error)
@@ -447,21 +464,21 @@ export default function ThesisPreviewPage() {
       setContent(newContent)
       setHasUnsavedChanges(true)
       setPendingEdit(null)
-      
+
       // Clear highlights after approval
       setHighlightedPassages([])
-      
+
       // Clear selection after approval
       window.getSelection()?.removeAllRanges()
       setSelectedText('')
       setSelectionRange(null)
-      
+
       // Update bibliography sources after content change
       if (thesis?.uploaded_sources) {
         const updatedSources = extractBibliographySources(newContent, thesis.uploaded_sources)
         setBibliographySources(updatedSources)
       }
-      
+
       // Update vector store embeddings for changed paragraphs
       if (thesisId) {
         try {
@@ -595,7 +612,7 @@ export default function ThesisPreviewPage() {
     try {
       setIsProcessing(true)
       const oldContent = originalContent
-      
+
       const response = await fetch('/api/save-thesis', {
         method: 'POST',
         headers: {
@@ -614,13 +631,13 @@ export default function ThesisPreviewPage() {
       const data = await response.json()
       setOriginalContent(content)
       setHasUnsavedChanges(false)
-      
+
       // Update bibliography sources after save
       if (thesis?.uploaded_sources) {
         const updatedSources = extractBibliographySources(content, thesis.uploaded_sources)
         setBibliographySources(updatedSources)
       }
-      
+
       // Update vector store embeddings for changed paragraphs
       try {
         await fetch('/api/update-thesis-embeddings', {
@@ -638,7 +655,7 @@ export default function ThesisPreviewPage() {
         console.error('Error updating embeddings:', error)
         // Don't block the user if embedding update fails
       }
-      
+
       // Reload versions after save
       const supabase = createSupabaseClient()
       const { data: versions } = await supabase
@@ -647,7 +664,7 @@ export default function ThesisPreviewPage() {
         .eq('thesis_id', thesisId)
         .order('version_number', { ascending: false })
       setThesisVersions(versions || [])
-      
+
       // Show success message
       const successMessage: ChatMessage = {
         id: Date.now().toString(),
@@ -864,11 +881,10 @@ export default function ThesisPreviewPage() {
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-lg p-3 ${
-                    message.role === 'user'
+                  className={`max-w-[80%] rounded-lg p-3 ${message.role === 'user'
                       ? 'bg-black dark:bg-white text-white dark:text-black'
                       : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
-                  }`}
+                    }`}
                 >
                   {message.selectedText && (
                     <div className="text-xs opacity-75 mb-2 italic border-b border-current pb-1">
@@ -914,7 +930,7 @@ export default function ThesisPreviewPage() {
                 <p className="text-xs italic line-clamp-2">"{selectedText.substring(0, 150)}{selectedText.length > 150 ? '...' : ''}"</p>
               </div>
             )}
-            
+
             <div className="flex gap-2">
               <textarea
                 value={chatInput}
@@ -981,7 +997,7 @@ export default function ThesisPreviewPage() {
                     Zu Chat hinzufügen
                   </button>
                 )}
-                
+
                 {/* Debug info - remove in production */}
                 {process.env.NODE_ENV === 'development' && selectionButtonPosition && selectedText && !textAddedToChat && (
                   <div className="fixed top-20 right-4 bg-yellow-100 p-2 rounded text-xs z-[10000]">
@@ -989,7 +1005,7 @@ export default function ThesisPreviewPage() {
                     <div>Selected: {selectedText.substring(0, 30)}...</div>
                   </div>
                 )}
-                
+
                 <div
                   ref={previewRef}
                   onMouseUp={handleTextSelection}
@@ -1008,185 +1024,162 @@ export default function ThesisPreviewPage() {
                     position: 'relative',
                   }}
                 >
-                {/* Cover Page */}
-                <div className="cover-page thesis-page" style={{ 
-                  minHeight: '247mm', // Full page minus padding (297mm - 25mm top - 25mm bottom)
-                  height: '247mm',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  textAlign: 'center',
-                  pageBreakAfter: 'always',
-                  marginBottom: '10mm',
-                  borderBottom: '1px solid #e0e0e0',
-                }}>
-                  {/* Top section - Title */}
-                  <div style={{ 
-                    marginTop: '50mm',
-                    width: '100%',
-                    padding: '0 20mm',
-                  }}>
-                    <h1 style={{
-                      fontSize: '24pt',
-                      fontWeight: 'bold',
-                      lineHeight: '1.3',
-                      marginBottom: '0',
-                      textAlign: 'center',
-                      letterSpacing: '0.5px',
-                      color: '#000',
-                    }}>
-                      {thesis?.topic || 'Thesis Title'}
-                    </h1>
-                  </div>
-                  
-                  {/* Bottom section - Metadata */}
-                  <div style={{ 
-                    marginBottom: '50mm',
-                    width: '100%',
-                  }}>
-                    <div style={{ 
-                      borderTop: '1px solid #000',
-                      borderBottom: '1px solid #000',
-                      padding: '8mm 0',
-                      margin: '0 20mm 15mm 20mm',
-                    }}>
-                      <p style={{ fontSize: '12pt', marginBottom: '4mm', fontWeight: 'bold' }}>
-                        {thesis?.field || 'Fachbereich'}
-                      </p>
-                      <p style={{ fontSize: '12pt', marginBottom: '0' }}>
-                        {thesis?.thesis_type === 'hausarbeit' ? 'Hausarbeit' :
-                         thesis?.thesis_type === 'bachelor' ? 'Bachelorarbeit' :
-                         thesis?.thesis_type === 'master' ? 'Masterarbeit' :
-                         thesis?.thesis_type === 'dissertation' ? 'Dissertation' : 'Thesis'}
-                      </p>
-                    </div>
-                    <p style={{ fontSize: '12pt', marginTop: '10mm' }}>
-                      {thesis?.completed_at 
-                        ? new Date(thesis.completed_at).getFullYear()
-                        : new Date().getFullYear()}
-                    </p>
-                    {userProfile?.full_name && (
-                      <p style={{ fontSize: '11pt', marginTop: '5mm', color: '#666' }}>
-                        {userProfile.full_name}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Table of Contents - Generated from Outline JSON */}
-                {thesis?.outline && (
-                  <div style={{ 
-                    position: 'relative',
+                  {/* Cover Page */}
+                  <div className="cover-page thesis-page" style={{
+                    minHeight: '247mm', // Full page minus padding (297mm - 25mm top - 25mm bottom)
+                    height: '247mm',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    textAlign: 'center',
                     pageBreakAfter: 'always',
                     marginBottom: '10mm',
+                    borderBottom: '1px solid #e0e0e0',
                   }}>
-                    <TableOfContents 
-                      outline={thesis.outline as OutlineChapter[]}
-                      language={thesis.metadata?.language || 'german'}
-                    />
-                  </div>
-                )}
+                    {/* Top section - Title */}
+                    <div style={{
+                      marginTop: '50mm',
+                      width: '100%',
+                      padding: '0 20mm',
+                    }}>
+                      <h1 style={{
+                        fontSize: '24pt',
+                        fontWeight: 'bold',
+                        lineHeight: '1.3',
+                        marginBottom: '0',
+                        textAlign: 'center',
+                        letterSpacing: '0.5px',
+                        color: '#000',
+                      }}>
+                        {thesis?.topic || 'Thesis Title'}
+                      </h1>
+                    </div>
 
-                {/* Document Content with Page Numbers */}
-                <div
-                  ref={contentRef}
-                  className="thesis-content"
-                  style={{
-                    position: 'relative',
-                  }}
-                  data-thesis-content="true"
-                  id="thesis-content-container"
-                >
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath]}
-                    rehypePlugins={[rehypeKatex]}
-                    components={{
-                      // Text component - footnotes are handled at paragraph level to avoid double processing
-                      text: ({ node, children, ...props }: any) => {
-                        return <>{children}</>
-                      },
-                      h1: ({ node, children, ...props }: any) => {
-                        // Check if this is the first content heading after TOC
-                        // We want to ensure it starts on a new page
-                        return (
-                          <h1 style={{
-                            fontSize: '16pt',
-                            fontWeight: 'bold',
-                            textAlign: 'left',
-                            marginTop: '12mm',
-                            marginBottom: '8mm',
-                            pageBreakBefore: 'always',
-                            breakBefore: 'page',
-                          }} {...props}>{children}</h1>
-                        )
-                      },
-                      h2: ({ node, children, ...props }: any) => {
-                        // Skip TOC heading if we're rendering TOC from JSON
-                        const text = String(children || '')
-                        const isTOCHeading = text.includes('Inhaltsverzeichnis') || text.includes('Table of Contents')
-                        
-                        if (isTOCHeading && thesis?.outline) {
-                          // Don't render TOC heading from markdown if we have outline JSON
-                          return null
-                        }
-                        
-                        return (
-                          <h2 style={{
-                            fontSize: '14pt',
+                    {/* Bottom section - Metadata */}
+                    <div style={{
+                      marginBottom: '50mm',
+                      width: '100%',
+                    }}>
+                      <div style={{
+                        borderTop: '1px solid #000',
+                        borderBottom: '1px solid #000',
+                        padding: '8mm 0',
+                        margin: '0 20mm 15mm 20mm',
+                      }}>
+                        <p style={{ fontSize: '12pt', marginBottom: '4mm', fontWeight: 'bold' }}>
+                          {thesis?.field || 'Fachbereich'}
+                        </p>
+                        <p style={{ fontSize: '12pt', marginBottom: '0' }}>
+                          {thesis?.thesis_type === 'hausarbeit' ? 'Hausarbeit' :
+                            thesis?.thesis_type === 'bachelor' ? 'Bachelorarbeit' :
+                              thesis?.thesis_type === 'master' ? 'Masterarbeit' :
+                                thesis?.thesis_type === 'dissertation' ? 'Dissertation' : 'Thesis'}
+                        </p>
+                      </div>
+                      <p style={{ fontSize: '12pt', marginTop: '10mm' }}>
+                        {thesis?.completed_at
+                          ? new Date(thesis.completed_at).getFullYear()
+                          : new Date().getFullYear()}
+                      </p>
+                      {userProfile?.full_name && (
+                        <p style={{ fontSize: '11pt', marginTop: '5mm', color: '#666' }}>
+                          {userProfile.full_name}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Table of Contents - Generated from Outline JSON */}
+                  {thesis?.outline && (
+                    <div style={{
+                      position: 'relative',
+                      pageBreakAfter: 'always',
+                      marginBottom: '10mm',
+                    }}>
+                      <TableOfContents
+                        outline={thesis.outline as OutlineChapter[]}
+                        language={thesis.metadata?.language || 'german'}
+                      />
+                    </div>
+                  )}
+
+                  {/* Document Content with Page Numbers */}
+                  <div
+                    ref={contentRef}
+                    className="thesis-content"
+                    style={{
+                      position: 'relative',
+                    }}
+                    data-thesis-content="true"
+                    id="thesis-content-container"
+                  >
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
+                      components={{
+                        // Text component - footnotes are handled at paragraph level to avoid double processing
+                        text: ({ node, children, ...props }: any) => {
+                          return <>{children}</>
+                        },
+                        h1: ({ node, children, ...props }: any) => {
+                          // Check if this is the first content heading after TOC
+                          // We want to ensure it starts on a new page
+                          return (
+                            <h1 style={{
+                              fontSize: '16pt',
+                              fontWeight: 'bold',
+                              textAlign: 'left',
+                              marginTop: '12mm',
+                              marginBottom: '8mm',
+                              pageBreakBefore: 'always',
+                              breakBefore: 'page',
+                            }} {...props}>{children}</h1>
+                          )
+                        },
+                        h2: ({ node, children, ...props }: any) => {
+                          // Skip TOC heading if we're rendering TOC from JSON
+                          const text = String(children || '')
+                          const isTOCHeading = text.includes('Inhaltsverzeichnis') || text.includes('Table of Contents')
+
+                          if (isTOCHeading && thesis?.outline) {
+                            // Don't render TOC heading from markdown if we have outline JSON
+                            return null
+                          }
+
+                          return (
+                            <h2 style={{
+                              fontSize: '14pt',
+                              fontWeight: 'bold',
+                              marginTop: '8mm',
+                              marginBottom: '4mm',
+                              textAlign: 'left',
+                            }} {...props}>{children}</h2>
+                          )
+                        },
+                        h3: ({ node, ...props }) => (
+                          <h3 style={{
+                            fontSize: '12pt',
                             fontWeight: 'bold',
                             marginTop: '8mm',
                             marginBottom: '4mm',
                             textAlign: 'left',
-                          }} {...props}>{children}</h2>
-                        )
-                      },
-                      h3: ({ node, ...props }) => (
-                        <h3 style={{
-                          fontSize: '12pt',
-                          fontWeight: 'bold',
-                          marginTop: '8mm',
-                          marginBottom: '4mm',
-                          textAlign: 'left',
-                        }} {...props} />
-                      ),
-                      h4: ({ node, ...props }) => (
-                        <h4 style={{
-                          fontSize: '11pt',
-                          fontWeight: 'bold',
-                          marginTop: '6mm',
-                          marginBottom: '3mm',
-                          textAlign: 'left',
-                        }} {...props} />
-                      ),
-                      p: ({ node, children, ...props }: any) => {
-                        const footnotes = thesis?.metadata?.footnotes || {}
-                        const citationStyle = thesis?.citation_style
-                        
-                        // Check if this paragraph should be highlighted (related passage)
-                        const getTextContent = (node: any): string => {
-                          if (typeof node === 'string') return node
-                          if (Array.isArray(node)) {
-                            return node.map(getTextContent).join('')
-                          }
-                          if (node?.props?.children) {
-                            return getTextContent(node.props.children)
-                          }
-                          return ''
-                        }
-                        
-                        const paragraphText = getTextContent(children)
-                        const isHighlighted = highlightedPassages.some(passage => 
-                          paragraphText.includes(passage.text.substring(0, 50)) || 
-                          passage.text.includes(paragraphText.substring(0, 50))
-                        )
-                        
-                        // Check if this paragraph contains the pending edit's old text
-                        const hasPendingEdit = pendingEdit && paragraphText.includes(pendingEdit.oldText)
-                        
-                        // For German citation style, process footnotes in paragraphs
-                        if (citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
-                          // Convert entire paragraph content to string for processing
+                          }} {...props} />
+                        ),
+                        h4: ({ node, ...props }) => (
+                          <h4 style={{
+                            fontSize: '11pt',
+                            fontWeight: 'bold',
+                            marginTop: '6mm',
+                            marginBottom: '3mm',
+                            textAlign: 'left',
+                          }} {...props} />
+                        ),
+                        p: ({ node, children, ...props }: any) => {
+                          const footnotes = thesis?.metadata?.footnotes || {}
+                          const citationStyle = thesis?.citation_style
+
+                          // Check if this paragraph should be highlighted (related passage)
                           const getTextContent = (node: any): string => {
                             if (typeof node === 'string') return node
                             if (Array.isArray(node)) {
@@ -1197,41 +1190,64 @@ export default function ThesisPreviewPage() {
                             }
                             return ''
                           }
-                          
+
                           const paragraphText = getTextContent(children)
-                          
-                          // Check if paragraph contains footnotes
-                          if (paragraphText.includes('^')) {
-                            // Split by footnote pattern and rebuild with React elements
-                            const parts = paragraphText.split(/(\^\d+)/g)
-                            
-                            if (parts.length > 1) {
-                              const processedParts: any[] = []
-                              parts.forEach((part, idx) => {
-                                const footnoteMatch = part.match(/^\^(\d+)$/)
-                                if (footnoteMatch) {
-                                  const footnoteNum = parseInt(footnoteMatch[1], 10)
-                                  const footnoteText = footnotes[footnoteNum] || `[Fußnote ${footnoteNum}]`
-                                  processedParts.push(
-                                    <sup
-                                      key={`fn-${idx}`}
-                                      style={{
-                                        fontSize: '0.75em',
-                                        verticalAlign: 'super',
-                                        lineHeight: 0,
-                                        cursor: 'help',
-                                        color: '#0066cc',
-                                        textDecoration: 'underline',
-                                        textDecorationStyle: 'dotted',
-                                        fontWeight: 'normal',
-                                        marginLeft: '1px',
-                                      }}
-                                      title={footnoteText}
-                                      onMouseEnter={(e) => {
-                                        const tooltip = document.createElement('div')
-                                        tooltip.id = `footnote-tooltip-${footnoteNum}`
-                                        tooltip.textContent = footnoteText
-                                        tooltip.style.cssText = `
+                          const isHighlighted = highlightedPassages.some(passage =>
+                            paragraphText.includes(passage.text.substring(0, 50)) ||
+                            passage.text.includes(paragraphText.substring(0, 50))
+                          )
+
+                          // Check if this paragraph contains the pending edit's old text
+                          const hasPendingEdit = pendingEdit && paragraphText.includes(pendingEdit.oldText)
+
+                          // For German citation style, process footnotes in paragraphs
+                          if (citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
+                            // Convert entire paragraph content to string for processing
+                            const getTextContent = (node: any): string => {
+                              if (typeof node === 'string') return node
+                              if (Array.isArray(node)) {
+                                return node.map(getTextContent).join('')
+                              }
+                              if (node?.props?.children) {
+                                return getTextContent(node.props.children)
+                              }
+                              return ''
+                            }
+
+                            const paragraphText = getTextContent(children)
+
+                            // Check if paragraph contains footnotes
+                            if (paragraphText.includes('^')) {
+                              // Split by footnote pattern and rebuild with React elements
+                              const parts = paragraphText.split(/(\^\d+)/g)
+
+                              if (parts.length > 1) {
+                                const processedParts: any[] = []
+                                parts.forEach((part, idx) => {
+                                  const footnoteMatch = part.match(/^\^(\d+)$/)
+                                  if (footnoteMatch) {
+                                    const footnoteNum = parseInt(footnoteMatch[1], 10)
+                                    const footnoteText = footnotes[footnoteNum] || `[Fußnote ${footnoteNum}]`
+                                    processedParts.push(
+                                      <sup
+                                        key={`fn-${idx}`}
+                                        style={{
+                                          fontSize: '0.75em',
+                                          verticalAlign: 'super',
+                                          lineHeight: 0,
+                                          cursor: 'help',
+                                          color: '#0066cc',
+                                          textDecoration: 'underline',
+                                          textDecorationStyle: 'dotted',
+                                          fontWeight: 'normal',
+                                          marginLeft: '1px',
+                                        }}
+                                        title={footnoteText}
+                                        onMouseEnter={(e) => {
+                                          const tooltip = document.createElement('div')
+                                          tooltip.id = `footnote-tooltip-${footnoteNum}`
+                                          tooltip.textContent = footnoteText
+                                          tooltip.style.cssText = `
                                           position: fixed;
                                           background: #333;
                                           color: white;
@@ -1244,344 +1260,344 @@ export default function ThesisPreviewPage() {
                                           box-shadow: 0 2px 8px rgba(0,0,0,0.3);
                                           pointer-events: none;
                                         `
-                                        document.body.appendChild(tooltip)
-                                        const rect = e.currentTarget.getBoundingClientRect()
-                                        tooltip.style.left = `${rect.left + rect.width / 2}px`
-                                        tooltip.style.top = `${rect.top - tooltip.offsetHeight - 5}px`
-                                        tooltip.style.transform = 'translateX(-50%)'
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        const tooltip = document.getElementById(`footnote-tooltip-${footnoteNum}`)
-                                        if (tooltip) {
-                                          tooltip.remove()
-                                        }
+                                          document.body.appendChild(tooltip)
+                                          const rect = e.currentTarget.getBoundingClientRect()
+                                          tooltip.style.left = `${rect.left + rect.width / 2}px`
+                                          tooltip.style.top = `${rect.top - tooltip.offsetHeight - 5}px`
+                                          tooltip.style.transform = 'translateX(-50%)'
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          const tooltip = document.getElementById(`footnote-tooltip-${footnoteNum}`)
+                                          if (tooltip) {
+                                            tooltip.remove()
+                                          }
+                                        }}
+                                      >
+                                        {footnoteNum}
+                                      </sup>
+                                    )
+                                  } else if (part) {
+                                    processedParts.push(part)
+                                  }
+                                })
+
+                                return (
+                                  <p style={{
+                                    marginBottom: '6mm',
+                                    textAlign: 'justify',
+                                    textIndent: '0mm',
+                                    lineHeight: '1.6',
+                                    fontSize: '12pt',
+                                  }} {...props}>{processedParts}</p>
+                                )
+                              }
+                            }
+                          }
+
+                          // TOC should be in lists, not paragraphs
+                          // Apply yellow highlight if this is a related passage
+                          const paragraphStyle: React.CSSProperties = {
+                            marginBottom: '6mm',
+                            textAlign: 'justify',
+                            textIndent: '0mm',
+                            lineHeight: '1.6',
+                            fontSize: '12pt',
+                          }
+
+                          if (isHighlighted) {
+                            paragraphStyle.backgroundColor = '#fef3c7' // Light yellow
+                            paragraphStyle.padding = '2mm 4mm'
+                            paragraphStyle.borderRadius = '2px'
+                            paragraphStyle.borderLeft = '3px solid #fbbf24' // Amber border
+                          }
+
+                          // If this paragraph contains the pending edit, show diff inline
+                          if (hasPendingEdit && pendingEdit) {
+                            const oldTextIndex = paragraphText.indexOf(pendingEdit.oldText)
+                            if (oldTextIndex >= 0) {
+                              const beforeText = paragraphText.substring(0, oldTextIndex)
+                              const afterText = paragraphText.substring(oldTextIndex + pendingEdit.oldText.length)
+
+                              return (
+                                <p style={paragraphStyle} {...props}>
+                                  {beforeText}
+                                  <span style={{
+                                    backgroundColor: '#fee2e2',
+                                    padding: '2px 4px',
+                                    borderRadius: '2px',
+                                    textDecoration: 'line-through',
+                                  }}>
+                                    {pendingEdit.oldText}
+                                  </span>
+                                  <span style={{
+                                    backgroundColor: '#dcfce7',
+                                    padding: '2px 4px',
+                                    borderRadius: '2px',
+                                    marginLeft: '4px',
+                                  }}>
+                                    {pendingEdit.newText}
+                                  </span>
+                                  {afterText}
+                                  <div style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
+                                    <button
+                                      onClick={handleApproveEdit}
+                                      style={{
+                                        padding: '4px 12px',
+                                        backgroundColor: '#16a34a',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        fontSize: '11pt',
                                       }}
                                     >
-                                      {footnoteNum}
-                                    </sup>
-                                  )
-                                } else if (part) {
-                                  processedParts.push(part)
-                                }
-                              })
-                              
-                              return (
-                                <p style={{
-                                  marginBottom: '6mm',
-                                  textAlign: 'justify',
-                                  textIndent: '0mm',
-                                  lineHeight: '1.6',
-                                  fontSize: '12pt',
-                                }} {...props}>{processedParts}</p>
+                                      ✓ Übernehmen
+                                    </button>
+                                    <button
+                                      onClick={handleRejectEdit}
+                                      style={{
+                                        padding: '4px 12px',
+                                        backgroundColor: '#6b7280',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        fontSize: '11pt',
+                                      }}
+                                    >
+                                      ✗ Ablehnen
+                                    </button>
+                                  </div>
+                                </p>
                               )
                             }
                           }
-                        }
-                        
-                        // TOC should be in lists, not paragraphs
-            // Apply yellow highlight if this is a related passage
-            const paragraphStyle: React.CSSProperties = {
-              marginBottom: '6mm',
-              textAlign: 'justify',
-              textIndent: '0mm',
-              lineHeight: '1.6',
-              fontSize: '12pt',
-            }
-            
-            if (isHighlighted) {
-              paragraphStyle.backgroundColor = '#fef3c7' // Light yellow
-              paragraphStyle.padding = '2mm 4mm'
-              paragraphStyle.borderRadius = '2px'
-              paragraphStyle.borderLeft = '3px solid #fbbf24' // Amber border
-            }
-            
-            // If this paragraph contains the pending edit, show diff inline
-            if (hasPendingEdit && pendingEdit) {
-              const oldTextIndex = paragraphText.indexOf(pendingEdit.oldText)
-              if (oldTextIndex >= 0) {
-                const beforeText = paragraphText.substring(0, oldTextIndex)
-                const afterText = paragraphText.substring(oldTextIndex + pendingEdit.oldText.length)
-                
-                return (
-                  <p style={paragraphStyle} {...props}>
-                    {beforeText}
-                    <span style={{
-                      backgroundColor: '#fee2e2',
-                      padding: '2px 4px',
-                      borderRadius: '2px',
-                      textDecoration: 'line-through',
-                    }}>
-                      {pendingEdit.oldText}
-                    </span>
-                    <span style={{
-                      backgroundColor: '#dcfce7',
-                      padding: '2px 4px',
-                      borderRadius: '2px',
-                      marginLeft: '4px',
-                    }}>
-                      {pendingEdit.newText}
-                    </span>
-                    {afterText}
-                    <div style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={handleApproveEdit}
-                        style={{
-                          padding: '4px 12px',
-                          backgroundColor: '#16a34a',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '11pt',
-                        }}
-                      >
-                        ✓ Übernehmen
-                      </button>
-                      <button
-                        onClick={handleRejectEdit}
-                        style={{
-                          padding: '4px 12px',
-                          backgroundColor: '#6b7280',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '11pt',
-                        }}
-                      >
-                        ✗ Ablehnen
-                      </button>
-                    </div>
-                  </p>
-                )
-              }
-            }
-            
-            return (
-              <p style={paragraphStyle} {...props}>{children}</p>
-            )
-          },
-                      ul: ({ node, children, ...props }: any) => {
-                        // Check if this is TOC by examining children
-                        const childrenArray = Array.isArray(children) ? children : [children]
-                        let isTOC = false
-                        let tocEntryCount = 0
-                        
-                        // Check if any child looks like TOC entry
-                        for (const child of childrenArray) {
-                          const text = String(child?.props?.children || child || '')
-                          // More flexible TOC detection - check for number patterns
-                          if (/^\d+\.(?:\d+\.)*\s+/.test(text.trim())) {
-                            isTOC = true
-                            tocEntryCount++
-                            console.log('[TOC Detection] Found TOC entry in ul:', text.substring(0, 50))
-                          }
-                        }
-                        
-                        // If at least 2 entries match TOC pattern, treat as TOC
-                        if (isTOC && tocEntryCount >= 2) {
-                          console.log('[TOC Detection] Rendering TOC ul list with', tocEntryCount, 'entries')
+
                           return (
-                            <ul className="toc-list" style={{
-                              marginBottom: '6mm',
-                              marginLeft: '0',
-                              paddingLeft: '0',
-                              fontSize: '12pt',
-                              listStyle: 'none',
-                              display: 'block',
-                            }} {...props}>{children}</ul>
+                            <p style={paragraphStyle} {...props}>{children}</p>
                           )
-                        }
-                        
-                        return (
-                          <ul style={{
-                            marginBottom: '6mm',
-                            marginLeft: '10mm',
-                            paddingLeft: '5mm',
-                            fontSize: '12pt',
-                          }} {...props}>{children}</ul>
-                        )
-                      },
-                      ol: ({ node, children, ...props }: any) => {
-                        const childrenArray = Array.isArray(children) ? children : [children]
-                        let isTOC = false
-                        let tocEntryCount = 0
-                        
-                        // Check if any child looks like TOC entry
-                        for (const child of childrenArray) {
-                          const text = String(child?.props?.children || child || '')
-                          // More flexible TOC detection - check for number patterns
-                          if (/^\d+\.(?:\d+\.)*\s+/.test(text.trim())) {
-                            isTOC = true
-                            tocEntryCount++
-                            console.log('[TOC Detection] Found TOC entry in ol:', text.substring(0, 50))
+                        },
+                        ul: ({ node, children, ...props }: any) => {
+                          // Check if this is TOC by examining children
+                          const childrenArray = Array.isArray(children) ? children : [children]
+                          let isTOC = false
+                          let tocEntryCount = 0
+
+                          // Check if any child looks like TOC entry
+                          for (const child of childrenArray) {
+                            const text = String(child?.props?.children || child || '')
+                            // More flexible TOC detection - check for number patterns
+                            if (/^\d+\.(?:\d+\.)*\s+/.test(text.trim())) {
+                              isTOC = true
+                              tocEntryCount++
+                              console.log('[TOC Detection] Found TOC entry in ul:', text.substring(0, 50))
+                            }
                           }
-                        }
-                        
-                        // If at least 2 entries match TOC pattern, treat as TOC
-                        if (isTOC && tocEntryCount >= 2) {
-                          console.log('[TOC Detection] Rendering TOC ol list with', tocEntryCount, 'entries')
-                          return (
-                            <ol className="toc-list" style={{
-                              marginBottom: '6mm',
-                              marginLeft: '0',
-                              paddingLeft: '0',
-                              fontSize: '12pt',
-                              listStyle: 'none',
-                              display: 'block',
-                            }} {...props}>{children}</ol>
-                          )
-                        }
-                        
-                        return (
-                          <ol style={{
-                            marginBottom: '6mm',
-                            marginLeft: '10mm',
-                            paddingLeft: '5mm',
-                            fontSize: '12pt',
-                          }} {...props}>{children}</ol>
-                        )
-                      },
-                      li: ({ node, children, ...props }: any) => {
-                        // Extract text to check for TOC entry - handle nested React elements
-                        let text = ''
-                        const extractText = (node: any): string => {
-                          if (typeof node === 'string') return node
-                          if (typeof node === 'number') return String(node)
-                          if (Array.isArray(node)) {
-                            return node.map(extractText).join(' ').trim()
-                          }
-                          if (node?.props?.children) {
-                            return extractText(node.props.children)
-                          }
-                          return ''
-                        }
-                        
-                        text = extractText(children)
-                        const trimmedText = text.trim()
-                        
-                        console.log('[TOC li] Raw text:', trimmedText.substring(0, 100))
-                        
-                        // TOC entries format: "1. Einleitung" or "1.1 Hinführung..." or "1. Title ......... 5"
-                        // More flexible pattern matching
-                        const tocPattern = /^(\d+\.(?:\d+\.)*)\s+(.+?)(?:\s+[\.]{2,}\s+(\d+))?$|^(\d+\.(?:\d+\.)*)\s+(.+?)\s+(\d+)$|^(\d+\.(?:\d+\.)*)\s+(.+)$/
-                        const tocMatch = trimmedText.match(tocPattern)
-                        
-                        if (tocMatch) {
-                          // Extract parts - handle multiple pattern groups
-                          const numberPart = tocMatch[1] || tocMatch[4] || tocMatch[7] || ''
-                          const titlePart = (tocMatch[2] || tocMatch[5] || tocMatch[8] || '').trim()
-                          const pagePart = tocMatch[3] || tocMatch[6] || ''
-                          
-                          if (numberPart) {
-                            console.log('[TOC Entry] ✓ Matched:', { numberPart, titlePart, pagePart })
-                            
-                            // Determine indentation level
-                            const numberSegments = numberPart.split('.').filter(Boolean)
-                            const level = Math.max(0, numberSegments.length - 1)
-                            const isMainChapter = level === 0
-                            const indent = level * 8
-                            
+
+                          // If at least 2 entries match TOC pattern, treat as TOC
+                          if (isTOC && tocEntryCount >= 2) {
+                            console.log('[TOC Detection] Rendering TOC ul list with', tocEntryCount, 'entries')
                             return (
-                              <li 
-                                className={`toc-entry toc-entry-level-${level}`}
-                                style={{
-                                  marginBottom: '4mm',
-                                  lineHeight: '1.6',
-                                  listStyle: 'none',
-                                  paddingLeft: '0',
-                                  marginLeft: `${indent}mm`,
-                                  fontSize: '12pt',
-                                  display: 'block',
-                                  breakInside: 'avoid',
-                                  pageBreakInside: 'avoid',
-                                }} 
-                                {...props}
-                              >
-                                <span style={{
-                                  fontWeight: isMainChapter ? 'bold' : 'normal',
-                                }}>
-                                  {numberPart} {titlePart}
-                                </span>
-                                {pagePart && (
-                                  <span style={{
-                                    float: 'right',
-                                    fontVariantNumeric: 'tabular-nums',
-                                    marginLeft: '4mm',
-                                  }}>
-                                    {pagePart}
-                                  </span>
-                                )}
-                              </li>
+                              <ul className="toc-list" style={{
+                                marginBottom: '6mm',
+                                marginLeft: '0',
+                                paddingLeft: '0',
+                                fontSize: '12pt',
+                                listStyle: 'none',
+                                display: 'block',
+                              }} {...props}>{children}</ul>
                             )
                           }
-                        }
-                        
-                        // If it looks like a TOC entry but didn't match, log it
-                        if (trimmedText && /^\d+\./.test(trimmedText)) {
-                          console.warn('[TOC Entry] ✗ Not matched:', trimmedText.substring(0, 100))
-                        }
-                        
-                        return (
-                          <li style={{
+
+                          return (
+                            <ul style={{
+                              marginBottom: '6mm',
+                              marginLeft: '10mm',
+                              paddingLeft: '5mm',
+                              fontSize: '12pt',
+                            }} {...props}>{children}</ul>
+                          )
+                        },
+                        ol: ({ node, children, ...props }: any) => {
+                          const childrenArray = Array.isArray(children) ? children : [children]
+                          let isTOC = false
+                          let tocEntryCount = 0
+
+                          // Check if any child looks like TOC entry
+                          for (const child of childrenArray) {
+                            const text = String(child?.props?.children || child || '')
+                            // More flexible TOC detection - check for number patterns
+                            if (/^\d+\.(?:\d+\.)*\s+/.test(text.trim())) {
+                              isTOC = true
+                              tocEntryCount++
+                              console.log('[TOC Detection] Found TOC entry in ol:', text.substring(0, 50))
+                            }
+                          }
+
+                          // If at least 2 entries match TOC pattern, treat as TOC
+                          if (isTOC && tocEntryCount >= 2) {
+                            console.log('[TOC Detection] Rendering TOC ol list with', tocEntryCount, 'entries')
+                            return (
+                              <ol className="toc-list" style={{
+                                marginBottom: '6mm',
+                                marginLeft: '0',
+                                paddingLeft: '0',
+                                fontSize: '12pt',
+                                listStyle: 'none',
+                                display: 'block',
+                              }} {...props}>{children}</ol>
+                            )
+                          }
+
+                          return (
+                            <ol style={{
+                              marginBottom: '6mm',
+                              marginLeft: '10mm',
+                              paddingLeft: '5mm',
+                              fontSize: '12pt',
+                            }} {...props}>{children}</ol>
+                          )
+                        },
+                        li: ({ node, children, ...props }: any) => {
+                          // Extract text to check for TOC entry - handle nested React elements
+                          let text = ''
+                          const extractText = (node: any): string => {
+                            if (typeof node === 'string') return node
+                            if (typeof node === 'number') return String(node)
+                            if (Array.isArray(node)) {
+                              return node.map(extractText).join(' ').trim()
+                            }
+                            if (node?.props?.children) {
+                              return extractText(node.props.children)
+                            }
+                            return ''
+                          }
+
+                          text = extractText(children)
+                          const trimmedText = text.trim()
+
+                          console.log('[TOC li] Raw text:', trimmedText.substring(0, 100))
+
+                          // TOC entries format: "1. Einleitung" or "1.1 Hinführung..." or "1. Title ......... 5"
+                          // More flexible pattern matching
+                          const tocPattern = /^(\d+\.(?:\d+\.)*)\s+(.+?)(?:\s+[\.]{2,}\s+(\d+))?$|^(\d+\.(?:\d+\.)*)\s+(.+?)\s+(\d+)$|^(\d+\.(?:\d+\.)*)\s+(.+)$/
+                          const tocMatch = trimmedText.match(tocPattern)
+
+                          if (tocMatch) {
+                            // Extract parts - handle multiple pattern groups
+                            const numberPart = tocMatch[1] || tocMatch[4] || tocMatch[7] || ''
+                            const titlePart = (tocMatch[2] || tocMatch[5] || tocMatch[8] || '').trim()
+                            const pagePart = tocMatch[3] || tocMatch[6] || ''
+
+                            if (numberPart) {
+                              console.log('[TOC Entry] ✓ Matched:', { numberPart, titlePart, pagePart })
+
+                              // Determine indentation level
+                              const numberSegments = numberPart.split('.').filter(Boolean)
+                              const level = Math.max(0, numberSegments.length - 1)
+                              const isMainChapter = level === 0
+                              const indent = level * 8
+
+                              return (
+                                <li
+                                  className={`toc-entry toc-entry-level-${level}`}
+                                  style={{
+                                    marginBottom: '4mm',
+                                    lineHeight: '1.6',
+                                    listStyle: 'none',
+                                    paddingLeft: '0',
+                                    marginLeft: `${indent}mm`,
+                                    fontSize: '12pt',
+                                    display: 'block',
+                                    breakInside: 'avoid',
+                                    pageBreakInside: 'avoid',
+                                  }}
+                                  {...props}
+                                >
+                                  <span style={{
+                                    fontWeight: isMainChapter ? 'bold' : 'normal',
+                                  }}>
+                                    {numberPart} {titlePart}
+                                  </span>
+                                  {pagePart && (
+                                    <span style={{
+                                      float: 'right',
+                                      fontVariantNumeric: 'tabular-nums',
+                                      marginLeft: '4mm',
+                                    }}>
+                                      {pagePart}
+                                    </span>
+                                  )}
+                                </li>
+                              )
+                            }
+                          }
+
+                          // If it looks like a TOC entry but didn't match, log it
+                          if (trimmedText && /^\d+\./.test(trimmedText)) {
+                            console.warn('[TOC Entry] ✗ Not matched:', trimmedText.substring(0, 100))
+                          }
+
+                          return (
+                            <li style={{
+                              marginBottom: '4mm',
+                              fontSize: '12pt',
+                              lineHeight: '1.6',
+                            }} {...props}>{children}</li>
+                          )
+                        },
+                        blockquote: ({ node, ...props }) => (
+                          <blockquote style={{
+                            borderLeft: '3px solid #666',
+                            paddingLeft: '8mm',
+                            marginLeft: '10mm',
+                            marginRight: '10mm',
+                            marginTop: '4mm',
                             marginBottom: '4mm',
-                            fontSize: '12pt',
-                            lineHeight: '1.6',
-                          }} {...props}>{children}</li>
-                        )
-                      },
-                      blockquote: ({ node, ...props }) => (
-                        <blockquote style={{
-                          borderLeft: '3px solid #666',
-                          paddingLeft: '8mm',
-                          marginLeft: '10mm',
-                          marginRight: '10mm',
-                          marginTop: '4mm',
-                          marginBottom: '4mm',
-                          fontStyle: 'italic',
-                          fontSize: '11pt',
-                          color: '#333',
-                        }} {...props} />
-                      ),
-                      code: ({ node, inline, ...props }: any) => {
-                        if (inline) {
+                            fontStyle: 'italic',
+                            fontSize: '11pt',
+                            color: '#333',
+                          }} {...props} />
+                        ),
+                        code: ({ node, inline, ...props }: any) => {
+                          if (inline) {
+                            return (
+                              <code style={{
+                                backgroundColor: '#f5f5f5',
+                                padding: '1mm 2mm',
+                                borderRadius: '2px',
+                                fontSize: '11pt',
+                                fontFamily: '"Courier New", monospace',
+                                color: '#000',
+                              }} {...props} />
+                            )
+                          }
                           return (
                             <code style={{
+                              display: 'block',
                               backgroundColor: '#f5f5f5',
-                              padding: '1mm 2mm',
+                              padding: '4mm',
                               borderRadius: '2px',
-                              fontSize: '11pt',
+                              fontSize: '10pt',
                               fontFamily: '"Courier New", monospace',
-                              color: '#000',
+                              marginBottom: '6mm',
+                              overflowX: 'auto',
+                              border: '1px solid #ddd',
                             }} {...props} />
                           )
-                        }
-                        return (
-                          <code style={{
-                            display: 'block',
-                            backgroundColor: '#f5f5f5',
-                            padding: '4mm',
-                            borderRadius: '2px',
-                            fontSize: '10pt',
-                            fontFamily: '"Courier New", monospace',
-                            marginBottom: '6mm',
-                            overflowX: 'auto',
-                            border: '1px solid #ddd',
-                          }} {...props} />
-                        )
-                      },
-                    }}
-                  >
-                    {content || '*Kein Inhalt verfügbar*'}
-                  </ReactMarkdown>
-                  
+                        },
+                      }}
+                    >
+                      {content || '*Kein Inhalt verfügbar*'}
+                    </ReactMarkdown>
+
+                  </div>
                 </div>
+
               </div>
-              
-            </div>
-          )}
+            )}
           </div>
-          
+
           {/* Word Counter Footer - Fixed at bottom */}
           <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-6 py-3 flex items-center justify-between flex-shrink-0">
             <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -1626,29 +1642,29 @@ export default function ThesisPreviewPage() {
                           <h3 className="font-semibold text-lg text-gray-900 dark:text-white mb-2">
                             {source.title || source.metadata?.title || 'Unbekannter Titel'}
                           </h3>
-                          
+
                           <div className="space-y-1 text-sm text-gray-600 dark:text-gray-300">
                             {source.metadata?.authors && source.metadata.authors.length > 0 && (
                               <p>
                                 <span className="font-medium">Autoren:</span>{' '}
-                                {Array.isArray(source.metadata.authors) 
+                                {Array.isArray(source.metadata.authors)
                                   ? source.metadata.authors.join(', ')
                                   : source.metadata.authors}
                               </p>
                             )}
-                            
+
                             {source.metadata?.year && (
                               <p>
                                 <span className="font-medium">Jahr:</span> {source.metadata.year}
                               </p>
                             )}
-                            
+
                             {source.metadata?.journal && (
                               <p>
                                 <span className="font-medium">Journal:</span> {source.metadata.journal}
                               </p>
                             )}
-                            
+
                             {source.doi && (
                               <p>
                                 <span className="font-medium">DOI:</span>{' '}
@@ -1662,19 +1678,19 @@ export default function ThesisPreviewPage() {
                                 </a>
                               </p>
                             )}
-                            
+
                             {source.metadata?.pages && (
                               <p>
                                 <span className="font-medium">Seiten:</span> {source.metadata.pages}
                               </p>
                             )}
-                            
+
                             {source.metadata?.pageStart && source.metadata?.pageEnd && (
                               <p>
                                 <span className="font-medium">Seitenbereich:</span> {source.metadata.pageStart} - {source.metadata.pageEnd}
                               </p>
                             )}
-                            
+
                             {source.sourceUrl && (
                               <p>
                                 <span className="font-medium">URL:</span>{' '}
@@ -1688,7 +1704,7 @@ export default function ThesisPreviewPage() {
                                 </a>
                               </p>
                             )}
-                            
+
                             {source.metadata?.abstract && (
                               <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                                 <p className="font-medium mb-1">Abstract:</p>
@@ -1774,7 +1790,7 @@ export default function ThesisPreviewPage() {
                                     versionNumber: version.version_number,
                                   }),
                                 })
-                                
+
                                 if (response.ok) {
                                   await loadThesis()
                                   setShowVersionsModal(false)
@@ -1850,7 +1866,7 @@ export default function ThesisPreviewPage() {
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                       Erkennungsergebnis
                     </h3>
-                    
+
                     <div className="grid grid-cols-2 gap-4 mb-4">
                       <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
                         <div className="text-sm text-green-700 dark:text-green-300 font-medium mb-1">
@@ -1860,7 +1876,7 @@ export default function ThesisPreviewPage() {
                           {thesis.metadata.zeroGptResult.isHumanWritten}%
                         </div>
                       </div>
-                      
+
                       <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
                         <div className="text-sm text-red-700 dark:text-red-300 font-medium mb-1">
                           KI-generiert
@@ -1870,7 +1886,7 @@ export default function ThesisPreviewPage() {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
                       <div>
                         <span className="font-medium">Wörter geprüft:</span>{' '}
@@ -1892,7 +1908,7 @@ export default function ThesisPreviewPage() {
                       )}
                     </div>
                   </div>
-                  
+
                   <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                     <p className="text-sm text-yellow-800 dark:text-yellow-200">
                       <strong>Hinweis:</strong> Die Erkennungsgenauigkeit kann variieren und sollte nur als Indikator verwendet werden.

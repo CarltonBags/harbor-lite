@@ -2389,6 +2389,268 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
 }
 
 /**
+ * Check content with GPTZero API and return flagged sentences
+ */
+async function checkWithGPTZero(content: string): Promise<{
+  isHumanWritten: number
+  isGptGenerated: number
+  gptGeneratedSentences: string[]
+}> {
+  if (!RAPIDAPI_KEY) {
+    console.warn('[GPTZero] RapidAPI key not configured, skipping check')
+    return { isHumanWritten: 100, isGptGenerated: 0, gptGeneratedSentences: [] }
+  }
+
+  console.log('[GPTZero] Checking content for AI detection...')
+
+  // Extract plain text from markdown
+  let plainText = content
+    .replace(/^#+\s+/gm, '') // Remove headings
+    .replace(/\*\*(.+?)\*\*/g, '$1') // Remove bold
+    .replace(/\*(.+?)\*/g, '$1') // Remove italic
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1') // Remove links
+    .replace(/`(.+?)`/g, '$1') // Remove code
+    .replace(/\^\d+/g, '') // Remove footnote markers
+    .replace(/\n{3,}/g, '\n\n') // Normalize multiple newlines
+    .trim()
+
+  // Truncate if too long (GPTZero limit)
+  const MAX_TEXT_LENGTH = 50000
+  if (plainText.length > MAX_TEXT_LENGTH) {
+    console.warn(`[GPTZero] Text too long (${plainText.length} chars), truncating to ${MAX_TEXT_LENGTH}`)
+    plainText = plainText.substring(0, MAX_TEXT_LENGTH)
+  }
+
+  try {
+    const response = await retryApiCall(
+      () => fetch('https://zerogpt.p.rapidapi.com/api/v1/detectText', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'X-RapidAPI-Key': RAPIDAPI_KEY!,
+          'X-RapidAPI-Host': 'zerogpt.p.rapidapi.com',
+        },
+        body: JSON.stringify({
+          input_text: plainText,
+        }),
+      }),
+      'GPTZero API check'
+    )
+
+    if (!response.ok) {
+      console.error('[GPTZero] API error:', response.status, response.statusText)
+      return { isHumanWritten: 100, isGptGenerated: 0, gptGeneratedSentences: [] }
+    }
+
+    const data = await response.json() as any
+
+    if (data.success && data.data) {
+      const isHumanWritten = data.data.is_human_written || 0
+      const isGptGenerated = data.data.is_gpt_generated || 0
+      const gptGeneratedSentences = data.data.gpt_generated_sentences || []
+
+      console.log(`[GPTZero] Results: ${isHumanWritten}% human, ${isGptGenerated}% AI-generated`)
+      console.log(`[GPTZero] Flagged ${gptGeneratedSentences.length} sentences`)
+
+      return { isHumanWritten, isGptGenerated, gptGeneratedSentences }
+    }
+
+    return { isHumanWritten: 100, isGptGenerated: 0, gptGeneratedSentences: [] }
+  } catch (error) {
+    console.error('[GPTZero] Error checking content:', error)
+    return { isHumanWritten: 100, isGptGenerated: 0, gptGeneratedSentences: [] }
+  }
+}
+
+/**
+ * Rewrite flagged sentences using Gemini 2.5 Flash to make them more human-like
+ */
+async function rewriteFlaggedSentences(
+  content: string,
+  flaggedSentences: string[],
+  thesisData: ThesisData
+): Promise<string> {
+  if (flaggedSentences.length === 0) {
+    return content
+  }
+
+  console.log(`[Rewrite] Rewriting ${flaggedSentences.length} flagged sentences...`)
+
+  const isGerman = thesisData.language === 'german'
+  let rewrittenContent = content
+
+  // Process sentences in batches of 10 to avoid token limits
+  const BATCH_SIZE = 10
+  for (let i = 0; i < flaggedSentences.length; i += BATCH_SIZE) {
+    const batch = flaggedSentences.slice(i, i + BATCH_SIZE)
+    console.log(`[Rewrite] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(flaggedSentences.length / BATCH_SIZE)}`)
+
+    const prompt = isGerman
+      ? `Du bist ein Experte darin, akademische Texte menschlicher klingen zu lassen, ohne die Bedeutung zu verändern.
+
+**Aufgabe:**
+Schreibe die folgenden Sätze so um, dass sie natürlicher und menschlicher klingen, aber:
+- Behalte ALLE Fakten, Daten und Informationen bei
+- Behalte ALLE Zitationen bei (z.B. (Autor, 2021, S. 15))
+- Ändere NICHT die Bedeutung
+- Mache die Sätze variabler in Länge und Struktur
+- Verwende natürlichere Formulierungen
+- Vermeide KI-typische Phrasen wie "zunächst", "ferner", "des Weiteren"
+
+**Zu überarbeitende Sätze:**
+${batch.map((s, idx) => `${idx + 1}. ${s}`).join('\n\n')}
+
+**Format:**
+Antworte NUR mit einem JSON-Array der umgeschriebenen Sätze:
+["Umgeschriebener Satz 1", "Umgeschriebener Satz 2", ...]`
+      : `You are an expert at making academic texts sound more human without changing their meaning.
+
+**Task:**
+Rewrite the following sentences to sound more natural and human, but:
+- Keep ALL facts, data, and information
+- Keep ALL citations (e.g., (Author, 2021, p. 15))
+- Do NOT change the meaning
+- Make sentences more varied in length and structure
+- Use more natural phrasing
+- Avoid AI-typical phrases like "firstly", "furthermore", "moreover"
+
+**Sentences to rewrite:**
+${batch.map((s, idx) => `${idx + 1}. ${s}`).join('\n\n')}
+
+**Format:**
+Respond ONLY with a JSON array of rewritten sentences:
+["Rewritten sentence 1", "Rewritten sentence 2", ...]`
+
+    try {
+      const response = await retryApiCall(
+        () => ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+        }),
+        `Rewrite sentences batch ${Math.floor(i / BATCH_SIZE) + 1}`
+      )
+
+      const responseText = response.text
+      if (!responseText) {
+        console.warn(`[Rewrite] No response for batch ${Math.floor(i / BATCH_SIZE) + 1}, skipping`)
+        continue
+      }
+
+      // Extract JSON array
+      const jsonMatch = responseText.match(/\[[\s\S]*\]/)
+      if (!jsonMatch) {
+        console.warn(`[Rewrite] Invalid JSON response for batch ${Math.floor(i / BATCH_SIZE) + 1}, skipping`)
+        continue
+      }
+
+      const rewrittenSentences = JSON.parse(jsonMatch[0]) as string[]
+
+      // Replace sentences in content
+      batch.forEach((originalSentence, idx) => {
+        if (rewrittenSentences[idx]) {
+          // Escape special regex characters in the original sentence
+          const escapedOriginal = originalSentence.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          rewrittenContent = rewrittenContent.replace(
+            new RegExp(escapedOriginal, 'g'),
+            rewrittenSentences[idx]
+          )
+        }
+      })
+
+      console.log(`[Rewrite] Batch ${Math.floor(i / BATCH_SIZE) + 1} completed`)
+
+      // Small delay between batches
+      if (i + BATCH_SIZE < flaggedSentences.length) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+    } catch (error) {
+      console.error(`[Rewrite] Error processing batch ${Math.floor(i / BATCH_SIZE) + 1}:`, error)
+      // Continue with next batch
+    }
+  }
+
+  console.log('[Rewrite] Sentence rewriting completed')
+  return rewrittenContent
+}
+
+/**
+ * Check content with GPTZero and rewrite if needed to achieve >70% human score
+ */
+async function ensureHumanLikeContent(content: string, thesisData: ThesisData): Promise<{
+  content: string
+  zeroGptResult: {
+    isHumanWritten: number
+    isGptGenerated: number
+    wordsCount?: number
+    checkedAt: string
+    feedbackMessage?: string
+  } | null
+}> {
+  console.log('[HumanCheck] Starting GPTZero check and potential rewrite...')
+
+  const MIN_HUMAN_SCORE = 70
+  const MAX_ITERATIONS = 2 // Limit iterations to avoid infinite loops
+
+  let currentContent = content
+  let iteration = 0
+  let finalResult: any = null
+
+  while (iteration < MAX_ITERATIONS) {
+    iteration++
+    console.log(`[HumanCheck] Iteration ${iteration}/${MAX_ITERATIONS}`)
+
+    const result = await checkWithGPTZero(currentContent)
+    finalResult = result // Store the latest result
+
+    if (result.isHumanWritten >= MIN_HUMAN_SCORE) {
+      console.log(`[HumanCheck] ✓ Content passed with ${result.isHumanWritten}% human score`)
+      return {
+        content: currentContent,
+        zeroGptResult: {
+          isHumanWritten: result.isHumanWritten,
+          isGptGenerated: result.isGptGenerated,
+          checkedAt: new Date().toISOString(),
+        }
+      }
+    }
+
+    console.log(`[HumanCheck] ⚠️ Content scored ${result.isHumanWritten}% human (below ${MIN_HUMAN_SCORE}%)`)
+    console.log(`[HumanCheck] Rewriting ${result.gptGeneratedSentences.length} flagged sentences...`)
+
+    if (result.gptGeneratedSentences.length === 0) {
+      console.log('[HumanCheck] No specific sentences flagged, returning content as-is')
+      return {
+        content: currentContent,
+        zeroGptResult: {
+          isHumanWritten: result.isHumanWritten,
+          isGptGenerated: result.isGptGenerated,
+          checkedAt: new Date().toISOString(),
+        }
+      }
+    }
+
+    // Rewrite flagged sentences
+    currentContent = await rewriteFlaggedSentences(
+      currentContent,
+      result.gptGeneratedSentences,
+      thesisData
+    )
+
+    console.log(`[HumanCheck] Rewrite completed, checking again...`)
+  }
+
+  console.log(`[HumanCheck] Max iterations reached, returning current content`)
+  return {
+    content: currentContent,
+    zeroGptResult: finalResult ? {
+      isHumanWritten: finalResult.isHumanWritten,
+      isGptGenerated: finalResult.isGptGenerated,
+      checkedAt: new Date().toISOString(),
+    } : null
+  }
+}
+
+/**
  * Humanize thesis content to avoid AI detection while preserving all factual information
  * Uses Gemini to rewrite the text in a more human-like style
  */
@@ -3441,6 +3703,25 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       throw new Error('Thesis generation failed and no valid content was produced')
     }
 
+    // Step 7.4: Check with GPTZero and rewrite flagged sentences
+    console.log('\n[PROCESS] ========== Step 7.4: GPTZero Check & Sentence Rewrite ==========')
+    const gptZeroCheckStart = Date.now()
+    let zeroGptResult: any = null
+    try {
+      const result = await ensureHumanLikeContent(thesisContent, thesisData)
+      thesisContent = result.content
+      zeroGptResult = result.zeroGptResult
+      const gptZeroCheckDuration = Date.now() - gptZeroCheckStart
+      console.log(`[PROCESS] GPTZero check and rewrite completed in ${gptZeroCheckDuration}ms`)
+      if (zeroGptResult) {
+        console.log(`[PROCESS] Final GPTZero score: ${zeroGptResult.isHumanWritten}% human, ${zeroGptResult.isGptGenerated}% AI`)
+      }
+    } catch (error) {
+      console.error('[PROCESS] ERROR in GPTZero check/rewrite:', error)
+      console.warn('[PROCESS] Continuing with original content (GPTZero check failed)')
+      // Continue with original content if check fails
+    }
+
     // Step 7.5: Humanize the text to avoid AI detection
     console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
     const humanizeStart = Date.now()
@@ -3454,11 +3735,10 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       // Continue with original content if humanization fails
     }
 
-    // Step 7.6: ZeroGPT Detection Check - SKIPPED (can be triggered manually in preview)
-    // ZeroGPT check is now available on-demand in the preview page
+    // Step 7.6: ZeroGPT Detection Check - Now done in Step 7.4
+    // ZeroGPT check result is available from Step 7.4
     console.log('\n[PROCESS] ========== Step 7.6: ZeroGPT Detection Check ==========')
-    console.log('[PROCESS] ZeroGPT check skipped in worker - available on-demand in preview')
-    const zeroGptResult = null
+    console.log('[PROCESS] ZeroGPT check completed in Step 7.4 - result will be saved to metadata')
 
     // Process footnotes for German citation style
     let processedContent = thesisContent
@@ -3508,7 +3788,11 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           updateData.metadata.footnotes = footnotes
         }
 
-        // ZeroGPT check is now available on-demand in the preview page
+        // Add ZeroGPT result if available
+        if (zeroGptResult) {
+          updateData.metadata.zeroGptResult = zeroGptResult
+          console.log('[PROCESS] Saving ZeroGPT result to metadata:', zeroGptResult)
+        }
 
         const result = await supabase
           .from('theses')

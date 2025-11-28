@@ -76,7 +76,7 @@ export function Footer() {
               </a>
             </div>
           </div>
-          
+
           {/* Product */}
           <div>
             <h3 className="text-white font-semibold mb-4">Produkt</h3>
@@ -93,7 +93,7 @@ export function Footer() {
               ))}
             </ul>
           </div>
-          
+
           {/* Resources */}
           <div>
             <h3 className="text-white font-semibold mb-4">Ressourcen</h3>
@@ -110,7 +110,7 @@ export function Footer() {
               ))}
             </ul>
           </div>
-          
+
           {/* Company */}
           <div>
             <h3 className="text-white font-semibold mb-4">Unternehmen</h3>
@@ -127,7 +127,7 @@ export function Footer() {
               ))}
             </ul>
           </div>
-          
+
           {/* Legal */}
           <div>
             <h3 className="text-white font-semibold mb-4">Rechtliches</h3>
@@ -145,14 +145,14 @@ export function Footer() {
             </ul>
           </div>
         </div>
-        
+
         <div className="border-t border-gray-800 pt-8 mt-8">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <p className="text-gray-400 text-sm">
-              © {new Date().getFullYear()} UniLord. Alle Rechte vorbehalten.
+              © {new Date().getFullYear()} ThesisMeister. Alle Rechte vorbehalten.
             </p>
             <p className="text-gray-400 text-sm mt-4 md:mt-0">
-              Mit ❤️ gemacht für Forscher weltweit
+              Mit ❤️ gemacht für Studenten weltweit
             </p>
           </div>
         </div>
@@ -160,4 +160,3 @@ export function Footer() {
     </footer>
   )
 }
-

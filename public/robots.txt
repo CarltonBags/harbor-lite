@@ -7,5 +7,5 @@ Disallow: /thesis/new
 Disallow: /auth/
 
 # Sitemap
-Sitemap: https://unilord.com/sitemap.xml
+Sitemap: https://thesismeister.com/sitemap.xml
 

@@ -149,8 +149,8 @@ export function HowItWorks() {
                     </div>
                   </div>
 
-                  {/* Horizontal connecting line to next step (going left) */}
-                  {index < 2 && (
+                  {/* Horizontal connecting line to next step (going right in visual order, which is left in step order) */}
+                  {index > 0 && (
                     <div className="absolute top-1/2 -left-4 w-8 h-0.5 bg-gradient-to-l from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-500 transform -translate-y-1/2">
                       <div className="absolute left-0 top-1/2 transform -translate-y-1/2">
                         <div className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full"></div>
@@ -170,8 +170,8 @@ export function HowItWorks() {
           </div>
 
           {/* Row 3: Step 7 (Centered) */}
-          <div className="flex justify-start">
-            <div className="w-full max-w-sm">
+          <div className="grid grid-cols-3 gap-8">
+            <div className="col-start-1">
               {(() => {
                 const step = steps[6]
                 const Icon = step.icon
@@ -220,7 +220,7 @@ export function HowItWorks() {
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white">
                           {step.title}
                         </h3>
-                        <span className="text-2xl font-bold text-gray-100 dark:text-gray-800">
+                        <span className="text-2xl font-bold text-gray-300 dark:text-gray-800">
                           {step.number}
                         </span>
                       </div>
