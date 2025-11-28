@@ -1754,6 +1754,7 @@ Fußnoten:
 [^4]: Becker, K. (2023). "Einsatz von KI." Zeitschrift, 5(2), S. 23-34.
 
 **WICHTIG:**
+- Dein Text MUSS mit dem ersten Kapitel beginnen. Keine Kommentare, keine Einführung. Das Thema der Arbeit wird spöter automatisch hinzugefügt. 
 - Stelle sicher, dass der Text vollständig ist und nicht abgebrochen wird - auch wenn viele Fußnoten verwendet werden.
 - Jede Quelle im Literaturverzeichnis MUSS mindestens eine Fußnote im Text haben.
 - Wenn du Informationen aus einer Quelle verwendest, MUSS sofort eine Fußnote folgen.` : ''}
@@ -1802,12 +1803,10 @@ Fußnoten:
 **Output-Format:**
 - Gib die komplette Arbeit in Markdown mit klaren Überschriften aus.
 - Strukturbeispiel:
-  # Titel
-  ## Abstract
-  ## Einleitung
+  # Einleitung
   ...
-  ## Fazit
-  ## Literaturverzeichnis
+  # Fazit
+  # Literaturverzeichnis
 - BEGINNE direkt mit dem ersten Kapitel - KEIN Inhaltsverzeichnis.
 
 **KRITISCH - VOLLSTÄNDIGKEIT UND LÄNGE (ABSOLUT WICHTIG):**
@@ -2096,12 +2095,10 @@ The text must sound like written by a human author from the start and must not b
 **Output Format:**
 - Output the complete thesis in Markdown with clear headings.
 - Structure example:
-  # Title
-  ## Abstract
-  ## Introduction
+  # Introduction
   ...
-  ## Conclusion
-  ## Bibliography
+  # Conclusion
+  # Bibliography
 - START directly with the first chapter - NO table of contents.
 
 **CRITICAL - COMPLETENESS AND LENGTH (ABSOLUTELY IMPORTANT):**
