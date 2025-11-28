@@ -24,7 +24,6 @@ export async function POST(request: Request) {
       hausarbeit: 'Hausarbeit',
       bachelor: 'Bachelorarbeit',
       master: 'Masterarbeit',
-      dissertation: 'Dissertation',
     }
 
     const citationStyleLabels: Record<string, string> = {

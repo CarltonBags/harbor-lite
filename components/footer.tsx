@@ -7,25 +7,17 @@ const footerLinks = {
     { name: 'Funktionen', href: '#features' },
     { name: 'Preise', href: '#pricing' },
     { name: 'So funktioniert\'s', href: '#how-it-works' },
-    { name: 'Vorlagen', href: '#' },
   ],
   resources: [
-    { name: 'Dokumentation', href: '#' },
-    { name: 'Anleitungen', href: '#' },
-    { name: 'API-Referenz', href: '#' },
-    { name: 'Support', href: '#' },
+    { name: 'Support', href: 'mailto:support@thesismeister.de' },
   ],
   company: [
-    { name: 'Über uns', href: '#' },
-    { name: 'Blog', href: '#' },
-    { name: 'Karriere', href: '#' },
-    { name: 'Kontakt', href: '#' },
+    { name: 'Kontakt', href: 'mailto:kontakt@thesismeister.de' },
   ],
   legal: [
-    { name: 'Datenschutz', href: '#' },
-    { name: 'Nutzungsbedingungen', href: '#' },
-    { name: 'Cookie-Richtlinie', href: '#' },
-    { name: 'DSGVO', href: '#' },
+    { name: 'Datenschutz', href: '/datenschutz' },
+    { name: 'Nutzungsbedingungen', href: '/nutzungsbedingungen' },
+    { name: 'Impressum', href: '/impressum' },
   ],
 }
 

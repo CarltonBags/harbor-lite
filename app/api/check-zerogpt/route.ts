@@ -61,95 +61,182 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ZeroGPT API has a limit, truncate to ~50k characters if needed
-    const MAX_TEXT_LENGTH = 50000
+    // ZeroGPT API has a limit of ~50k characters per request
+    // Split text into chunks if it's too long
+    const MAX_TEXT_LENGTH = 45000 // Use 45k to leave buffer
+    const chunks: string[] = []
+    
     if (plainText.length > MAX_TEXT_LENGTH) {
-      console.warn(`Text too long (${plainText.length} chars), truncating to ${MAX_TEXT_LENGTH}`)
-      plainText = plainText.substring(0, MAX_TEXT_LENGTH)
-    }
-
-    // Call ZeroGPT API
-    const response = await fetch('https://zerogpt.p.rapidapi.com/api/v1/detectText', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'X-RapidAPI-Key': RAPIDAPI_KEY!,
-        'X-RapidAPI-Host': 'zerogpt.p.rapidapi.com',
-      },
-      body: JSON.stringify({
-        input_text: plainText,
-      }),
-    })
-
-    if (!response.ok) {
-      let errorData: any = {}
-      let errorText = ''
-      try {
-        // Try to parse as JSON first
-        const contentType = response.headers.get('content-type')
-        if (contentType && contentType.includes('application/json')) {
-          errorData = await response.json()
-          errorText = JSON.stringify(errorData, null, 2)
+      console.log(`Text too long (${plainText.length} chars), splitting into chunks...`)
+      
+      // Split text intelligently: paragraphs -> sentences -> words
+      let currentChunk = ''
+      
+      // First, try splitting by paragraphs (double newlines)
+      const paragraphs = plainText.split(/\n\n+/)
+      
+      for (const paragraph of paragraphs) {
+        // If adding this paragraph would exceed limit
+        if ((currentChunk + '\n\n' + paragraph).length > MAX_TEXT_LENGTH) {
+          // If current chunk has content, save it
+          if (currentChunk.trim()) {
+            chunks.push(currentChunk.trim())
+            currentChunk = ''
+          }
+          
+          // If paragraph itself is too long, split by sentences
+          if (paragraph.length > MAX_TEXT_LENGTH) {
+            const sentences = paragraph.split(/([.!?]\s+)/)
+            for (const sentence of sentences) {
+              if ((currentChunk + sentence).length <= MAX_TEXT_LENGTH) {
+                currentChunk += sentence
+              } else {
+                if (currentChunk.trim()) {
+                  chunks.push(currentChunk.trim())
+                }
+                // If sentence is still too long, split by words
+                if (sentence.length > MAX_TEXT_LENGTH) {
+                  const words = sentence.split(/\s+/)
+                  let wordChunk = ''
+                  for (const word of words) {
+                    if ((wordChunk + ' ' + word).length <= MAX_TEXT_LENGTH) {
+                      wordChunk += (wordChunk ? ' ' : '') + word
+                    } else {
+                      if (wordChunk.trim()) chunks.push(wordChunk.trim())
+                      wordChunk = word
+                    }
+                  }
+                  currentChunk = wordChunk
+                } else {
+                  currentChunk = sentence
+                }
+              }
+            }
+          } else {
+            currentChunk = paragraph
+          }
         } else {
-          errorText = await response.text()
+          currentChunk += (currentChunk ? '\n\n' : '') + paragraph
         }
-      } catch (e) {
-        errorText = 'Could not read error response'
       }
       
-      console.error('ZeroGPT API error:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorText,
-        errorData,
-        textLength: plainText.length,
-        textPreview: plainText.substring(0, 200),
-      })
+      if (currentChunk.trim()) {
+        chunks.push(currentChunk.trim())
+      }
       
-      // Return more detailed error
-      return NextResponse.json(
-        { 
-          error: `ZeroGPT API error: ${response.status} ${response.statusText}`,
-          details: errorData.message || errorData.error || errorText,
-          fullError: errorData,
-          textLength: plainText.length,
-        },
-        { status: response.status }
-      )
+      console.log(`Split into ${chunks.length} chunks (sizes: ${chunks.map(c => c.length).join(', ')})`)
+    } else {
+      chunks.push(plainText)
     }
 
-    let data: any
-    try {
-      data = await response.json()
-    } catch (e) {
-      console.error('Failed to parse ZeroGPT response as JSON:', e)
+    // Check each chunk and combine results
+    const chunkResults: Array<{
+      isHumanWritten: number
+      isGptGenerated: number
+      wordsCount: number
+      feedbackMessage?: string
+    }> = []
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i]
+      console.log(`Checking chunk ${i + 1}/${chunks.length} (${chunk.length} chars)...`)
+
+      try {
+        const response = await fetch('https://zerogpt.p.rapidapi.com/api/v1/detectText', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'X-RapidAPI-Key': RAPIDAPI_KEY!,
+            'X-RapidAPI-Host': 'zerogpt.p.rapidapi.com',
+          },
+          body: JSON.stringify({
+            input_text: chunk,
+          }),
+        })
+
+        if (!response.ok) {
+          let errorData: any = {}
+          let errorText = ''
+          try {
+            const contentType = response.headers.get('content-type')
+            if (contentType && contentType.includes('application/json')) {
+              errorData = await response.json()
+              errorText = JSON.stringify(errorData, null, 2)
+            } else {
+              errorText = await response.text()
+            }
+          } catch (e) {
+            errorText = 'Could not read error response'
+          }
+          
+          console.error(`ZeroGPT API error for chunk ${i + 1}:`, {
+            status: response.status,
+            statusText: response.statusText,
+            errorText,
+            errorData,
+            chunkLength: chunk.length,
+          })
+          
+          // Continue with other chunks even if one fails
+          continue
+        }
+
+        let data: any
+        try {
+          data = await response.json()
+        } catch (e) {
+          console.error(`Failed to parse ZeroGPT response for chunk ${i + 1}:`, e)
+          continue
+        }
+
+        if (data.error || data.message) {
+          console.error(`ZeroGPT API returned error for chunk ${i + 1}:`, data.error || data.message)
+          continue
+        }
+
+        if (data.success && data.data) {
+          chunkResults.push({
+            isHumanWritten: data.data.is_human_written || 0,
+            isGptGenerated: data.data.is_gpt_generated || 0,
+            wordsCount: data.data.words_count || 0,
+            feedbackMessage: data.data.feedback_message || '',
+          })
+        }
+      } catch (error) {
+        console.error(`Error checking chunk ${i + 1}:`, error)
+        // Continue with other chunks
+      }
+    }
+
+    if (chunkResults.length === 0) {
       return NextResponse.json(
-        { error: 'Invalid JSON response from ZeroGPT API' },
+        { error: 'Failed to check any chunks with ZeroGPT API' },
         { status: 500 }
       )
     }
 
-    console.log('ZeroGPT API response:', JSON.stringify(data, null, 2))
+    // Combine results: average percentages, sum word counts
+    const totalWords = chunkResults.reduce((sum, r) => sum + r.wordsCount, 0)
+    const weightedHuman = chunkResults.reduce((sum, r) => sum + (r.isHumanWritten * r.wordsCount), 0) / totalWords
+    const weightedGpt = chunkResults.reduce((sum, r) => sum + (r.isGptGenerated * r.wordsCount), 0) / totalWords
 
-    // Check if response indicates an error
-    if (data.error || data.message) {
-      return NextResponse.json(
-        { 
-          error: data.error || data.message || 'ZeroGPT API returned an error',
-          details: data,
-        },
-        { status: 400 }
-      )
+    // Combine feedback messages if available
+    const feedbackMessages = chunkResults
+      .map(r => r.feedbackMessage)
+      .filter(msg => msg && msg.trim())
+      .filter((msg, index, arr) => arr.indexOf(msg) === index) // Remove duplicates
+    
+    const result = {
+      isHumanWritten: Math.round(weightedHuman),
+      isGptGenerated: Math.round(weightedGpt),
+      feedbackMessage: chunks.length > 1 
+        ? `Text wurde in ${chunks.length} Teile aufgeteilt und geprüft.${feedbackMessages.length > 0 ? ' ' + feedbackMessages[0] : ''}`
+        : (chunkResults[0]?.feedbackMessage || ''),
+      wordsCount: totalWords,
+      checkedAt: new Date().toISOString(),
     }
 
-    if (data.success && data.data) {
-      const result = {
-        isHumanWritten: data.data.is_human_written || 0,
-        isGptGenerated: data.data.is_gpt_generated || 0,
-        feedbackMessage: data.data.feedback_message || '',
-        wordsCount: data.data.words_count || 0,
-        checkedAt: new Date().toISOString(),
-      }
+    console.log(`ZeroGPT check completed: ${chunks.length} chunk(s), ${result.isHumanWritten}% human, ${result.isGptGenerated}% AI`)
 
       // Update thesis metadata with ZeroGPT result
       const existingMetadata = (thesis.metadata as any) || {}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, FileText, Calendar, ArrowRight, Loader2, Trash2, ArrowLeft } from 'lucide-react'
+import { Plus, FileText, Calendar, ArrowRight, Loader2, Trash2, ArrowLeft, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createSupabaseClient } from '@/lib/supabase/client'
@@ -15,6 +15,7 @@ export function MyThesesPageClient() {
   const [theses, setTheses] = useState<Thesis[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     const loadUserAndTheses = async () => {
@@ -38,7 +39,41 @@ export function MyThesesPageClient() {
     }
 
     loadUserAndTheses()
+
+    // Poll for status updates if there are generating theses
+    const pollInterval = setInterval(async () => {
+      try {
+        const supabase = createSupabaseClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (!user) return
+
+        const thesesData = await getUserTheses(user.id)
+        if (thesesData) {
+          // Always update to get latest status
+          setTheses(thesesData)
+        }
+      } catch (error) {
+        console.error('Error polling thesis status:', error)
+      }
+    }, 10000) // Poll every 10 seconds
+
+    return () => clearInterval(pollInterval)
   }, [router])
+
+  const handleRefresh = async () => {
+    if (!user) return
+    
+    try {
+      setRefreshing(true)
+      const thesesData = await getUserTheses(user.id)
+      setTheses(thesesData || [])
+    } catch (error) {
+      console.error('Error refreshing theses:', error)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const handleDelete = async (thesisId: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -146,13 +181,24 @@ export function MyThesesPageClient() {
               Verwalte Deine Thesis-Projekte und setze Deine Arbeit fort
             </p>
           </div>
-          <Link
-            href="/thesis/new"
-            className="flex items-center gap-2 px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-semibold hover:bg-blue-600 dark:hover:bg-blue-500 transition-all shadow-lg hover:shadow-xl"
-          >
-            <Plus className="w-5 h-5" />
-            Neues Projekt
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Status aktualisieren"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              Aktualisieren
+            </button>
+            <Link
+              href="/thesis/new"
+              className="flex items-center gap-2 px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-semibold hover:bg-blue-600 dark:hover:bg-blue-500 transition-all shadow-lg hover:shadow-xl"
+            >
+              <Plus className="w-5 h-5" />
+              Neues Projekt
+            </Link>
+          </div>
         </div>
 
         {loading ? (

@@ -24,7 +24,6 @@ export async function POST(request: Request) {
       hausarbeit: 'Hausarbeit',
       bachelor: 'Bachelorarbeit',
       master: 'Masterarbeit',
-      dissertation: 'Dissertation',
     }
 
     const prompt = `Du bist ein akademischer Berater. Generiere 5 präzise, gut formulierte Forschungsfragen für eine ${thesisTypeLabels[thesisType] || 'Masterarbeit'} im Fachbereich ${field} zum Thema "${topic}".

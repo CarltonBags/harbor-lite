@@ -5,8 +5,8 @@ import { FileText, Zap, Shield, Users, Globe, BarChart } from 'lucide-react'
 const features = [
   {
     icon: FileText,
-    title: 'LaTeX-Formatierung',
-    description: 'Professionelle akademische Formatierung mit LaTeX. Export zu PDF, Word oder LaTeX-Quelldateien.',
+    title: 'LaTeX & DOCX',
+    description: 'Professionelle akademische Formatierung mit LaTeX und DOCX.',
   },
   {
     icon: Zap,
@@ -18,21 +18,8 @@ const features = [
     title: 'Zitationsverwaltung',
     description: 'Automatische Zitationsformatierung für alle wichtigen akademischen Stile (APA, MLA, Chicago, etc.).',
   },
-  {
-    icon: Users,
-    title: 'Kollaborations-Tools',
-    description: 'Arbeite nahtlos mit Betreuern und Co-Autoren. Echtzeit-Kollaboration und Kommentare.',
-  },
-  {
-    icon: Globe,
-    title: 'Mehrsprachiger Support',
-    description: 'Schreibe in mehreren Sprachen mit korrekter Formatierung und Grammatikprüfung.',
-  },
-  {
-    icon: BarChart,
-    title: 'Fortschrittsverfolgung',
-    description: 'Verfolge Deinen Schreibfortschritt, setze Ziele und bleibe mit integrierten Analysen im Zeitplan.',
-  },
+ 
+  
 ]
 
 export function Features() {

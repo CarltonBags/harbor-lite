@@ -124,7 +124,7 @@ export function Navbar() {
                   aria-label="Benutzermenü"
                 >
                   <User className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-700 hidden sm:block">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 hidden sm:block">
                     {user.email?.split('@')[0] || 'Benutzer'}
                   </span>
                   <ChevronDown className={`w-4 h-4 text-gray-700 dark:text-gray-300 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
@@ -176,7 +176,7 @@ export function Navbar() {
                   setAuthMode('signin')
                   setAuthDialogOpen(true)
                 }}
-                className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                className="p-2 rounded-lg bg-gray-100 dark:bg-gray-300 hover:bg-gray-200 dark:hover:bg-gray-500 transition-colors"
                 aria-label="Anmelden"
               >
                 <User className="w-5 h-5 text-gray-700 dark:text-gray-300" />
@@ -281,7 +281,7 @@ export function Navbar() {
                   setAuthDialogOpen(true)
                   setMobileMenuOpen(false)
                 }}
-                className="block mt-4 px-6 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-center w-full flex items-center justify-center gap-2"
+                className="block mt-4 px-6 py-2 text-gray-700 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-center w-full flex items-center justify-center gap-2"
               >
                 <User className="w-4 h-4" />
                 Anmelden

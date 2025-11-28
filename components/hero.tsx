@@ -66,24 +66,22 @@ export function Hero() {
               </span>
             </h1>
 
-            {/* CTA - Subtle scroll-down link */}
+            {/* CTA - Link to thesis creation */}
             <div className="mb-0 md:mb-10">
-              <button
-                onClick={() => {
-                  const servicesSection = document.querySelector('#services') || document.querySelector('main > *:nth-child(2)');
-                  servicesSection?.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="group inline-flex flex-col items-center text-base md:text-xl text-gray-800 transition-colors font-medium"
+              <a
+                href="/thesis/new"
+                className="group inline-flex flex-col items-center text-base md:text-xl text-gray-800 transition-colors font-medium no-underline"
               >
                 <div className="flex flex-col items-center gap-2">
-                  <span className="font-semibold bg-white border-2 border-black text-black hover:bg-sky-300/20 px-4 py-2 rounded-full w-56 md:w-64">Los geht's!</span>
-                  <p className="flex flex-row items-center gap-2">
+                  <span className="font-semibold bg-white border-2 border-black text-black hover:bg-sky-300/20 px-4 py-2 rounded-full w-56 md:w-64 transition-colors">Los geht's!</span>
+                  <p className="flex flex-row items-center gap-2 flex-wrap justify-center">
+                    <span className="text-xs rounded-full px-2 py-1 bg-sky-300/20 border-black font-semibold">Erste ihrer Art</span>
                     <span className="text-xs rounded-full px-2 py-1 bg-sky-300/20 border-black">100% legal</span>
                     <span className="text-xs rounded-full px-2 py-1 bg-sky-300/20 border-black">kein Abo</span>
                     <span className="text-xs rounded-full px-2 py-1 bg-sky-300/20 border-black">AI-powered</span>
                   </p>
                 </div>
-              </button>
+              </a>
             </div>
 
             {/* Clarifier - Subtle and Professional 

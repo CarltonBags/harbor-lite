@@ -925,7 +925,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     const pageExtractStart = Date.now()
     let pageStart: string | null = null
     let pageEnd: string | null = null
-
+    
     if (fileType.type === 'pdf') {
       try {
         const pageNumbers = await extractPageNumbers(docBuffer)
@@ -1754,7 +1754,10 @@ Fußnoten:
 [^4]: Becker, K. (2023). "Einsatz von KI." Zeitschrift, 5(2), S. 23-34.
 
 **WICHTIG:**
-- Dein Text MUSS mit dem ersten Kapitel beginnen. Keine Kommentare, keine Einführung. Das Thema der Arbeit wird spöter automatisch hinzugefügt. 
+- Dein Text MUSS mit dem ersten Kapitel beginnen. Keine Kommentare, keine Einführung, KEIN Titel, KEINE Überschrift mit "Bachelorarbeit", "Masterarbeit" oder "Hausarbeit", KEINE Meta-Informationen.
+- ABSOLUT VERBOTEN: Titel, Thesis-Typ (Bachelorarbeit/Masterarbeit/Hausarbeit), oder irgendwelche anderen Texte VOR dem ersten Kapitel zu schreiben.
+- Das erste Wort deines Outputs MUSS der erste Buchstabe des ersten Kapitels sein (z.B. "#" für die Überschrift "## 1. Einleitung").
+- BEGINNE SOFORT mit "## 1. Einleitung" oder "## Einleitung" - NICHTS davor.
 - Stelle sicher, dass der Text vollständig ist und nicht abgebrochen wird - auch wenn viele Fußnoten verwendet werden.
 - Jede Quelle im Literaturverzeichnis MUSS mindestens eine Fußnote im Text haben.
 - Wenn du Informationen aus einer Quelle verwendest, MUSS sofort eine Fußnote folgen.` : ''}
@@ -1794,20 +1797,23 @@ Fußnoten:
 - Wenn eine Quelle nicht in den RAG-Ergebnissen ist, existiert sie für diese Thesis NICHT - zitiere sie NICHT.
 - NIEMALS Platzhalter-Quellen erstellen oder Quellen als hypothetisch markieren.
 
-**WICHTIG - Inhaltsverzeichnis:**
+**WICHTIG - Inhaltsverzeichnis und Titel:**
 - ERSTELLE KEIN Inhaltsverzeichnis (Table of Contents / Inhaltsverzeichnis) im generierten Text.
 - Das Inhaltsverzeichnis wird automatisch aus der Gliederung generiert und separat angezeigt.
-- Beginne direkt mit dem ersten Kapitel (z.B. "## Einleitung" oder "## 1. Einleitung").
+- ABSOLUT VERBOTEN: KEIN Titel, KEINE Überschrift mit "Bachelorarbeit", "Masterarbeit", "Hausarbeit" oder dem Thesis-Titel VOR dem ersten Kapitel.
+- ABSOLUT VERBOTEN: Irgendwelche Texte, Überschriften oder Meta-Informationen VOR dem ersten Kapitel.
+- Beginne direkt mit dem ersten Kapitel (z.B. "## 1. Einleitung" oder "## Einleitung").
 - Keine Überschrift "Inhaltsverzeichnis" oder "Table of Contents" im Text.
+- Das erste Zeichen deines Outputs MUSS "#" sein (für die erste Kapitelüberschrift).
 
 **Output-Format:**
 - Gib die komplette Arbeit in Markdown mit klaren Überschriften aus.
-- Strukturbeispiel:
-  # Einleitung
+- Strukturbeispiel (BEGINNE SOFORT mit diesem Format, KEIN Titel davor):
+  ## 1. Einleitung
   ...
-  # Fazit
-  # Literaturverzeichnis
-- BEGINNE direkt mit dem ersten Kapitel - KEIN Inhaltsverzeichnis.
+  ## Fazit
+  ## Literaturverzeichnis
+- BEGINNE direkt mit dem ersten Kapitel - KEIN Titel, KEIN Inhaltsverzeichnis, KEINE Meta-Informationen.
 
 **KRITISCH - VOLLSTÄNDIGKEIT UND LÄNGE (ABSOLUT WICHTIG):**
 
@@ -2086,20 +2092,23 @@ The text must sound like written by a human author from the start and must not b
 - If you claim "Studies show...", you MUST cite the specific study from the context.
 - **VERIFICATION:** Before writing any paragraph, ask yourself: "Is this information present in the provided files?" If not, DO NOT WRITE IT.
 
-**IMPORTANT - Table of Contents:**
+**IMPORTANT - Table of Contents and Title:**
 - DO NOT CREATE a table of contents (Table of Contents / Inhaltsverzeichnis) in the generated text.
 - The table of contents is automatically generated from the outline and displayed separately.
-- Start directly with the first chapter (e.g., "## Introduction" or "## 1. Introduction").
+- ABSOLUTELY FORBIDDEN: NO title, NO heading with "Bachelor Thesis", "Master Thesis", "Thesis" or the thesis title BEFORE the first chapter.
+- ABSOLUTELY FORBIDDEN: Any text, headings, or meta-information BEFORE the first chapter.
+- Start directly with the first chapter (e.g., "## 1. Introduction" or "## Introduction").
 - No heading "Table of Contents" or "Inhaltsverzeichnis" in the text.
+- The first character of your output MUST be "#" (for the first chapter heading).
 
 **Output Format:**
 - Output the complete thesis in Markdown with clear headings.
-- Structure example:
-  # Introduction
+- Structure example (START IMMEDIATELY with this format, NO title before):
+  ## 1. Introduction
   ...
-  # Conclusion
-  # Bibliography
-- START directly with the first chapter - NO table of contents.
+  ## Conclusion
+  ## Bibliography
+- START directly with the first chapter - NO title, NO table of contents, NO meta-information.
 
 **CRITICAL - COMPLETENESS AND LENGTH (ABSOLUTELY IMPORTANT):**
 

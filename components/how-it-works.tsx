@@ -6,7 +6,7 @@ const steps = [
   {
     number: '01',
     title: 'Thema & Forschungsfrage',
-    description: 'Starte mit Deinem Thema. Gib Deine Forschungsfrage, Methodik und grobe Gliederung ein. Je genauer Deine Eingaben, desto präziser das Ergebnis.',
+    description: 'Starte mit Deinem Thema. Gib Deine Forschungsfrage und Gliederung ein oder lasse beides von unserer KI generieren.',
     icon: FileText,
     color: 'from-blue-500 to-blue-600',
     iconBg: 'bg-blue-100 dark:bg-blue-900',
@@ -14,7 +14,7 @@ const steps = [
   {
     number: '02',
     title: 'Literatur & Quellen',
-    description: 'Lade Deine PDF-Quellen, Notizen und Datensätze hoch. Unsere KI analysiert Deine Literatur und extrahiert automatisch die relevantesten Zitate und Fakten.',
+    description: 'Lade Deine PDF-Quellen und Datensätze hoch. Unsere KI analysiert Deine Literatur und extrahiert automatisch die relevantesten Zitate und Fakten.',
     icon: Upload,
     color: 'from-purple-500 to-purple-600',
     iconBg: 'bg-purple-100 dark:bg-purple-900',
@@ -37,8 +37,8 @@ const steps = [
   },
   {
     number: '05',
-    title: 'Review & Feinschliff',
-    description: 'Behalte die volle Kontrolle. Überprüfe den generierten Text, ergänze eigene Gedanken und verfeinere Argumentationen direkt im Editor.',
+    title: 'Manuelle & KI-assistierte Bearbeitung',
+    description: 'Bearbeite deine Thesis direkt im Editor – manuell oder mit KI-Prompts. Sechs inklusive KI-Umschreib-Prompts für präzise Anpassungen.',
     icon: Eye,
     color: 'from-green-500 to-green-600',
     iconBg: 'bg-green-100 dark:bg-green-900',
@@ -46,7 +46,7 @@ const steps = [
   {
     number: '06',
     title: 'Formatierung & Export',
-    description: 'Wähle Dein gewünschtes Format. Exportiere die fertige Arbeit als perfekt formatiertes PDF, Word-Dokument (DOCX) oder LaTeX-Datei.',
+    description: 'Wähle Dein gewünschtes Format. Exportiere die fertige Arbeit als Word-Dokument (DOCX) oder LaTeX-Datei.',
     icon: Download,
     color: 'from-teal-500 to-teal-600',
     iconBg: 'bg-teal-100 dark:bg-teal-900',
@@ -89,7 +89,7 @@ export function HowItWorks() {
                         <div className={`p-3 rounded-xl ${step.iconBg}`}>
                           <Icon className="w-8 h-8 text-gray-700 dark:text-gray-300" />
                         </div>
-                        <span className="text-4xl font-bold text-gray-300 dark:text-gray-800 select-none">
+                        <span className="text-4xl font-bold text-gray-300 dark:text-gray-400 select-none">
                           {step.number}
                         </span>
                       </div>
@@ -136,7 +136,7 @@ export function HowItWorks() {
                         <div className={`p-3 rounded-xl ${step.iconBg}`}>
                           <Icon className="w-8 h-8 text-gray-700 dark:text-gray-300" />
                         </div>
-                        <span className="text-4xl font-bold text-gray-300 dark:text-gray-800 select-none">
+                        <span className="text-4xl font-bold text-gray-300 dark:text-gray-400 select-none">
                           {step.number}
                         </span>
                       </div>
@@ -176,14 +176,14 @@ export function HowItWorks() {
                 const step = steps[6]
                 const Icon = step.icon
                 return (
-                  <div className="h-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-yellow-400 dark:border-yellow-600 overflow-hidden">
+                  <div className="h-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-700 overflow-hidden">
                     <div className={`h-1.5 bg-gradient-to-r ${step.color}`} />
                     <div className="p-8">
                       <div className="flex justify-between items-start mb-6">
                         <div className={`p-3 rounded-xl ${step.iconBg}`}>
                           <Icon className="w-8 h-8 text-gray-700 dark:text-gray-300" />
                         </div>
-                        <span className="text-4xl font-bold text-gray-300 dark:text-gray-800 select-none">
+                        <span className="text-4xl font-bold text-gray-300 dark:text-gray-400 select-none">
                           {step.number}
                         </span>
                       </div>
@@ -220,7 +220,7 @@ export function HowItWorks() {
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white">
                           {step.title}
                         </h3>
-                        <span className="text-2xl font-bold text-gray-300 dark:text-gray-800">
+                        <span className="text-2xl font-bold text-gray-300 dark:text-gray-400">
                           {step.number}
                         </span>
                       </div>

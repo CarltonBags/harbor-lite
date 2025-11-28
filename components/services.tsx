@@ -11,7 +11,7 @@ const valueProps = [
   {
     icon: Brain,
     title: 'Argumentiere mit KI-Präzision',
-    description: 'Folge dem Roten Faden zur beantwortung deiner Forschungsfrage mit kohärenter Gedankenführung durch fortschrittliche KI.',
+    description: 'Folge dem Roten Faden zur Beantwortung deiner Forschungsfrage mit kohärenter Gedankenführung durch fortschrittliche KI.',
   },
   {
     icon: CheckCircle,
@@ -25,11 +25,19 @@ export function Services() {
     <section id="services" className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50 dark:bg-gray-800">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-16">
+          <div className="inline-block mb-4">
+            <span className="px-4 py-2 bg-yellow-600 dark:bg-yellow-500 text-black dark:text-white rounded-full text-sm font-semibold">
+              Erste ihrer Art
+            </span>
+          </div>
           <h2 className="text-4xl md:text-5xl font-bold mb-4 text-black dark:text-white">
             Warum ThesisMeister?
           </h2>
-          <p className="text-xl text-gray-600 dark:text-gray-400">
+          <p className="text-xl text-gray-600 dark:text-gray-400 mb-2">
             Deine Vorteile auf einen Blick
+          </p>
+          <p className="text-base text-gray-500 dark:text-gray-500 max-w-2xl mx-auto">
+            Der erste Thesis-Generator mit integrierter manueller und KI-assistierter Bearbeitung.
           </p>
         </div>
 

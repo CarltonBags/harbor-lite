@@ -85,7 +85,7 @@ export default function GeneratePage() {
       <div className="min-h-screen bg-white dark:bg-gray-900 pt-16">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-red-600 dark:text-red-500" />
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600 dark:text-blue-500" />
             <span className="ml-3 text-gray-600 dark:text-gray-400">
               Lade Status...
             </span>
@@ -150,14 +150,14 @@ export default function GeneratePage() {
         <div className="mb-6">
           <Link
             href="/"
-            className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+            className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
           >
             <Home className="w-4 h-4 mr-2" />
             Startseite
           </Link>
         </div>
         <div className="text-center">
-          <Loader2 className="w-16 h-16 animate-spin text-red-600 dark:text-red-500 mx-auto mb-6" />
+          <Loader2 className="w-16 h-16 animate-spin text-blue-600 dark:text-blue-500 mx-auto mb-6" />
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
             Generierung läuft
           </h1>
@@ -165,12 +165,12 @@ export default function GeneratePage() {
             Ihre Thesis wird im Hintergrund generiert. Dies kann einige Minuten dauern.
           </p>
           
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 mb-6">
-            <div className="flex items-center justify-center gap-2 text-red-700 dark:text-red-300 mb-2">
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6 mb-6">
+            <div className="flex items-center justify-center gap-2 text-blue-700 dark:text-blue-300 mb-2">
               <Mail className="w-5 h-5" />
               <span className="font-semibold">E-Mail-Benachrichtigung</span>
             </div>
-            <p className="text-sm text-red-600 dark:text-red-400">
+            <p className="text-sm text-blue-600 dark:text-blue-400">
               Sie erhalten eine E-Mail, sobald Ihre Thesis fertig ist. Diese Seite aktualisiert sich automatisch.
             </p>
           </div>

@@ -30,7 +30,6 @@ export async function POST(request: Request) {
       hausarbeit: 'Hausarbeit',
       bachelor: 'Bachelorarbeit',
       master: 'Masterarbeit',
-      dissertation: 'Dissertation',
     }
 
     // Initialize Google Gen AI SDK

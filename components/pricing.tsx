@@ -160,14 +160,15 @@ export function Pricing() {
                 ))}
               </ul>
 
-              <button
-                className={`w-full py-3 rounded-lg font-semibold transition-all mt-auto ${plan.popular
+              <a
+                href="/thesis/new"
+                className={`w-full py-3 rounded-lg font-semibold transition-all mt-auto text-center block no-underline ${plan.popular
                   ? 'bg-black dark:bg-white text-white dark:text-black hover:bg-blue-600 dark:hover:bg-blue-500'
                   : 'bg-black dark:bg-white text-white dark:text-black hover:bg-blue-600 dark:hover:bg-blue-500'
                   }`}
               >
                 Loslegen
-              </button>
+              </a>
             </div>
           ))}
         </div>

@@ -207,32 +207,34 @@ export default function ThesisPreviewPage() {
       const data = await response.json()
       console.log('ZeroGPT check completed:', data.result)
 
-      // Reload thesis to get updated metadata
-      await loadThesis()
-
-      // Show success message in chat
-      if (data.result) {
-        const successMessage: ChatMessage = {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: `✓ ZeroGPT-Check abgeschlossen:\n\n**Menschlich geschrieben:** ${data.result.isHumanWritten}%\n**KI-generiert:** ${data.result.isGptGenerated}%\n\nDas Ergebnis wurde gespeichert.`,
-          timestamp: new Date(),
+      // Update thesis state directly with new ZeroGPT result to immediately update modal
+      if (data.result && thesis) {
+        const updatedMetadata = {
+          ...(thesis.metadata || {}),
+          zeroGptResult: data.result,
         }
-        setChatMessages(prev => [...prev, successMessage])
+        setThesis({
+          ...thesis,
+          metadata: updatedMetadata,
+        })
+      } else {
+        // Fallback: reload thesis if direct update didn't work
+        await loadThesis()
       }
+
+      // Ensure modal stays open to show updated results
+      if (!showZeroGptModal) {
+        setShowZeroGptModal(true)
+      }
+
+      // Do NOT show message in chat - results are displayed in the ZeroGPT modal
     } catch (error) {
       console.error('Error checking ZeroGPT:', error)
       const errorMessage = error instanceof Error ? error.message : 'Fehler beim ZeroGPT-Check'
       console.error('Full error:', error)
 
-      // Show error in chat instead of alert
-      const errorChatMessage: ChatMessage = {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: `❌ Fehler beim ZeroGPT-Check: ${errorMessage}`,
-        timestamp: new Date(),
-      }
-      setChatMessages(prev => [...prev, errorChatMessage])
+      // Do NOT show error in chat - errors can be shown in the modal or via console
+      // The modal will remain open and show the previous result if available
     } finally {
       setIsCheckingZeroGpt(false)
     }
@@ -1073,8 +1075,7 @@ export default function ThesisPreviewPage() {
                         <p style={{ fontSize: '12pt', marginBottom: '0' }}>
                           {thesis?.thesis_type === 'hausarbeit' ? 'Hausarbeit' :
                             thesis?.thesis_type === 'bachelor' ? 'Bachelorarbeit' :
-                              thesis?.thesis_type === 'master' ? 'Masterarbeit' :
-                                thesis?.thesis_type === 'dissertation' ? 'Dissertation' : 'Thesis'}
+                              thesis?.thesis_type === 'master' ? 'Masterarbeit' : 'Thesis'}
                         </p>
                       </div>
                       <p style={{ fontSize: '12pt', marginTop: '10mm' }}>
