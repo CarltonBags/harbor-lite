@@ -1007,7 +1007,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     const pageExtractStart = Date.now()
     let pageStart: string | null = null
     let pageEnd: string | null = null
-    
+
     if (fileType.type === 'pdf') {
       try {
         const pageNumbers = await extractPageNumbers(docBuffer)
@@ -1483,7 +1483,7 @@ async function generateThesisPlan(thesisData: ThesisData, sources: Source[]): Pr
   // Sanity check: If targetLength is > 500, it's definitely words, not pages
   const isWords = thesisData.lengthUnit === 'words' || thesisData.targetLength > 500
   const targetWordCount = isWords ? thesisData.targetLength : thesisData.targetLength * 250
-  const maxWordCount = Math.ceil(targetWordCount * 1.15) // Max 15% overshoot
+  const maxWordCount = Math.ceil(targetWordCount * 1.10) // Max 10% overshoot
 
   // Format sources for the prompt
   const sourcesList = sources.map((s, i) =>
@@ -1502,43 +1502,60 @@ Create a detailed roadmap for writing the thesis. For each chapter in the outlin
 1. Define the key arguments and logical flow.
 2. **CRITICAL:** Select specific sources from the provided list that MUST be used in that chapter.
 3. Map specific findings/concepts from the sources to the chapter sections.
-4. **LENGTH PLANNING:** Assign a target word count to each chapter so the TOTAL equals approx. ${targetWordCount} words.
+4. **LENGTH PLANNING:** Assign a target word count RANGE to each chapter so the TOTAL equals approx. ${targetWordCount} words (±5%).
 
 **INPUTS:**
 1. **Thesis Title:** ${thesisData.title}
 2. **Topic/Question:** ${thesisData.topic}
-3. **Target Length:** ${targetWordCount} words (Max allowed: ${maxWordCount} words)
+3. **Target Length:** ${targetWordCount} words (STRICT MAX: ${maxWordCount} words - DO NOT EXCEED)
 4. **Outline:**
 ${outlineStr}
 
 5. **Available Sources:**
 ${sourcesList}
 
+**CRITICAL WORD COUNT RULES:**
+- The sum of ALL chapter target words MUST equal ${targetWordCount} words (±5%).
+- Each chapter should have a word range (e.g., "Target Words: 2000-2200").
+- Introduction and Conclusion are typically shorter (10-15% of total each).
+- Main chapters should be roughly equal in length unless content requires otherwise.
+- The Literaturverzeichnis/Bibliography is NOT counted in the word total.
+- Plan conservatively - it's better to be slightly under than over the limit.
+- ABSOLUTE MAXIMUM for entire thesis: ${maxWordCount} words.
+
 **RULES:**
 - **STRICTLY NO HALLUCINATIONS:** You must ONLY use the sources provided in the list above. Do not invent sources.
 - **MAPPING:** Explicitly state which sources (use their numbers [1], [2], etc.) should be used for which chapter.
 - **CONTENT:** Briefly summarize what content from the source should be used.
-- **LENGTH:** You MUST plan the length of each chapter. The sum of all chapters MUST be close to ${targetWordCount} words. Do NOT exceed ${maxWordCount} words.
+- **LENGTH:** You MUST plan the length of each chapter with a word range. The sum of all chapter MINIMUM targets MUST equal ${Math.floor(targetWordCount * 0.95)} words minimum.
 - **COMPLETENESS:** Ensure every chapter is fully planned. Do not cut off content to save words; adjust the depth instead.
+- **CITATIONS:** Plan for at least 1 citation per 150 words (${Math.ceil(targetWordCount / 150)} total citations minimum).
 
 **OUTPUT FORMAT:**
 Return a structured plan in Markdown:
 
 # Thesis Plan: ${thesisData.title}
-**Total Target Words:** ${targetWordCount}
+**Total Target Words:** ${targetWordCount} (Max: ${maxWordCount})
+**Planned Chapter Distribution:**
+- Chapter 1: XXX-YYY words
+- Chapter 2: XXX-YYY words
+...
+**Total Planned: XXX-YYY words**
 
 ## Chapter 1: [Title]
 - **Goal:** [Brief goal]
-- **Target Words:** [e.g. 500]
+- **Target Words:** [e.g. 1800-2000] (be specific with range)
 - **Key Sources:** [1], [4], [7]
 - **Plan:**
-  - Section 1.1: Use Source [1] to define...
-  - Section 1.2: Compare findings from [4] and [7]...
+  - Section 1.1: Use Source [1] to define... (approx. XXX words)
+  - Section 1.2: Compare findings from [4] and [7]... (approx. XXX words)
 
 ## Chapter 2: [Title]
 ...
 
 (Repeat for all chapters)
+
+**VERIFICATION:** After planning all chapters, verify that the sum of minimum targets = ${Math.floor(targetWordCount * 0.95)}-${targetWordCount} words.
 `
 
   try {
@@ -1587,11 +1604,25 @@ function extractChapterWordTargets(thesisPlan: string, outlineChapters: OutlineC
     outlineChapters.forEach((chapter, index) => {
       const chapterPlan = extractChapterPlan(thesisPlan, chapter, language)
       if (chapterPlan) {
-        const targetMatch = chapterPlan.match(/Target Words:\s*(\d+)/i) || chapterPlan.match(/Zielwörter:\s*(\d+)/i)
-        if (targetMatch) {
-          const value = parseInt(targetMatch[1], 10)
-          if (!Number.isNaN(value) && value > 0) {
-            targets[index] = value
+        // Try to match word ranges first (e.g., "2000-2200" or "2000-2200 words")
+        const rangeMatch = chapterPlan.match(/Target Words:\s*(\d+)\s*-\s*(\d+)/i) || chapterPlan.match(/Zielwörter:\s*(\d+)\s*-\s*(\d+)/i)
+        if (rangeMatch) {
+          const minValue = parseInt(rangeMatch[1], 10)
+          const maxValue = parseInt(rangeMatch[2], 10)
+          if (!Number.isNaN(minValue) && !Number.isNaN(maxValue) && minValue > 0 && maxValue > minValue) {
+            // Use the lower bound to be conservative and avoid overshooting
+            targets[index] = minValue
+            console.log(`[ChapterPlanning] Chapter ${chapter.number}: ${minValue}-${maxValue} words (using ${minValue})`)
+          }
+        } else {
+          // Fallback to single value
+          const targetMatch = chapterPlan.match(/Target Words:\s*(\d+)/i) || chapterPlan.match(/Zielwörter:\s*(\d+)/i)
+          if (targetMatch) {
+            const value = parseInt(targetMatch[1], 10)
+            if (!Number.isNaN(value) && value > 0) {
+              targets[index] = value
+              console.log(`[ChapterPlanning] Chapter ${chapter.number}: ${value} words`)
+            }
           }
         }
       }
@@ -1599,7 +1630,11 @@ function extractChapterWordTargets(thesisPlan: string, outlineChapters: OutlineC
   }
 
   const totalFromPlan = targets.reduce((sum, val) => sum + val, 0)
-  if (Math.abs(totalFromPlan - totalWordTarget) > outlineChapters.length * 200) {
+  console.log(`[ChapterPlanning] Total planned: ${totalFromPlan} words, Target: ${totalWordTarget} words`)
+
+  // If the total is significantly off (more than 10%), adjust proportionally
+  if (Math.abs(totalFromPlan - totalWordTarget) > totalWordTarget * 0.10) {
+    console.log(`[ChapterPlanning] Adjusting chapter targets to match total (${totalFromPlan} -> ${totalWordTarget})`)
     const adjustmentFactor = totalWordTarget / totalFromPlan
     return targets.map((target) => Math.max(600, Math.round(target * adjustmentFactor)))
   }
@@ -1750,20 +1785,20 @@ async function generateChapterContent({
 
     const sectionInstructions = sectionsSummary
       ? (isGerman
-          ? `Die Gliederung dieses Kapitels lautet:\n${sectionsSummary}\n`
-          : `The structure of this chapter is:\n${sectionsSummary}\n`)
+        ? `Die Gliederung dieses Kapitels lautet:\n${sectionsSummary}\n`
+        : `The structure of this chapter is:\n${sectionsSummary}\n`)
       : ''
 
     const planInstructions = chapterPlan
       ? (isGerman
-          ? `Blueprint-Ausschnitt:\n${chapterPlan}\n`
-          : `Blueprint excerpt:\n${chapterPlan}\n`)
+        ? `Blueprint-Ausschnitt:\n${chapterPlan}\n`
+        : `Blueprint excerpt:\n${chapterPlan}\n`)
       : ''
 
     const previousContext = previousContent
       ? (isGerman
-          ? `Vorheriger Textausschnitt (Kontext, NICHT wiederholen, nur für Übergänge verwenden):\n<<<\n${previousExcerpt}\n>>>\n`
-          : `Previous text excerpt (context only, DO NOT repeat, use only for transitions):\n<<<\n${previousExcerpt}\n>>>\n`)
+        ? `Vorheriger Textausschnitt (Kontext, NICHT wiederholen, nur für Übergänge verwenden):\n<<<\n${previousExcerpt}\n>>>\n`
+        : `Previous text excerpt (context only, DO NOT repeat, use only for transitions):\n<<<\n${previousExcerpt}\n>>>\n`)
       : ''
 
     const lengthInstruction = isGerman
@@ -1876,8 +1911,8 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   // Calculate target word count with sanity check
   const isWords = thesisData.lengthUnit === 'words' || thesisData.targetLength > 500
   const targetWordCount = isWords ? thesisData.targetLength : thesisData.targetLength * 250
-  const maxWordCount = Math.ceil(targetWordCount * 1.15)
-  console.log(`[ThesisGeneration] Target words: ${targetWordCount}, Max words: ${maxWordCount}`)
+  const maxWordCount = Math.ceil(targetWordCount * 1.10) // Max 10% overshoot
+  console.log(`[ThesisGeneration] Target words: ${targetWordCount}, Max words (10% overshoot): ${maxWordCount}`)
   const expectedWordCount = targetWordCount
 
   // Calculate appropriate number of sources based on thesis length
@@ -1989,8 +2024,16 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 - Art: ${thesisData.thesisType}
 - Forschungsfrage: ${thesisData.researchQuestion}
 - Zitationsstil: ${citationStyleLabel}
-- Ziel-Länge: ${targetWordCount} Wörter (Maximal ${maxWordCount} Wörter - NICHT ÜBERSCHREITEN!)
+- Ziel-Länge: ${targetWordCount} Wörter (ABSOLUTES MAXIMUM: ${maxWordCount} Wörter - NUR 10% Überschreitung erlaubt!)
 - Sprache: ${thesisData.language}
+
+**KRITISCH - WORTANZAHL-MANAGEMENT:**
+- Ziel: ${targetWordCount} Wörter (ohne Literaturverzeichnis)
+- Absolutes Maximum: ${maxWordCount} Wörter (= ${targetWordCount} + 10%)
+- Das Literaturverzeichnis wird NICHT zur Wortanzahl gezählt
+- STOPPE die Hauptkapitel bei ca. ${targetWordCount} Wörtern, BEVOR du das Literaturverzeichnis schreibst
+- Überschreite NIEMALS ${maxWordCount} Wörter im Haupttext (vor dem Literaturverzeichnis)
+- Eine Überschreitung von mehr als 10% ist INAKZEPTABEL und führt zur Ablehnung
 
 ${thesisPlan ? `**DETAILLIERTER THESIS-PLAN (BLUEPRINT) - STRIKTE BEFOLGUNG:**
 Folge diesem Plan strikt für die Struktur und die Verwendung der Quellen. Dies ist dein Bauplan:
@@ -2007,7 +2050,7 @@ ${JSON.stringify(thesisData.outline, null, 2)}
 - **CRITICAL: Nutze ausschließlich die im Kontext bereitgestellten Quellen (File Search / RAG).
 - Verwende nur Informationen, die eindeutig in diesen Quellen enthalten sind.
 - **JEDER Absatz mit Forschungsergebnissen MUSS Zitationen enthalten.**
-- **Minimum: ~1 Zitation pro 300 Wörter (10.000 Wörter = mindestens 33 Zitationen).**
+- **Minimum: ~1 Zitation pro 150 Wörter (${targetWordCount} Wörter = mindestens ${Math.ceil(targetWordCount / 150)} Zitationen).**
 - Keine erfundenen Seitenzahlen, keine erfundenen Zitate, keine erfundenen Quellen.
 - ABSOLUT VERBOTEN: Hypothetische Quellen, Platzhalter-Quellen oder Quellen mit "(Hypothetische Quelle)" oder "(Hypothetical Source)" zu erstellen.
 - ABSOLUT VERBOTEN: Quellen zu zitieren, die NICHT im FileSearchStore/RAG-Kontext sind.
@@ -2325,8 +2368,16 @@ STOPPE NICHT, bis alle Anforderungen erfüllt sind. Die Arbeit muss VOLLSTÄNDIG
 - Type: ${thesisData.thesisType}
 - Research Question: ${thesisData.researchQuestion}
 - Citation Style: ${citationStyleLabel}
-- Target Length: ${targetWordCount} words (Maximum ${maxWordCount} words - DO NOT EXCEED!)
+- Target Length: ${targetWordCount} words (ABSOLUTE MAXIMUM: ${maxWordCount} words - ONLY 10% overshoot allowed!)
 - Language: ${thesisData.language}
+
+**CRITICAL - WORD COUNT MANAGEMENT:**
+- Target: ${targetWordCount} words (excluding bibliography)
+- Absolute Maximum: ${maxWordCount} words (= ${targetWordCount} + 10%)
+- The Bibliography is NOT counted in the word count
+- STOP the main chapters at approximately ${targetWordCount} words, BEFORE writing the bibliography
+- NEVER exceed ${maxWordCount} words in the main text (before the bibliography)
+- Exceeding 10% overshoot is UNACCEPTABLE and will result in rejection
 
 ${thesisPlan ? `**DETAILED THESIS PLAN (BLUEPRINT) - STRICT ADHERENCE:**
 Follow this plan strictly for structure and source usage. This is your blueprint:
@@ -2629,7 +2680,7 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
       // For word-based lengths, allow up to 5% longer (as per requirements)
       // But we set maxOutputTokens to maximum to ensure it NEVER stops generation
       const maxExpectedWords = isWords
-        ? Math.ceil(thesisData.targetLength * 1.25) // 25% buffer (was 15%) to ensure complete generation
+        ? Math.ceil(thesisData.targetLength * 1.12) // 12% buffer to ensure complete generation without excessive overshoot
         : Math.ceil(thesisData.targetLength * 250 * 1.25)
       const estimatedTokens = Math.ceil(maxExpectedWords / 0.75)
       // Set to maximum allowed (1,000,000 tokens) to ensure generation is NEVER truncated
