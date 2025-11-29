@@ -86,6 +86,14 @@ interface Source {
 interface OutlineChapterInfo {
   number: string
   title: string
+  sections?: {
+    number: string
+    title: string
+    subsections?: {
+      number: string
+      title: string
+    }[]
+  }[]
 }
 
 function escapeRegex(value: string): string {
@@ -1556,12 +1564,80 @@ Return a structured plan in Markdown:
   }
 }
 
+function extractChapterPlan(thesisPlan: string, chapter: OutlineChapterInfo, language: 'german' | 'english'): string {
+  if (!thesisPlan) return ''
+  const chapterNumber = chapter.number?.split('.')[0] || ''
+  if (!chapterNumber) return ''
+
+  const regex = language === 'german'
+    ? new RegExp(`##\\s+Kapitel\\s+${chapterNumber}[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s+(?:Kapitel|Chapter)\\s+|$)`, 'i')
+    : new RegExp(`##\\s+Chapter\\s+${chapterNumber}[^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s+(?:Chapter|Kapitel)\\s+|$)`, 'i')
+
+  const match = thesisPlan.match(regex)
+  return match ? match[1].trim() : ''
+}
+
+function extractChapterWordTargets(thesisPlan: string, outlineChapters: OutlineChapterInfo[], totalWordTarget: number, language: 'german' | 'english'): number[] {
+  if (!outlineChapters.length) return []
+
+  const defaultTarget = Math.max(800, Math.floor(totalWordTarget / outlineChapters.length))
+  const targets = new Array(outlineChapters.length).fill(defaultTarget)
+
+  if (thesisPlan) {
+    outlineChapters.forEach((chapter, index) => {
+      const chapterPlan = extractChapterPlan(thesisPlan, chapter, language)
+      if (chapterPlan) {
+        const targetMatch = chapterPlan.match(/Target Words:\s*(\d+)/i) || chapterPlan.match(/Zielwörter:\s*(\d+)/i)
+        if (targetMatch) {
+          const value = parseInt(targetMatch[1], 10)
+          if (!Number.isNaN(value) && value > 0) {
+            targets[index] = value
+          }
+        }
+      }
+    })
+  }
+
+  const totalFromPlan = targets.reduce((sum, val) => sum + val, 0)
+  if (Math.abs(totalFromPlan - totalWordTarget) > outlineChapters.length * 200) {
+    const adjustmentFactor = totalWordTarget / totalFromPlan
+    return targets.map((target) => Math.max(600, Math.round(target * adjustmentFactor)))
+  }
+
+  return targets
+}
+
+function formatSectionsSummary(chapter: OutlineChapterInfo): string {
+  if (!chapter.sections || !chapter.sections.length) return ''
+  const lines: string[] = []
+
+  chapter.sections.forEach((section) => {
+    lines.push(`- ${section.number} ${section.title}`)
+    if (section.subsections && section.subsections.length) {
+      section.subsections.forEach((subsection) => {
+        lines.push(`  - ${subsection.number} ${subsection.title}`)
+      })
+    }
+  })
+
+  return lines.join('\n')
+}
+
 interface ExtendThesisParams {
   thesisData: ThesisData
   thesisPlan: string
   currentContent: string
   expectedWordCount: number
   outlineChapters: OutlineChapterInfo[]
+  isGerman: boolean
+}
+
+interface GenerateChapterParams {
+  thesisData: ThesisData
+  chapter: OutlineChapterInfo
+  chapterTargetWords: number
+  thesisPlan: string
+  previousContent: string
   isGerman: boolean
 }
 
@@ -1650,6 +1726,120 @@ async function extendThesisContent({
   return { content: updatedContent, wordCount }
 }
 
+async function generateChapterContent({
+  thesisData,
+  chapter,
+  chapterTargetWords,
+  thesisPlan,
+  previousContent,
+  isGerman,
+}: GenerateChapterParams): Promise<{ content: string; wordCount: number }> {
+  const chapterLabel = formatChapterLabel(chapter) || `${chapter.number}` || 'Kapitel'
+  const sectionsSummary = formatSectionsSummary(chapter)
+  const chapterPlan = extractChapterPlan(thesisPlan, chapter, isGerman ? 'german' : 'english')
+  const previousExcerpt = getRecentExcerpt(previousContent, 4000)
+  const minChapterWords = Math.max(600, Math.round(chapterTargetWords * 0.9))
+  const targetWords = Math.max(chapterTargetWords, minChapterWords)
+  let chapterContent = ''
+  let attempts = 0
+
+  const buildChapterPrompt = (remainingWords: number) => {
+    const baseInstructions = isGerman
+      ? `Du schreibst das Kapitel "${chapterLabel}" einer akademischen Arbeit mit dem Thema "${thesisData.title}".`
+      : `You are writing the chapter "${chapterLabel}" of an academic thesis titled "${thesisData.title}".`
+
+    const sectionInstructions = sectionsSummary
+      ? (isGerman
+          ? `Die Gliederung dieses Kapitels lautet:\n${sectionsSummary}\n`
+          : `The structure of this chapter is:\n${sectionsSummary}\n`)
+      : ''
+
+    const planInstructions = chapterPlan
+      ? (isGerman
+          ? `Blueprint-Ausschnitt:\n${chapterPlan}\n`
+          : `Blueprint excerpt:\n${chapterPlan}\n`)
+      : ''
+
+    const previousContext = previousContent
+      ? (isGerman
+          ? `Vorheriger Textausschnitt (Kontext, NICHT wiederholen, nur für Übergänge verwenden):\n<<<\n${previousExcerpt}\n>>>\n`
+          : `Previous text excerpt (context only, DO NOT repeat, use only for transitions):\n<<<\n${previousExcerpt}\n>>>\n`)
+      : ''
+
+    const lengthInstruction = isGerman
+      ? `Schreibe MINDESTENS ${remainingWords} neue Wörter für dieses Kapitel (gern mehr).`
+      : `Write AT LEAST ${remainingWords} new words for this chapter (more is welcome).`
+
+    const startInstruction = isGerman
+      ? `Beginne SOFORT mit der Kapitelüberschrift "## ${chapterLabel}" und schreibe anschließend das vollständige Kapitel.`
+      : `START immediately with the chapter heading "## ${chapterLabel}" and then write the complete chapter.`
+
+    return `${baseInstructions}
+
+${sectionInstructions}${planInstructions}${previousContext}${lengthInstruction}
+
+Weitere Anforderungen:
+- ${isGerman ? 'Nutze ausschließlich die bereitgestellten FileSearch-Quellen und setze korrekte Zitationen/Fußnoten.' : 'Use only the provided FileSearch sources and include proper citations/footnotes.'}
+- ${isGerman ? 'Integriere Kontext, Analyse, Beispiele, Methodik und Diskussion.' : 'Include context, analysis, examples, methodology, and discussion.'}
+- ${isGerman ? 'Füge Übergänge zu vorherigen und folgenden Kapiteln ein, ohne Inhalte zu wiederholen.' : 'Add transitions to previous and upcoming chapters without repeating content.'}
+- ${isGerman ? 'Gliedere das Kapitel mit passenden Zwischenüberschriften (##, ###, etc.).' : 'Structure the chapter with appropriate subheadings (##, ###, etc.).'}
+- ${isGerman ? 'Nutze ein akademisches, menschliches Sprachmuster mit Variation in Satzlängen und Syntax.' : 'Use academic, human-like language with varied sentence lengths and syntax.'}
+- ${isGerman ? 'Keine Meta-Kommentare, nur Inhalt.' : 'No meta commentary, only content.'}
+
+${startInstruction}`
+  }
+
+  while (attempts < 3) {
+    attempts += 1
+    const remainingWords = Math.max(minChapterWords, chapterTargetWords - chapterContent.split(/\s+/).length)
+    const prompt = buildChapterPrompt(Math.min(remainingWords, chapterTargetWords))
+
+    const response = await retryApiCall(
+      () => ai.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents: prompt,
+        config: {
+          maxOutputTokens: Math.min(400000, Math.ceil(Math.max(chapterTargetWords * 2, 6000) / 0.75)),
+          tools: [{
+            fileSearch: {
+              fileSearchStoreNames: [thesisData.fileSearchStoreId],
+            },
+          }],
+        },
+      }),
+      `Generate chapter ${chapterLabel} (attempt ${attempts})`,
+      1,
+      2000
+    )
+
+    const newText = response.text?.trim()
+    if (!newText || newText.length < 200) {
+      console.warn(`[ThesisGeneration] Chapter ${chapterLabel} attempt ${attempts} returned insufficient text.`)
+      continue
+    }
+
+    if (attempts === 1 || !chapterContent) {
+      chapterContent = newText
+    } else {
+      chapterContent += `\n\n${newText}`
+    }
+
+    const currentWords = chapterContent.split(/\s+/).length
+    if (currentWords >= minChapterWords) {
+      break
+    } else {
+      console.warn(`[ThesisGeneration] Chapter ${chapterLabel} still short (${currentWords}/${minChapterWords} words), extending...`)
+    }
+  }
+
+  const finalWordCount = chapterContent.split(/\s+/).length
+  if (finalWordCount < minChapterWords) {
+    throw new Error(`Chapter ${chapterLabel} generation failed to reach minimum word count (${finalWordCount}/${minChapterWords})`)
+  }
+
+  return { content: chapterContent, wordCount: finalWordCount }
+}
+
 
 async function generateThesisContent(thesisData: ThesisData, rankedSources: Source[], thesisPlan: string = ''): Promise<string> {
   console.log('[ThesisGeneration] Starting thesis content generation...')
@@ -1673,6 +1863,14 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   const outlineChapters: OutlineChapterInfo[] = (thesisData.outline || []).map((chapter: any, index: number) => ({
     number: (chapter?.number ?? `${index + 1}.`).toString().trim(),
     title: (chapter?.title ?? '').toString().trim(),
+    sections: (chapter?.sections || chapter?.subchapters || []).map((section: any, sectionIndex: number) => ({
+      number: (section?.number ?? `${index + 1}.${sectionIndex + 1}`).toString().trim(),
+      title: (section?.title ?? '').toString().trim(),
+      subsections: (section?.subsections || []).map((subsection: any, subsectionIndex: number) => ({
+        number: (subsection?.number ?? `${index + 1}.${sectionIndex + 1}.${subsectionIndex + 1}`).toString().trim(),
+        title: (subsection?.title ?? '').toString().trim(),
+      })),
+    })),
   }))
 
   // Calculate target word count with sanity check
@@ -1680,6 +1878,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   const targetWordCount = isWords ? thesisData.targetLength : thesisData.targetLength * 250
   const maxWordCount = Math.ceil(targetWordCount * 1.15)
   console.log(`[ThesisGeneration] Target words: ${targetWordCount}, Max words: ${maxWordCount}`)
+  const expectedWordCount = targetWordCount
 
   // Calculate appropriate number of sources based on thesis length
   // Rule: ~1-1.5 sources per page for short theses, up to 2-2.5 for longer theses
@@ -1714,7 +1913,54 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   console.log(`[ThesisGeneration] Available sources: ${rankedSources.length}`)
   console.log(`[ThesisGeneration] Using top ${rankedSources.length} sources by relevance for RAG context`)
 
+  const chapterWordTargets = outlineChapters.length
+    ? extractChapterWordTargets(thesisPlan || '', outlineChapters, targetWordCount, thesisData.language === 'german' ? 'german' : 'english')
+    : []
+
   const isGerman = thesisData.language === 'german'
+  const useChapterGeneration = outlineChapters.length > 0
+
+  if (useChapterGeneration) {
+    console.log('[ThesisGeneration] Using per-chapter generation strategy')
+    const chapterContents: string[] = []
+    let totalWordCount = 0
+    for (let i = 0; i < outlineChapters.length; i++) {
+      const chapter = outlineChapters[i]
+      const chapterTarget = chapterWordTargets[i] || Math.max(800, Math.round(targetWordCount / outlineChapters.length))
+      console.log(`[ThesisGeneration] Generating chapter ${chapter.number} (${chapterTarget} words target)`)
+
+      const { content: chapterText, wordCount: chapterWordCount } = await generateChapterContent({
+        thesisData,
+        chapter,
+        chapterTargetWords: chapterTarget,
+        thesisPlan: thesisPlan || '',
+        previousContent: chapterContents.join('\n\n'),
+        isGerman,
+      })
+
+      chapterContents.push(chapterText.trim())
+      totalWordCount += chapterWordCount
+      console.log(`[ThesisGeneration] Chapter ${chapter.number} complete (~${chapterWordCount} words, total ${totalWordCount}/${expectedWordCount})`)
+    }
+
+    let combinedContent = chapterContents.join('\n\n\n')
+
+    if (totalWordCount < expectedWordCount) {
+      const extensionResult = await extendThesisContent({
+        thesisData,
+        thesisPlan: thesisPlan || '',
+        currentContent: combinedContent,
+        expectedWordCount,
+        outlineChapters,
+        isGerman,
+      })
+      combinedContent = extensionResult.content
+      totalWordCount = extensionResult.wordCount
+      console.log(`[ThesisGeneration] ✓ Word count reached after extension: ~${totalWordCount}/${expectedWordCount} words`)
+    }
+
+    return combinedContent
+  }
 
   const prompt = isGerman ? `Du bist ein wissenschaftlicher Assistent, der akademische Texte ausschließlich auf Basis der bereitgestellten, indexierten Quellen (RAG / File Search) schreibt.
 
