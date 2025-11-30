@@ -1520,6 +1520,8 @@ ${sourcesList}
 - Introduction and Conclusion are typically shorter (10-15% of total each).
 - Main chapters should be roughly equal in length unless content requires otherwise.
 - The Literaturverzeichnis/Bibliography is NOT counted in the word total.
+- **CRITICAL:** Do NOT plan word counts for "Verzeichnisse" chapters (e.g., Abbildungsverzeichnis, Tabellenverzeichnis, Abkürzungsverzeichnis). These will be skipped during generation.
+- **ONLY the Literaturverzeichnis (Bibliography) will be generated** at the end - no other Verzeichnisse.
 - Plan conservatively - it's better to be slightly under than over the limit.
 - ABSOLUTE MAXIMUM for entire thesis: ${maxWordCount} words.
 
@@ -1755,7 +1757,10 @@ async function extendThesisContent({
   }
 
   if (wordCount < expectedWordCount) {
-    throw new Error(`Extension process failed to reach target length (${wordCount}/${expectedWordCount} words)`)
+    console.warn(`[ThesisGeneration] WARNING: Extension process reached ${wordCount}/${expectedWordCount} words (${Math.round(wordCount / expectedWordCount * 100)}%)`)
+    console.warn(`[ThesisGeneration] → GOAL: Meet word count targets. PRIORITY: Always deliver a complete thesis.`)
+    console.warn(`[ThesisGeneration] → Continuing with current content - thesis will be delivered.`)
+    // Don't throw error - generation must ALWAYS succeed and deliver a thesis
   }
 
   return { content: updatedContent, wordCount }
@@ -1773,6 +1778,9 @@ async function generateChapterContent({
   const sectionsSummary = formatSectionsSummary(chapter)
   const chapterPlan = extractChapterPlan(thesisPlan, chapter, isGerman ? 'german' : 'english')
   const previousExcerpt = getRecentExcerpt(previousContent, 4000)
+
+  // GOAL: Reach the target word count for this chapter
+  // CRITICAL: But generation must NEVER fail - if we can't reach the target, we continue anyway
   const minChapterWords = Math.max(600, Math.round(chapterTargetWords * 0.9))
   const targetWords = Math.max(chapterTargetWords, minChapterWords)
   let chapterContent = ''
@@ -1869,7 +1877,10 @@ ${startInstruction}`
 
   const finalWordCount = chapterContent.split(/\s+/).length
   if (finalWordCount < minChapterWords) {
-    throw new Error(`Chapter ${chapterLabel} generation failed to reach minimum word count (${finalWordCount}/${minChapterWords})`)
+    console.warn(`[ThesisGeneration] WARNING: Chapter ${chapterLabel} is below target (${finalWordCount}/${minChapterWords} words)`)
+    console.warn(`[ThesisGeneration] → GOAL: Meet word count targets. PRIORITY: Always deliver a complete thesis.`)
+    console.warn(`[ThesisGeneration] → Continuing generation - content will be extended if needed in later steps.`)
+    // Don't throw error - generation must ALWAYS succeed and deliver a thesis
   }
 
   return { content: chapterContent, wordCount: finalWordCount }
@@ -1959,8 +1970,27 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     console.log('[ThesisGeneration] Using per-chapter generation strategy')
     const chapterContents: string[] = []
     let totalWordCount = 0
+
+    // Helper function to check if a chapter should be skipped (e.g., Verzeichnisse, Bibliography)
+    const shouldSkipChapter = (chapter: OutlineChapterInfo): boolean => {
+      const title = (chapter.title || '').toLowerCase().trim()
+      const skipKeywords = [
+        'verzeichnisse', 'verzeichnis', 'literaturverzeichnis', 'bibliography', 'references',
+        'anhang', 'appendix', 'abbildungsverzeichnis', 'tabellenverzeichnis',
+        'abkürzungsverzeichnis', 'list of figures', 'list of tables', 'abbreviations'
+      ]
+      return skipKeywords.some(keyword => title.includes(keyword))
+    }
+
     for (let i = 0; i < outlineChapters.length; i++) {
       const chapter = outlineChapters[i]
+
+      // Skip non-content chapters (Verzeichnisse, Bibliography, etc.)
+      if (shouldSkipChapter(chapter)) {
+        console.log(`[ThesisGeneration] Skipping chapter ${chapter.number} "${chapter.title}" (non-content chapter)`)
+        continue
+      }
+
       const chapterTarget = chapterWordTargets[i] || Math.max(800, Math.round(targetWordCount / outlineChapters.length))
       console.log(`[ThesisGeneration] Generating chapter ${chapter.number} (${chapterTarget} words target)`)
 
