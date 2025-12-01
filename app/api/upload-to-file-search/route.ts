@@ -14,13 +14,15 @@ export async function POST(request: Request) {
     const thesisId = thesisIdRaw && thesisIdRaw.trim() !== '' ? thesisIdRaw.trim() : null
     const metadata = formData.get('metadata') as string
     const displayName = formData.get('displayName') as string | null
-    
-    console.log('Upload request received:', { 
-      hasFile: !!file, 
-      hasFileUrl: !!fileUrl, 
-      fileSearchStoreId, 
+    const mandatoryRaw = formData.get('mandatory') as string | null
+    const mandatory = mandatoryRaw === 'true'
+
+    console.log('Upload request received:', {
+      hasFile: !!file,
+      hasFileUrl: !!fileUrl,
+      fileSearchStoreId,
       thesisId,
-      hasMetadata: !!metadata 
+      hasMetadata: !!metadata
     })
 
     if ((!file && !fileUrl) || !fileSearchStoreId) {
@@ -51,7 +53,7 @@ export async function POST(request: Request) {
     if (thesisId && parsedMetadata?.doi) {
       const thesis = await getThesisById(thesisId)
       const existingSources: UploadedSource[] = thesis?.uploaded_sources || []
-      
+
       // Check if DOI already exists
       const duplicateSource = existingSources.find(
         (source) => source.doi && source.doi.toLowerCase() === parsedMetadata!.doi!.toLowerCase()
@@ -59,7 +61,7 @@ export async function POST(request: Request) {
 
       if (duplicateSource) {
         return NextResponse.json(
-          { 
+          {
             error: 'This source has already been uploaded',
             duplicate: true,
             existingSource: duplicateSource,
@@ -103,14 +105,14 @@ export async function POST(request: Request) {
       // Store metadata as separate fields (like the API example)
       // Each field can be up to 256 characters, and we can use numericValue for numbers
       config.customMetadata = []
-      
+
       if (parsedMetadata.doi && parsedMetadata.doi.length <= 256) {
         config.customMetadata.push({
           key: 'doi',
           stringValue: parsedMetadata.doi,
         })
       }
-      
+
       if (parsedMetadata.title) {
         const title = parsedMetadata.title.substring(0, 256)
         config.customMetadata.push({
@@ -118,7 +120,7 @@ export async function POST(request: Request) {
           stringValue: title,
         })
       }
-      
+
       if (parsedMetadata.authors && parsedMetadata.authors.length > 0) {
         // Store first author (or all authors joined if short enough)
         const authors = parsedMetadata.authors.join(', ').substring(0, 256)
@@ -127,7 +129,7 @@ export async function POST(request: Request) {
           stringValue: authors,
         })
       }
-      
+
       if (parsedMetadata.year) {
         const year = parseInt(parsedMetadata.year)
         if (!isNaN(year)) {
@@ -143,20 +145,31 @@ export async function POST(request: Request) {
           })
         }
       }
-      
+
       if (parsedMetadata.journal && parsedMetadata.journal.length <= 256) {
         config.customMetadata.push({
           key: 'journal',
           stringValue: parsedMetadata.journal,
         })
       }
-      
+
       if (parsedMetadata.publisher && parsedMetadata.publisher.length <= 256) {
         config.customMetadata.push({
           key: 'publisher',
           stringValue: parsedMetadata.publisher,
         })
       }
+    }
+
+    // Add mandatory flag to metadata
+    if (mandatory) {
+      if (!config.customMetadata) {
+        config.customMetadata = []
+      }
+      config.customMetadata.push({
+        key: 'mandatory',
+        stringValue: 'true',
+      })
     }
 
     // Upload to FileSearchStore using SDK
@@ -205,6 +218,7 @@ export async function POST(request: Request) {
       metadata: parsedMetadata || undefined,
       sourceType: fileUrl ? 'url' : 'file' as const,
       sourceUrl: fileUrl || undefined,
+      mandatory: mandatory || undefined,
     } : undefined
 
     // Update database with the uploaded source if thesisId is provided
@@ -214,14 +228,14 @@ export async function POST(request: Request) {
         // Use server-side client with service role key to bypass RLS
         const { createSupabaseServerClient } = await import('@/lib/supabase/client')
         const supabase = createSupabaseServerClient()
-        
+
         console.log('Fetching thesis from database:', thesisId)
         const { data: thesis, error: fetchError } = await supabase
           .from('theses')
           .select('*')
           .eq('id', thesisId)
           .single()
-        
+
         if (fetchError) {
           if (fetchError.code === 'PGRST116') {
             console.warn(`Thesis ${thesisId} not found, skipping database update`)
@@ -231,10 +245,10 @@ export async function POST(request: Request) {
         } else if (thesis) {
           console.log('Thesis found. Sources count:', (thesis.uploaded_sources || []).length)
           const existingSources: UploadedSource[] = thesis.uploaded_sources || []
-          
+
           // Check if source already exists (by DOI or fileName)
           const duplicateSource = existingSources.find(
-            (s) => 
+            (s) =>
               (sourceData.doi && s.doi && s.doi.toLowerCase() === sourceData.doi.toLowerCase()) ||
               (s.fileName && s.fileName.toLowerCase() === sourceData.fileName.toLowerCase())
           )
@@ -249,6 +263,7 @@ export async function POST(request: Request) {
               metadata: sourceData.metadata,
               sourceType: sourceData.sourceType as 'file' | 'url',
               sourceUrl: sourceData.sourceUrl,
+              mandatory: sourceData.mandatory,
             }
 
             const updatedSources = [...existingSources, newSource]
@@ -257,7 +272,7 @@ export async function POST(request: Request) {
             // Update thesis with new source
             const { data: updateData, error: updateError } = await supabase
               .from('theses')
-              .update({ 
+              .update({
                 uploaded_sources: updatedSources as any,
                 updated_at: new Date().toISOString(),
               })

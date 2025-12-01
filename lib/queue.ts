@@ -61,5 +61,6 @@ export interface ThesisGenerationJob {
         outline: any[]
         fileSearchStoreId: string
         language: string
+        mandatorySources: string[] // Array of source titles/DOIs that must be cited
     }
 }

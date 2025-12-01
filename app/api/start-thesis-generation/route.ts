@@ -116,6 +116,21 @@ export async function POST(request: Request) {
     // Add job to BullMQ queue
     console.log('Adding thesis generation job to queue:', thesisId)
 
+    // Extract mandatory sources from uploaded_sources where mandatory=true
+    // These are sources the user has explicitly marked as required to cite
+    const mandatorySources: string[] = (thesis.uploaded_sources || [])
+      .filter((source: { mandatory?: boolean }) => source.mandatory === true)
+      .map((source: { title?: string; doi?: string }) => source.title || source.doi || '')
+      .filter((s: string) => s.length > 0)
+
+    // Also update the mandatory_sources column in the database for reference
+    if (mandatorySources.length > 0) {
+      await supabase
+        .from('theses')
+        .update({ mandatory_sources: mandatorySources })
+        .eq('id', thesisId)
+    }
+
     const jobData: ThesisGenerationJob = {
       thesisId,
       thesisData: {
@@ -130,6 +145,7 @@ export async function POST(request: Request) {
         outline: thesis.outline,
         fileSearchStoreId: fileSearchStoreId,
         language: thesis.metadata?.language || 'german',
+        mandatorySources,
       },
     }
 

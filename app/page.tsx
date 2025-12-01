@@ -3,12 +3,12 @@ import { HomePageClient } from './home-client'
 
 export const metadata: Metadata = {
   title: 'ThesisMeister - KI-gestützter Wissenschaftlicher Thesis-Schreiber',
-  description: 'Vom Thema zum Entwurf in Minuten statt Wochen. KI-gestützter Assistent zum Schreiben wissenschaftlicher Arbeiten für Studenten und Forscher. Hausarbeit, Bachelorarbeit oder Masterarbeit - wir helfen dir dabei.',
+  description: 'Vom Thema zum Entwurf in Minuten statt Wochen. KI-gestützter Assistent zum Schreiben wissenschaftlicher Arbeiten für Studenten und Forscher. Hausarbeit, Seminararbeit oder Bachelorarbeit - wir helfen dir dabei.',
   keywords: [
     'Thesis schreiben',
     'Hausarbeit',
     'Bachelorarbeit',
-    'Masterarbeit',
+    'Seminararbeit',
     'KI Thesis',
     'KI-gestützt',
     'LaTeX',

@@ -28,8 +28,8 @@ export async function POST(request: Request) {
 
     const thesisTypeLabels: Record<string, string> = {
       hausarbeit: 'Hausarbeit',
+      seminararbeit: 'Seminararbeit',
       bachelor: 'Bachelorarbeit',
-      master: 'Masterarbeit',
     }
 
     // Initialize Google Gen AI SDK
@@ -97,7 +97,7 @@ export async function POST(request: Request) {
 
     // Build prompt in the selected language
     const prompt = language === 'german'
-      ? `Du bist ein akademischer Berater. Analysiere das hochgeladene Dokument, das eine Gliederung für eine ${thesisTypeLabels[thesisType] || 'Masterarbeit'} im Fachbereich ${field} zum Thema "${topic}" enthält.
+      ? `Du bist ein akademischer Berater. Analysiere das hochgeladene Dokument, das eine Gliederung für eine ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'} im Fachbereich ${field} zum Thema "${topic}" enthält.
 
 Forschungsfrage: "${researchQuestion}"
 Umfang: ca. ${avgPages} Seiten
@@ -136,8 +136,17 @@ WICHTIG:
 - Jedes Kapitel sollte mindestens 2-3 Abschnitte haben (bei sehr kurzen Thesen können es auch weniger sein)
 - KEINE Verschachtelung tiefer als 3 Ebenen (Kapitel > Abschnitt > Unterabschnitt) - niemals 1.1.1.1 oder tiefer
 - Wenn die ursprüngliche Gliederung zu detailliert ist, vereinfache sie entsprechend dem Umfang
-- Die Struktur sollte der ursprünglichen Gliederung im Dokument entsprechen, aber in unserem Format sein und dem Umfang angemessen sein`
-      : `You are an academic advisor. Analyze the uploaded document that contains an outline for a ${thesisTypeLabels[thesisType] || 'Masterarbeit'} in the field of ${field} on the topic "${topic}".
+- Die Struktur sollte der ursprünglichen Gliederung im Dokument entsprechen, aber in unserem Format sein und dem Umfang angemessen sein
+
+**ENTFERNE aus der Gliederung (werden automatisch hinzugefügt):**
+- KEIN "Literaturverzeichnis", "Quellenverzeichnis", "Bibliography" oder "References"
+- KEIN "Inhaltsverzeichnis" oder "Table of Contents"
+- KEIN "Abbildungsverzeichnis", "Tabellenverzeichnis" oder "Abkürzungsverzeichnis"
+- KEIN "Anhang", "Appendix" oder "Anlagen"
+- KEIN "Deckblatt", "Titelseite" oder "Title Page"
+- KEIN "Eidesstattliche Erklärung" oder "Declaration"
+Diese Elemente werden AUTOMATISCH vom System hinzugefügt und dürfen NICHT in der Gliederung erscheinen! Entferne sie aus der hochgeladenen Gliederung.`
+      : `You are an academic advisor. Analyze the uploaded document that contains an outline for a ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'} in the field of ${field} on the topic "${topic}".
 
 Research Question: "${researchQuestion}"
 Length: approx. ${avgPages} pages
@@ -176,7 +185,16 @@ IMPORTANT:
 - Each chapter should have at least 2-3 sections (for very short theses it can be fewer)
 - NO nesting deeper than 3 levels (Chapter > Section > Subsection) - never 1.1.1.1 or deeper
 - If the original outline is too detailed, simplify it according to the length
-- The structure should match the original outline in the document, but be in our format and appropriate for the length`
+- The structure should match the original outline in the document, but be in our format and appropriate for the length
+
+**REMOVE from the outline (added automatically by system):**
+- NO "Bibliography", "References", "Works Cited", or "Literaturverzeichnis"
+- NO "Table of Contents" or "Inhaltsverzeichnis"
+- NO "List of Figures", "List of Tables", or "List of Abbreviations"
+- NO "Appendix", "Appendices", or "Anhang"
+- NO "Title Page", "Cover Page", or "Deckblatt"
+- NO "Declaration", "Statutory Declaration", or "Eidesstattliche Erklärung"
+These elements are AUTOMATICALLY added by the system and must NOT appear in the outline! Remove them from the uploaded outline.`
 
     // Call Gemini API with file
     const response = await ai.models.generateContent({
@@ -216,8 +234,24 @@ IMPORTANT:
       throw new Error('Invalid outline format')
     }
 
+    // Filter out forbidden chapters (Verzeichnisse, Anhang, etc.)
+    const forbiddenTitles = [
+      'literaturverzeichnis', 'quellenverzeichnis', 'bibliography', 'references', 'works cited',
+      'inhaltsverzeichnis', 'table of contents',
+      'abbildungsverzeichnis', 'tabellenverzeichnis', 'abkürzungsverzeichnis',
+      'list of figures', 'list of tables', 'list of abbreviations',
+      'anhang', 'appendix', 'appendices', 'anlagen',
+      'deckblatt', 'titelseite', 'title page', 'cover page',
+      'eidesstattliche erklärung', 'declaration', 'statutory declaration',
+    ]
+    
+    const filteredOutline = outline.filter((item: any) => {
+      const title = (item.title || '').toLowerCase().trim()
+      return !forbiddenTitles.some(forbidden => title.includes(forbidden))
+    })
+
     // Validate and normalize structure
-    const validatedOutline = outline.map((item: any, index: number) => {
+    const validatedOutline = filteredOutline.map((item: any, index: number) => {
       const chapterNumber = item.number || String(index + 1)
       const sections = Array.isArray(item.sections) ? item.sections.map((section: any, secIndex: number) => {
         const sectionNumber = section.number || `${chapterNumber}.${secIndex + 1}`

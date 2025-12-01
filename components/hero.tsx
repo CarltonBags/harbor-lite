@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { ArrowRight, ChevronDown } from 'lucide-react'
 
-const thesisTypes = ['Hausarbeit', 'Bachelorarbeit', 'Masterarbeit']
+const thesisTypes = ['Hausarbeit', 'Seminararbeit', 'Bachelorarbeit']
 
 export function Hero() {
   const [currentTypeIndex, setCurrentTypeIndex] = useState(0)

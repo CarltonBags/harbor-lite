@@ -22,16 +22,29 @@ export async function POST(request: Request) {
 
     const thesisTypeLabels: Record<string, string> = {
       hausarbeit: 'Hausarbeit',
+      seminararbeit: 'Seminararbeit',
       bachelor: 'Bachelorarbeit',
-      master: 'Masterarbeit',
     }
 
-    const prompt = `Du bist ein akademischer Berater. Generiere 5 präzise, gut formulierte Forschungsfragen für eine ${thesisTypeLabels[thesisType] || 'Masterarbeit'} im Fachbereich ${field} zum Thema "${topic}".
+    // Determine if this is a source-based thesis (no own research/methodology)
+    const isSourceBasedThesis = thesisType === 'hausarbeit' || thesisType === 'seminararbeit'
+
+    const sourceBasedInstruction = isSourceBasedThesis
+      ? `WICHTIG: Diese ${thesisTypeLabels[thesisType]} basiert NUR auf Literaturrecherche und Quellenanalyse.
+- Die Forschungsfragen sollten KEINE eigene empirische Forschung erfordern
+- Geeignet sind Fragen wie: "Wie wird X in der Literatur definiert?", "Welche Ansätze gibt es zu Y?", "Wie hat sich Z entwickelt?"
+- NICHT geeignet sind Fragen wie: "Welche Auswirkungen hat X?" (wenn eigene Datenerhebung nötig wäre)`
+      : `Diese ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'} kann eigene Forschung/Methodik enthalten.
+- Die Forschungsfragen können empirische Untersuchungen erfordern`
+
+    const prompt = `Du bist ein akademischer Berater. Generiere 5 präzise, gut formulierte Forschungsfragen für eine ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'} im Fachbereich ${field} zum Thema "${topic}".
+
+${sourceBasedInstruction}
 
 Die Forschungsfragen sollten:
 - Wissenschaftlich präzise und klar formuliert sein
 - Zum Thema und Fachbereich passen
-- Für eine ${thesisTypeLabels[thesisType] || 'Masterarbeit'} angemessen sein
+- Für eine ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'} angemessen sein
 - Verschiedene Aspekte des Themas abdecken
 
 Antworte NUR mit einer JSON-Liste von genau 5 Forschungsfragen, ohne zusätzlichen Text. Format:

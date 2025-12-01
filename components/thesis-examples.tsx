@@ -14,6 +14,16 @@ const examples = [
     color: 'from-blue-500 to-blue-600',
   },
   {
+    type: 'Seminararbeit',
+    icon: FileText,
+    title: 'Beispiel Seminararbeit',
+    subject: 'Politikwissenschaft',
+    pages: '20 Seiten',
+    description: 'Eine quellenbasierte Seminararbeit mit umfassender Literaturanalyse und wissenschaftlicher Argumentation.',
+    image: '/examples/seminararbeit-placeholder.png',
+    color: 'from-purple-500 to-purple-600',
+  },
+  {
     type: 'Bachelorarbeit',
     icon: GraduationCap,
     title: 'Beispiel Bachelorarbeit',
@@ -21,16 +31,6 @@ const examples = [
     pages: '45 Seiten',
     description: 'Eine umfassende Bachelorarbeit mit Literaturrecherche, empirischer Analyse und professioneller Formatierung.',
     image: '/examples/bachelorarbeit-placeholder.png',
-    color: 'from-purple-500 to-purple-600',
-  },
-  {
-    type: 'Masterarbeit',
-    icon: Award,
-    title: 'Beispiel Masterarbeit',
-    subject: 'Informatik',
-    pages: '80 Seiten',
-    description: 'Eine detaillierte Masterarbeit mit komplexer Methodik, umfangreicher Literaturanalyse und wissenschaftlicher Tiefe.',
-    image: '/examples/masterarbeit-placeholder.png',
     color: 'from-yellow-500 to-yellow-600',
   },
 ]

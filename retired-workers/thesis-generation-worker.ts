@@ -81,6 +81,7 @@ interface Source {
   source: 'openalex' | 'semantic_scholar'
   chapterNumber?: string // Track which chapter this source came from
   chapterTitle?: string // Track chapter title for metadata
+  mandatory?: boolean // Flag to indicate this source must be cited in the thesis
 }
 
 interface OutlineChapterInfo {
@@ -2070,6 +2071,20 @@ Folge diesem Plan strikt für die Struktur und die Verwendung der Quellen. Dies 
 ${thesisPlan}
 ` : ''}
 
+${(() => {
+      const mandatorySources = rankedSources.filter(s => s.mandatory)
+      if (mandatorySources.length === 0) return ''
+      return `**PFLICHTQUELLEN (KRITISCH - MÜSSEN ZITIERT WERDEN):**
+Die folgenden Quellen sind PFLICHTQUELLEN und MÜSSEN in deiner Thesis zitiert werden:
+${mandatorySources.map((s, i) => `${i + 1}. ${s.title} (${s.authors.join(', ')}, ${s.year || 'o.J.'})`).join('\n')}
+
+- Du MUSST jede dieser Pflichtquellen mindestens einmal in der Thesis zitieren
+- Diese Quellen sollten natürlich integriert werden, wo sie thematisch relevant sind
+- Das Nicht-Zitieren von Pflichtquellen ist INAKZEPTABEL und führt zur Ablehnung
+- Pflichtquellen sind oft Arbeiten des Professors oder zentrale Werke des Fachgebiets
+`
+    })()}
+
 **Gliederung:**
 ${JSON.stringify(thesisData.outline, null, 2)}
 
@@ -2413,6 +2428,20 @@ ${thesisPlan ? `**DETAILED THESIS PLAN (BLUEPRINT) - STRICT ADHERENCE:**
 Follow this plan strictly for structure and source usage. This is your blueprint:
 ${thesisPlan}
 ` : ''}
+
+${(() => {
+      const mandatorySources = rankedSources.filter(s => s.mandatory)
+      if (mandatorySources.length === 0) return ''
+      return `**MANDATORY SOURCES (CRITICAL - MUST BE CITED):**
+The following sources are MANDATORY and MUST be cited in your thesis:
+${mandatorySources.map((s, i) => `${i + 1}. ${s.title} (${s.authors.join(', ')}, ${s.year || 'n.d.'})`).join('\n')}
+
+- You MUST cite each of these mandatory sources at least once in the thesis
+- These sources should be integrated naturally where they are thematically relevant
+- Failure to cite mandatory sources is UNACCEPTABLE and will result in rejection
+- Mandatory sources are often works by the professor or central works in the field
+`
+    })()}
 
 **Outline:**
 ${JSON.stringify(thesisData.outline, null, 2)}
@@ -3718,6 +3747,7 @@ function convertUploadedSourcesToSources(uploadedSources: any[]): Source[] {
       source: 'openalex' as const, // Default to openalex (we don't track this in uploaded_sources)
       chapterNumber: metadata.chapterNumber || null,
       chapterTitle: metadata.chapterTitle || null,
+      mandatory: uploaded.mandatory || false, // Preserve mandatory flag from database
     }
   })
 }

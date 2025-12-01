@@ -22,9 +22,12 @@ export async function POST(request: Request) {
 
     const thesisTypeLabels: Record<string, string> = {
       hausarbeit: 'Hausarbeit',
+      seminararbeit: 'Seminararbeit',
       bachelor: 'Bachelorarbeit',
-      master: 'Masterarbeit',
     }
+
+    // Determine if this is a source-based thesis (no own research/methodology)
+    const isSourceBasedThesis = thesisType === 'hausarbeit' || thesisType === 'seminararbeit'
 
     const citationStyleLabels: Record<string, string> = {
       apa: 'APA',
@@ -66,9 +69,39 @@ export async function POST(request: Request) {
         : 'IMPORTANT: This thesis is long (over 80 pages). Create a detailed outline with chapters, sections, and subsections. Deeper nesting is allowed but should be used sparingly.'
     }
 
+    // Additional instructions for source-based theses (Hausarbeit, Seminararbeit)
+    let thesisTypeSpecificInstruction = ''
+    if (isSourceBasedThesis) {
+      thesisTypeSpecificInstruction = language === 'german'
+        ? `WICHTIG für ${thesisTypeLabels[thesisType]}:
+- Diese Arbeit basiert AUSSCHLIESSLICH auf Literaturrecherche und Quellenanalyse
+- Es gibt KEINE eigene empirische Forschung, Datenerhebung oder Methodik-Kapitel
+- Die Struktur sollte thematisch/argumentativ aufgebaut sein, NICHT methodisch
+- Typische Kapitel: Einleitung, Theoretischer Hintergrund/Begriffsklärung, Hauptteil (thematisch gegliedert), Diskussion/Kritische Würdigung, Fazit
+- KEINE Kapitel wie "Methodik", "Forschungsdesign", "Datenerhebung", "Empirische Analyse" oder "Ergebnisse" (im Sinne eigener Forschung)
+- Der Hauptteil sollte thematisch strukturiert sein und verschiedene Aspekte des Themas beleuchten`
+        : `IMPORTANT for ${thesisTypeLabels[thesisType]}:
+- This work is based EXCLUSIVELY on literature research and source analysis
+- There is NO own empirical research, data collection, or methodology chapter
+- The structure should be thematic/argumentative, NOT methodological
+- Typical chapters: Introduction, Theoretical Background/Definitions, Main Body (thematically structured), Discussion/Critical Analysis, Conclusion
+- NO chapters like "Methodology", "Research Design", "Data Collection", "Empirical Analysis", or "Results" (in terms of own research)
+- The main body should be thematically structured and illuminate different aspects of the topic`
+    } else {
+      thesisTypeSpecificInstruction = language === 'german'
+        ? `WICHTIG für ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'}:
+- Diese Arbeit kann eigene Forschung/Methodik enthalten
+- Typische Kapitel: Einleitung, Theoretischer Hintergrund, Methodik, Ergebnisse, Diskussion, Fazit
+- Falls das Thema empirische Forschung erfordert, sollte ein Methodik-Kapitel enthalten sein`
+        : `IMPORTANT for ${thesisTypeLabels[thesisType] || 'Bachelor thesis'}:
+- This work may contain own research/methodology
+- Typical chapters: Introduction, Theoretical Background, Methodology, Results, Discussion, Conclusion
+- If the topic requires empirical research, a methodology chapter should be included`
+    }
+
     // Build prompt in the selected language
     const prompt = language === 'german'
-      ? `Du bist ein akademischer Berater. Erstelle eine detaillierte, nummerierte Gliederung für eine ${thesisTypeLabels[thesisType] || 'Masterarbeit'} im Fachbereich ${field} zum Thema "${topic}".
+      ? `Du bist ein akademischer Berater. Erstelle eine detaillierte, nummerierte Gliederung für eine ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'} im Fachbereich ${field} zum Thema "${topic}".
 
 Forschungsfrage: "${researchQuestion}"
 Umfang: ${lengthText} (Durchschnitt: ca. ${avgPages} Seiten)
@@ -78,6 +111,8 @@ Sprache: ${langText}
 ${langInstruction}
 
 ${detailLevelInstruction}
+
+${thesisTypeSpecificInstruction}
 
 Erstelle eine umfassende, hierarchische Gliederung mit nummerierten Kapiteln, Abschnitten und Unterabschnitten. Die Struktur muss dem Umfang angemessen sein und wissenschaftlichen Standards entsprechen.
 
@@ -128,10 +163,19 @@ WICHTIG:
 - Jedes Kapitel sollte mindestens 2-3 Abschnitte haben (bei sehr kurzen Thesen können es auch weniger sein)
 - Abschnitte können Unterabschnitte haben, ABER NUR wenn der Umfang dies rechtfertigt
 - KEINE Verschachtelung tiefer als 3 Ebenen (Kapitel > Abschnitt > Unterabschnitt) - niemals 1.1.1.1 oder tiefer
-- Die Gliederung sollte typische Kapitel für eine ${thesisTypeLabels[thesisType] || 'Masterarbeit'} enthalten (z.B. Einleitung, Theoretischer Hintergrund, Methodik, Ergebnisse, Diskussion, Fazit)
+- Die Gliederung sollte typische Kapitel für eine ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'} enthalten${isSourceBasedThesis ? ' (z.B. Einleitung, Theoretischer Hintergrund, thematisch gegliederter Hauptteil, Diskussion, Fazit - KEINE Methodik!)' : ' (z.B. Einleitung, Theoretischer Hintergrund, Methodik, Ergebnisse, Diskussion, Fazit)'}
 - Passe die Gliederung an das spezifische Thema und den Fachbereich an
-- Die Anzahl der Kapitel und die Detailtiefe sollten dem Umfang von ${lengthText} (ca. ${avgPages} Seiten) angemessen sein`
-      : `You are an academic advisor. Create a detailed, numbered outline for a ${thesisTypeLabels[thesisType] || 'Masterarbeit'} in the field of ${field} on the topic "${topic}".
+- Die Anzahl der Kapitel und die Detailtiefe sollten dem Umfang von ${lengthText} (ca. ${avgPages} Seiten) angemessen sein
+
+**ABSOLUT VERBOTEN in der Gliederung (werden automatisch hinzugefügt):**
+- KEIN "Literaturverzeichnis", "Quellenverzeichnis", "Bibliography" oder "References"
+- KEIN "Inhaltsverzeichnis" oder "Table of Contents"
+- KEIN "Abbildungsverzeichnis", "Tabellenverzeichnis" oder "Abkürzungsverzeichnis"
+- KEIN "Anhang", "Appendix" oder "Anlagen"
+- KEIN "Deckblatt", "Titelseite" oder "Title Page"
+- KEIN "Eidesstattliche Erklärung" oder "Declaration"
+Diese Elemente werden AUTOMATISCH vom System hinzugefügt und dürfen NICHT in der Gliederung erscheinen!`
+      : `You are an academic advisor. Create a detailed, numbered outline for a ${thesisTypeLabels[thesisType] || 'Bachelor thesis'} in the field of ${field} on the topic "${topic}".
 
 Research Question: "${researchQuestion}"
 Length: ${lengthText} (Average: approx. ${avgPages} pages)
@@ -141,6 +185,8 @@ Language: ${langText}
 ${langInstruction}
 
 ${detailLevelInstruction}
+
+${thesisTypeSpecificInstruction}
 
 Create a comprehensive, hierarchical outline with numbered chapters, sections, and subsections. The structure must be appropriate for the length and meet academic standards.
 
@@ -191,9 +237,18 @@ IMPORTANT:
 - Each chapter should have at least 2-3 sections (for very short theses it can be fewer)
 - Sections can have subsections, BUT ONLY if the length justifies it
 - NO nesting deeper than 3 levels (Chapter > Section > Subsection) - never 1.1.1.1 or deeper
-- The outline should contain typical chapters for a ${thesisTypeLabels[thesisType] || 'Masterarbeit'} (e.g., Introduction, Theoretical Background, Methodology, Results, Discussion, Conclusion)
+- The outline should contain typical chapters for a ${thesisTypeLabels[thesisType] || 'Bachelor thesis'}${isSourceBasedThesis ? ' (e.g., Introduction, Theoretical Background, thematically structured main body, Discussion, Conclusion - NO Methodology!)' : ' (e.g., Introduction, Theoretical Background, Methodology, Results, Discussion, Conclusion)'}
 - Adapt the outline to the specific topic and field
-- The number of chapters and level of detail should be appropriate for the length of ${lengthText} (approx. ${avgPages} pages)`
+- The number of chapters and level of detail should be appropriate for the length of ${lengthText} (approx. ${avgPages} pages)
+
+**ABSOLUTELY FORBIDDEN in the outline (added automatically by system):**
+- NO "Bibliography", "References", "Works Cited", or "Literaturverzeichnis"
+- NO "Table of Contents" or "Inhaltsverzeichnis"
+- NO "List of Figures", "List of Tables", or "List of Abbreviations"
+- NO "Appendix", "Appendices", or "Anhang"
+- NO "Title Page", "Cover Page", or "Deckblatt"
+- NO "Declaration", "Statutory Declaration", or "Eidesstattliche Erklärung"
+These elements are AUTOMATICALLY added by the system and must NOT appear in the outline!`
 
     // Initialize Google Gen AI SDK
     const ai = new GoogleGenAI({ apiKey: env.GEMINI_KEY })
@@ -222,8 +277,24 @@ IMPORTANT:
       throw new Error('Invalid outline format')
     }
 
+    // Filter out forbidden chapters (Verzeichnisse, Anhang, etc.)
+    const forbiddenTitles = [
+      'literaturverzeichnis', 'quellenverzeichnis', 'bibliography', 'references', 'works cited',
+      'inhaltsverzeichnis', 'table of contents',
+      'abbildungsverzeichnis', 'tabellenverzeichnis', 'abkürzungsverzeichnis',
+      'list of figures', 'list of tables', 'list of abbreviations',
+      'anhang', 'appendix', 'appendices', 'anlagen',
+      'deckblatt', 'titelseite', 'title page', 'cover page',
+      'eidesstattliche erklärung', 'declaration', 'statutory declaration',
+    ]
+    
+    const filteredOutline = outline.filter((item: any) => {
+      const title = (item.title || '').toLowerCase().trim()
+      return !forbiddenTitles.some(forbidden => title.includes(forbidden))
+    })
+
     // Validate and normalize structure
-    const validatedOutline = outline.map((item: any, index: number) => {
+    const validatedOutline = filteredOutline.map((item: any, index: number) => {
       const chapterNumber = item.number || String(index + 1)
       const sections = Array.isArray(item.sections) ? item.sections.map((section: any, secIndex: number) => {
         const sectionNumber = section.number || `${chapterNumber}.${secIndex + 1}`

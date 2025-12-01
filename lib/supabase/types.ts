@@ -47,6 +47,7 @@ export interface UploadedSource {
   metadata?: FileMetadata
   sourceType: 'file' | 'url'
   sourceUrl?: string
+  mandatory?: boolean // Flag to indicate this source must be cited in the thesis
 }
 
 export interface Thesis {
@@ -66,6 +67,7 @@ export interface Thesis {
   word_url: string | null
   file_search_store_id: string | null
   uploaded_sources: UploadedSource[] | null
+  mandatory_sources: string[] | null // Array of source titles/DOIs that must be cited
   status: 'draft' | 'generating' | 'completed' | 'archived'
   created_at: string
   updated_at: string

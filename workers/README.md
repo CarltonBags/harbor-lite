@@ -1,136 +1,126 @@
 # Thesis Generation Worker
 
-Background worker for processing thesis generation jobs. This worker handles:
-1. Generating search queries (2 per chapter, German + English)
-2. Querying OpenAlex API (with polite pool via email)
-3. Querying Semantic Scholar API
-4. Enriching sources with Unpaywall API to find PDF URLs (with email)
-5. Deduplicating and prioritizing sources with PDF URLs
-6. Ranking sources by relevance using Gemini
-7. Downloading PDFs and uploading to Google FileSearchStore
-8. Generating thesis content using Gemini Pro
+A BullMQ-based background worker for thesis generation, deployed on Render.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Thesis Worker (Node.js)                   │
+├─────────────────────────────────────────────────────────────┤
+│  BullMQ Consumer ──► Research Pipeline ──► Python Bridge    │
+│                            │                    │           │
+│                            ▼                    ▼           │
+│                      FileSearchStore      DSPy Pipelines    │
+│                      (Google GenAI)       (Generation +     │
+│                                           Humanization)     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Pipeline Phases
+
+1. **Research Pipeline** (TypeScript)
+   - Generate search queries per chapter
+   - Query OpenAlex + Semantic Scholar
+   - Deduplicate and enrich with Unpaywall
+   - Rank sources by relevance
+   - Download PDFs and upload to FileSearchStore
+
+2. **Generation Pipeline** (Python/DSPy)
+   - Generate thesis text using FileSearchStore RAG
+   - Extract citation metadata
+   - Validate word count and mandatory sources
+
+3. **Humanization Pipeline** (Python/DSPy)
+   - Rewrite text to sound more human
+   - ZeroGPT loop until 70% human score
+
+4. **Assembly** (TypeScript)
+   - Build bibliography from citation metadata
+   - Assemble final document with TOC
 
 ## Deployment on Render
 
-### Prerequisites
-- Node.js 18+ environment
-- Environment variables configured (see below)
+### Using Docker (Recommended)
+
+1. Create a new **Background Worker** on Render
+2. Connect your GitHub repository
+3. Set the root directory to `workers`
+4. Render will auto-detect the Dockerfile
 
 ### Environment Variables
 
-Set these in your Render service:
+Set these in the Render dashboard:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `REDIS_URL` | ✅ | Redis connection URL (use `rediss://` for TLS) |
+| `GEMINI_KEY` | ✅ | Google Gemini API key |
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Supabase service role key |
+| `OPENALEX_EMAIL` | ⚡ | Email for OpenAlex polite pool |
+| `SEMANTIC_SCHOLAR_API_KEY` | ⚡ | Semantic Scholar API key |
+| `ZEROGPT_API_KEY` | ⚡ | ZeroGPT API key |
+| `OPENAI_API_KEY` | ⚡ | OpenAI API key (for embeddings) |
+
+⚡ = Optional but recommended
+
+## Local Development
 
 ```bash
-# Required
-GEMINI_KEY=your_gemini_api_key
-SUPABASE_URL=https://your-project.supabase.co  # Can also use NEXT_PUBLIC_SUPABASE_URL
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-THESIS_WORKER_API_KEY=your_secure_api_key_for_authentication
-
-# Optional
-OPENALEX_EMAIL=moontools@proton.me  # For polite pool (10x faster, 10 req/sec instead of 1)
-SEMANTIC_SCHOLAR_API_KEY=your_semantic_scholar_key  # Optional but recommended
-
-# Note: PORT is automatically set by Render (defaults to 10000)
-# For local development, the worker defaults to port 3001
-```
-
-### Deploy Steps
-
-1. **Create a new Web Service on Render**
-   - Connect your repository
-   - Root Directory: `workers`
-   - Build Command: `npm install` (or leave default `npm install; npm run build`)
-   - Start Command: `npm start`
-   
-   **Note:** The worker uses `tsx` to run TypeScript directly, so no compilation step is needed. The build script is a no-op.
-
-2. **Set Environment Variables**
-   - Add all required environment variables in Render dashboard
-
-3. **Update Main App**
-   - Set `THESIS_WORKER_URL` in your main app's environment variables
-   - Set `THESIS_WORKER_API_KEY` to match the worker's API key
-
-### Local Development
-
-```bash
-cd workers
+# Install dependencies
 npm install
+
+# Run in development mode
 npm run dev
+
+# Build for production
+npm run build
+
+# Run production build
+npm start
 ```
 
-The worker will start on `http://localhost:3001` (local development only)
+## Project Structure
 
-### API Endpoints
-
-#### POST `/jobs/thesis-generation`
-Triggers a thesis generation job.
-
-**Headers:**
 ```
-Authorization: Bearer <THESIS_WORKER_API_KEY>
-Content-Type: application/json
+workers/
+├── thesis-worker.ts       # Main BullMQ worker
+├── lib/
+│   ├── research-pipeline.ts   # Academic research functions
+│   ├── python-bridge.ts       # Node.js ↔ Python bridge
+│   ├── citation-builder.ts    # Bibliography formatting
+│   └── thesis-assembler.ts    # Final document assembly
+├── python/
+│   ├── main.py               # Python entry point
+│   ├── config.py             # Configuration
+│   ├── modules/
+│   │   ├── generator.py      # DSPy thesis generator
+│   │   ├── humanizer.py      # DSPy humanizer
+│   │   ├── citation_extractor.py
+│   │   └── quality_checker.py
+│   ├── pipelines/
+│   │   ├── generation_pipeline.py
+│   │   └── humanization_pipeline.py
+│   ├── utils/
+│   │   ├── gemini_client.py
+│   │   └── zerogpt.py
+│   └── requirements.txt
+├── Dockerfile
+├── package.json
+├── tsconfig.json
+└── render.yaml
 ```
-
-**Body:**
-```json
-{
-  "thesisId": "uuid",
-  "thesisData": {
-    "title": "Thesis Title",
-    "topic": "Topic",
-    "field": "Field",
-    "thesisType": "master",
-    "researchQuestion": "Research question",
-    "citationStyle": "apa",
-    "targetLength": 50,
-    "lengthUnit": "pages",
-    "outline": [...],
-    "fileSearchStoreId": "fileSearchStores/...",
-    "language": "german"
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "jobId": "job-uuid-timestamp",
-  "message": "Thesis generation job started"
-}
-```
-
-#### GET `/health`
-Health check endpoint.
-
-**Response:**
-```json
-{
-  "status": "ok"
-}
-```
-
-## Rate Limiting
-
-- **OpenAlex**: 10 requests/second with email (polite pool), 1 req/sec without
-- **Semantic Scholar**: Check their documentation for current limits
-- **Gemini**: Check Google's rate limits
-
-The worker includes built-in rate limiting delays between API calls.
-
-## Error Handling
-
-- If a job fails, the thesis status is set back to `draft`
-- Errors are logged to console
-- The worker continues processing other jobs even if one fails
 
 ## Monitoring
 
-Monitor the worker logs in Render dashboard to track:
-- Job progress
-- API call success/failure
-- PDF download/upload status
-- Thesis generation completion
+The worker logs progress to stdout. On Render, you can view logs in the dashboard.
+
+Progress stages:
+- `research` - Academic database search and PDF upload
+- `generation` - AI thesis generation
+- `humanization` - AI detection evasion
+- `citations` - Bibliography formatting
+- `assembly` - Final document assembly
+- `saving` - Database update
 

@@ -1074,8 +1074,8 @@ export default function ThesisPreviewPage() {
                         </p>
                         <p style={{ fontSize: '12pt', marginBottom: '0' }}>
                           {thesis?.thesis_type === 'hausarbeit' ? 'Hausarbeit' :
-                            thesis?.thesis_type === 'bachelor' ? 'Bachelorarbeit' :
-                              thesis?.thesis_type === 'master' ? 'Masterarbeit' : 'Thesis'}
+                            thesis?.thesis_type === 'seminararbeit' ? 'Seminararbeit' :
+                              thesis?.thesis_type === 'bachelor' ? 'Bachelorarbeit' : 'Thesis'}
                         </p>
                       </div>
                       <p style={{ fontSize: '12pt', marginTop: '10mm' }}>

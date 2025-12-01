@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS public.theses (
   title TEXT,
   topic TEXT NOT NULL,
   field TEXT NOT NULL,
-  thesis_type TEXT NOT NULL, -- 'bachelor', 'master', 'phd', 'dissertation'
+  thesis_type TEXT NOT NULL, -- 'hausarbeit', 'seminararbeit', 'bachelor'
   research_question TEXT NOT NULL,
   citation_style TEXT NOT NULL,
   target_length INTEGER NOT NULL,

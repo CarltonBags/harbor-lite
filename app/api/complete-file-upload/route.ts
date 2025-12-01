@@ -27,20 +27,20 @@ export async function POST(request: Request) {
     }
 
     const existingSources: UploadedSource[] = thesis.uploaded_sources || []
-    
+
     // Check if source already exists (by DOI or fileName)
     const duplicateSource = existingSources.find(
-      (s) => 
+      (s) =>
         (source.doi && s.doi && s.doi.toLowerCase() === source.doi.toLowerCase()) ||
         (s.fileName && s.fileName.toLowerCase() === source.fileName.toLowerCase())
     )
 
     if (duplicateSource) {
       // Source already exists, return success without adding duplicate
-      return NextResponse.json({ 
-        success: true, 
+      return NextResponse.json({
+        success: true,
         message: 'Source already exists',
-        duplicate: true 
+        duplicate: true
       })
     }
 
@@ -53,6 +53,7 @@ export async function POST(request: Request) {
       metadata: source.metadata,
       sourceType: source.sourceType || 'file',
       sourceUrl: source.sourceUrl,
+      mandatory: source.mandatory,
     }
 
     const updatedSources = [...existingSources, newSource]
@@ -60,10 +61,10 @@ export async function POST(request: Request) {
     // Update thesis with new source - use direct Supabase call
     const { createSupabaseClient } = await import('@/lib/supabase/client')
     const supabase = createSupabaseClient()
-    
+
     const { error: updateError } = await supabase
       .from('theses')
-      .update({ 
+      .update({
         uploaded_sources: updatedSources as any,
         updated_at: new Date().toISOString(),
       })
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
       )
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       source: newSource,
     })

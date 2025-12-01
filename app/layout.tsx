@@ -5,7 +5,7 @@ import { ThemeProvider } from '@/lib/theme-provider'
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://thesismeister.com'
 const siteName = 'ThesisMeister'
 const defaultTitle = 'ThesisMeister - KI-gestützter Wissenschaftlicher Thesis-Schreiber'
-const defaultDescription = 'Vom Thema zum Entwurf in Minuten statt Wochen. KI-gestützter Assistent zum Schreiben wissenschaftlicher Arbeiten für Studenten und Forscher. Hausarbeit, Bachelorarbeit oder Masterarbeit - wir helfen dir dabei.'
+const defaultDescription = 'Vom Thema zum Entwurf in Minuten statt Wochen. KI-gestützter Assistent zum Schreiben wissenschaftlicher Arbeiten für Studenten und Forscher. Hausarbeit, Seminararbeit oder Bachelorarbeit - wir helfen dir dabei.'
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     'Thesis schreiben',
     'Hausarbeit',
     'Bachelorarbeit',
-    'Masterarbeit',
+    'Seminararbeit',
     'KI Thesis',
     'KI-gestützt',
     'LaTeX',

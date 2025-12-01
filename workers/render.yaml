@@ -1,0 +1,41 @@
+# Render Blueprint for Thesis Worker
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: worker
+    name: thesis-worker
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    region: frankfurt  # EU region for GDPR compliance
+    plan: starter  # Can be upgraded based on needs
+    numInstances: 1
+    envVars:
+      # Redis (Upstash or similar)
+      - key: REDIS_URL
+        sync: false  # Set manually in Render dashboard
+      
+      # Google Gemini API
+      - key: GEMINI_KEY
+        sync: false
+      
+      # Supabase
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      
+      # Optional: Research APIs
+      - key: OPENALEX_EMAIL
+        sync: false
+      - key: SEMANTIC_SCHOLAR_API_KEY
+        sync: false
+      
+      # Optional: ZeroGPT
+      - key: ZEROGPT_API_KEY
+        sync: false
+      
+      # Optional: OpenAI (for embeddings)
+      - key: OPENAI_API_KEY
+        sync: false
+

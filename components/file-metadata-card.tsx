@@ -12,6 +12,7 @@ interface UploadedFile {
   uploadStatus: 'pending' | 'extracting' | 'ready' | 'uploading' | 'uploaded' | 'error'
   uploadProgress: number
   operationName?: string
+  mandatory?: boolean
 }
 
 interface FileMetadataCardProps {
@@ -19,6 +20,7 @@ interface FileMetadataCardProps {
   onUpdate: (updates: Partial<UploadedFile>) => void
   onRemove: () => void
   onSave: () => void
+  onMandatoryToggle?: (mandatory: boolean) => void
 }
 
 export function FileMetadataCard({
@@ -26,6 +28,7 @@ export function FileMetadataCard({
   onUpdate,
   onRemove,
   onSave,
+  onMandatoryToggle,
 }: FileMetadataCardProps) {
   const [localMetadata, setLocalMetadata] = useState<FileMetadata>(uploadedFile.metadata)
 
@@ -111,6 +114,43 @@ export function FileMetadataCard({
               className="bg-purple-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${uploadedFile.uploadProgress}%` }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Mandatory Source Toggle */}
+      {uploadedFile.uploadStatus === 'ready' && (
+        <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                  Pflichtquelle
+                </span>
+                {uploadedFile.mandatory && (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-amber-500 text-white rounded">
+                    MANDATORY
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                Diese Quelle muss in der Arbeit zitiert werden (z.B. Arbeit des Professors)
+              </p>
+            </div>
+            <button
+              onClick={() => onMandatoryToggle?.(!uploadedFile.mandatory)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${uploadedFile.mandatory
+                ? 'bg-amber-600'
+                : 'bg-gray-300 dark:bg-gray-600'
+                }`}
+              role="switch"
+              aria-checked={uploadedFile.mandatory}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${uploadedFile.mandatory ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+              />
+            </button>
           </div>
         </div>
       )}
@@ -210,13 +250,13 @@ export function FileMetadataCard({
                 value={localMetadata.pageStart || ''}
                 onChange={(e) => {
                   const pageStart = e.target.value || undefined
-                  const pages = pageStart && localMetadata.pageEnd 
-                    ? `${pageStart}-${localMetadata.pageEnd}` 
+                  const pages = pageStart && localMetadata.pageEnd
+                    ? `${pageStart}-${localMetadata.pageEnd}`
                     : pageStart || localMetadata.pageEnd || undefined
-                  setLocalMetadata({ 
-                    ...localMetadata, 
+                  setLocalMetadata({
+                    ...localMetadata,
                     pageStart,
-                    pages 
+                    pages
                   })
                 }}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
@@ -233,13 +273,13 @@ export function FileMetadataCard({
                 value={localMetadata.pageEnd || ''}
                 onChange={(e) => {
                   const pageEnd = e.target.value || undefined
-                  const pages = localMetadata.pageStart && pageEnd 
-                    ? `${localMetadata.pageStart}-${pageEnd}` 
+                  const pages = localMetadata.pageStart && pageEnd
+                    ? `${localMetadata.pageStart}-${pageEnd}`
                     : localMetadata.pageStart || pageEnd || undefined
-                  setLocalMetadata({ 
-                    ...localMetadata, 
+                  setLocalMetadata({
+                    ...localMetadata,
                     pageEnd,
-                    pages 
+                    pages
                   })
                 }}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
@@ -294,10 +334,10 @@ export function FileMetadataCard({
             <div>
               <span className="font-medium text-gray-700 dark:text-gray-300">Seiten: </span>
               <span className="text-gray-900 dark:text-white">
-                {uploadedFile.metadata.pages || 
-                 (uploadedFile.metadata.pageStart && uploadedFile.metadata.pageEnd 
-                   ? `${uploadedFile.metadata.pageStart}-${uploadedFile.metadata.pageEnd}`
-                   : uploadedFile.metadata.pageStart || uploadedFile.metadata.pageEnd)}
+                {uploadedFile.metadata.pages ||
+                  (uploadedFile.metadata.pageStart && uploadedFile.metadata.pageEnd
+                    ? `${uploadedFile.metadata.pageStart}-${uploadedFile.metadata.pageEnd}`
+                    : uploadedFile.metadata.pageStart || uploadedFile.metadata.pageEnd)}
               </span>
             </div>
           )}
