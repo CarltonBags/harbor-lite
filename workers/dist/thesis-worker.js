@@ -11,6 +11,7 @@ const citation_builder_1 = require("./lib/citation-builder");
 const thesis_assembler_1 = require("./lib/thesis-assembler");
 const research_pipeline_1 = require("./lib/research-pipeline");
 const ioredis_1 = __importDefault(require("ioredis"));
+const http_1 = __importDefault(require("http"));
 // Environment validation
 const GEMINI_KEY = process.env.GEMINI_KEY;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -179,4 +180,29 @@ worker.on('completed', (job) => {
 });
 worker.on('failed', (job, err) => {
     console.log(`Job ${job?.id} failed with ${err.message}`);
+});
+// ============================================
+// HTTP Server for Render Health Checks
+// ============================================
+const PORT = parseInt(process.env.PORT || '10000', 10);
+const server = http_1.default.createServer((req, res) => {
+    if (req.url === '/health' || req.url === '/') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            status: 'healthy',
+            service: 'thesis-worker',
+            timestamp: new Date().toISOString(),
+            worker: {
+                running: worker.isRunning(),
+                paused: worker.isPaused(),
+            }
+        }));
+    }
+    else {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Not found' }));
+    }
+});
+server.listen(PORT, () => {
+    console.log(`Health check server listening on port ${PORT}`);
 });

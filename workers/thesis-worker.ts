@@ -6,6 +6,7 @@ import { CitationBuilder } from './lib/citation-builder'
 import { ThesisAssembler } from './lib/thesis-assembler'
 import { runResearchPipeline, ThesisData as ResearchThesisData } from './lib/research-pipeline'
 import IORedis from 'ioredis'
+import http from 'http'
 
 // Environment validation
 const GEMINI_KEY = process.env.GEMINI_KEY
@@ -234,4 +235,31 @@ worker.on('completed', (job) => {
 
 worker.on('failed', (job, err) => {
     console.log(`Job ${job?.id} failed with ${err.message}`)
+})
+
+// ============================================
+// HTTP Server for Render Health Checks
+// ============================================
+const PORT = parseInt(process.env.PORT || '10000', 10)
+
+const server = http.createServer((req, res) => {
+    if (req.url === '/health' || req.url === '/') {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({
+            status: 'healthy',
+            service: 'thesis-worker',
+            timestamp: new Date().toISOString(),
+            worker: {
+                running: worker.isRunning(),
+                paused: worker.isPaused(),
+            }
+        }))
+    } else {
+        res.writeHead(404, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Not found' }))
+    }
+})
+
+server.listen(PORT, () => {
+    console.log(`Health check server listening on port ${PORT}`)
 })
