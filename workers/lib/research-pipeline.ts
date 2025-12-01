@@ -614,8 +614,12 @@ async function downloadAndUploadPDF(
 
         // Upload to FileSearchStore
         console.log(`[Upload] Uploading to FileSearchStore...`)
+        
+        // Cast to any to access fileSearchStores which may not be fully typed in the SDK
+        const aiAny = ai as any
+        
         const operation = await retryApiCall(
-            () => ai.fileSearchStores.uploadToFileSearchStore({
+            () => aiAny.fileSearchStores.uploadToFileSearchStore({
                 file: fileSource,
                 fileSearchStoreName: fileSearchStoreId,
                 config: {
@@ -632,7 +636,7 @@ async function downloadAndUploadPDF(
             `Upload to FileSearchStore: ${source.title}`,
             3,
             2000
-        )
+        ) as { done?: boolean; error?: any }
 
         // Poll until complete
         const maxWaitTime = 300000 // 5 minutes
@@ -646,7 +650,7 @@ async function downloadAndUploadPDF(
             }
 
             await new Promise(resolve => setTimeout(resolve, pollInterval))
-            const updatedOperation = await ai.operations.get({ operation })
+            const updatedOperation = await aiAny.operations.get({ operation }) as { done?: boolean; error?: any }
             Object.assign(operation, updatedOperation)
         }
 
