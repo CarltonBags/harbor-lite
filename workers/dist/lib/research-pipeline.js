@@ -468,9 +468,7 @@ async function downloadAndUploadPDF(ai, source, fileSearchStoreId, thesisId, sup
             customMetadata.push({ key: 'chapterNumber', stringValue: source.chapterNumber });
         // Upload to FileSearchStore
         console.log(`[Upload] Uploading to FileSearchStore...`);
-        // Cast to any to access fileSearchStores which may not be fully typed in the SDK
-        const aiAny = ai;
-        const operation = await retryApiCall(() => aiAny.fileSearchStores.uploadToFileSearchStore({
+        let operation = await retryApiCall(() => ai.fileSearchStores.uploadToFileSearchStore({
             file: fileSource,
             fileSearchStoreName: fileSearchStoreId,
             config: {
@@ -494,8 +492,7 @@ async function downloadAndUploadPDF(ai, source, fileSearchStoreId, thesisId, sup
                 return false;
             }
             await new Promise(resolve => setTimeout(resolve, pollInterval));
-            const updatedOperation = await aiAny.operations.get({ operation });
-            Object.assign(operation, updatedOperation);
+            operation = await ai.operations.get({ operation });
         }
         if (operation.error) {
             console.error(`[Upload] Operation failed:`, operation.error);
