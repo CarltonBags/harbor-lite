@@ -5,12 +5,19 @@ from utils.gemini_client import get_lm_client_with_filesearch
 
 class GenerateThesisSignature(dspy.Signature):
     """
-    Du bist ein wissenschaftlicher Assistent, der akademische Texte ausschließlich auf Basis der bereitgestellten, indexierten Quellen (RAG / File Search) schreibt.
+    Du bist ein wissenschaftlicher Assistent, der akademische Texte AUSSCHLIESSLICH auf Basis der bereitgestellten Quellen schreibt.
 
+    **ABSOLUT KRITISCH - QUELLENVERWENDUNG:**
+    - Du MUSST AUSSCHLIESSLICH die Quellen aus "available_sources_list" verwenden!
+    - ERFINDE NIEMALS Quellen, Autoren, Titel, Jahre oder andere bibliografische Angaben!
+    - Wenn eine Quelle nicht in der Liste steht, DARFST DU SIE NICHT ZITIEREN!
+    - Jede Zitation MUSS einer echten Quelle aus der Liste entsprechen!
+    - HALLUZINIERE KEINE QUELLEN - das ist wissenschaftlicher Betrug!
+    
     **WICHTIG - Forschungs- und Quellenkontext:**
-    - Du hast die Quellen SELBST recherchiert und ausgewählt - du bist sowohl Autor als auch Forscher dieser Thesis.
-    - Die bereitgestellten Quellen sind das Ergebnis deiner eigenen Literaturrecherche und wurden von dir als relevant und ausreichend für diese Thesis bewertet.
-    - Es ist NICHT angemessen, im Text zu erwähnen, dass "die bereitgestellten Quellen unzureichend sind" oder dass "weitere Quellen benötigt werden".
+    - Die bereitgestellten Quellen wurden durch eine akademische Recherche gefunden (OpenAlex, Semantic Scholar).
+    - Diese Quellen sind REAL und wurden als relevant für das Thema bewertet.
+    - Verwende die Autoren, Titel, Jahre und anderen Angaben EXAKT wie in der Quellenliste angegeben.
 
     **ABSOLUT VERBOTEN - KI-Limitierungen und visuelle Elemente:**
     - NIEMALS erwähnen, dass du "keine Bilder erstellen kannst", "keine Tabellen erstellen kannst" oder ähnliche KI-Limitierungen.
@@ -98,6 +105,7 @@ class GenerateThesisSignature(dspy.Signature):
     research_question = dspy.InputField(desc="The main research question to answer in this thesis")
     specifications = dspy.InputField(desc="Thesis specifications: targetLength, lengthUnit (words/pages), citationStyle, field, thesisType, language, title")
     mandatory_sources_list = dspy.InputField(desc="List of mandatory sources that MUST be cited in the thesis")
+    available_sources_list = dspy.InputField(desc="List of REAL academic sources from research that MUST be used for citations - DO NOT invent sources!")
     
     thesis_text = dspy.OutputField(desc="The complete thesis text in Markdown format, starting with ## 1. Einleitung")
 
@@ -107,7 +115,7 @@ class ThesisGenerator(dspy.Module):
         super().__init__()
         self.generate = dspy.ChainOfThought(GenerateThesisSignature)
     
-    def forward(self, outline: List[Any], research_question: str, specs: Dict[str, Any], mandatory_sources: List[str], filesearch_store_id: str):
+    def forward(self, outline: List[Any], research_question: str, specs: Dict[str, Any], mandatory_sources: List[str], filesearch_store_id: str, available_sources: List[Dict[str, Any]] = None):
         # Prepare inputs
         outline_str = json.dumps(outline, indent=2, ensure_ascii=False)
         
@@ -144,20 +152,50 @@ class ThesisGenerator(dspy.Module):
         
         mandatory_str = "\n".join([f"- {s}" for s in mandatory_sources]) if mandatory_sources else "Keine Pflichtquellen angegeben"
         
-        # Get LM client configured with FileSearchStore for RAG
+        # Format available sources - CRITICAL: These are the ONLY sources the AI can use!
+        if available_sources and len(available_sources) > 0:
+            sources_str = "**VERFÜGBARE QUELLEN (NUR DIESE VERWENDEN!):**\n\n"
+            for i, source in enumerate(available_sources, 1):
+                authors = ", ".join(source.get('authors', ['Unbekannt'])) if source.get('authors') else 'Unbekannt'
+                title = source.get('title', 'Ohne Titel')
+                year = source.get('year', 'o.J.')
+                journal = source.get('journal', '')
+                publisher = source.get('publisher', '')
+                doi = source.get('doi', '')
+                abstract = source.get('abstract', '')[:300] + '...' if source.get('abstract') and len(source.get('abstract', '')) > 300 else source.get('abstract', '')
+                chapter = f"(für Kapitel {source.get('chapterNumber', '?')}: {source.get('chapterTitle', '')})" if source.get('chapterTitle') else ''
+                
+                sources_str += f"""
+**Quelle {i}:** {chapter}
+- Autor(en): {authors}
+- Titel: {title}
+- Jahr: {year}
+- Journal/Verlag: {journal or publisher or 'Unbekannt'}
+- DOI: {doi or 'Nicht verfügbar'}
+- Abstract: {abstract or 'Nicht verfügbar'}
+
+"""
+            print(f"Providing {len(available_sources)} real sources to the AI")
+        else:
+            sources_str = "WARNUNG: Keine Quellen verfügbar. Die Thesis kann nicht wissenschaftlich fundiert geschrieben werden."
+            print("WARNING: No sources available for generation!")
+        
+        # Get LM client
         lm = get_lm_client_with_filesearch(filesearch_store_id)
         
         print(f"Generating thesis with FileSearchStore: {filesearch_store_id}")
         print(f"Target length: {target_words} words (max {max_words})")
         print(f"Citation style: {specs.get('citationStyle', 'apa')}")
         print(f"Mandatory sources: {len(mandatory_sources)}")
+        print(f"Available sources: {len(available_sources) if available_sources else 0}")
         
         with dspy.context(lm=lm):
-                result = self.generate(
-                    outline_json=outline_str,
-                    research_question=research_question,
-                    specifications=specs_str,
-                    mandatory_sources_list=mandatory_str
-                )
+            result = self.generate(
+                outline_json=outline_str,
+                research_question=research_question,
+                specifications=specs_str,
+                mandatory_sources_list=mandatory_str,
+                available_sources_list=sources_str
+            )
         
         return result

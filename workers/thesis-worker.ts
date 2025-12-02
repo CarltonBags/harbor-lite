@@ -114,13 +114,29 @@ const worker = new Worker('thesis-generation', async (job: Job<ThesisJob>) => {
             title: thesisData.title,
         }
 
-        console.log('Running generation pipeline...')
+        // Format sources for the generation pipeline
+        // These are the REAL sources from the research pipeline that MUST be used
+        const sourcesForGeneration = researchResult.sources.map(s => ({
+            title: s.title,
+            authors: s.authors,
+            year: s.year,
+            journal: s.journal,
+            publisher: s.publisher,
+            doi: s.doi,
+            abstract: s.abstract,
+            pages: s.pdfUrl ? 'available' : null, // Indicate if full text is available
+            chapterNumber: s.chapterNumber,
+            chapterTitle: s.chapterTitle,
+        }))
+
+        console.log(`Running generation pipeline with ${sourcesForGeneration.length} real sources...`)
         const generationResult = await pythonBridge.runPipeline('generation', {
             outline: thesisData.outline,
             research_question: thesisData.researchQuestion,
             specifications,
             mandatory_sources: thesisData.mandatorySources,
-            filesearch_store_id: thesisData.fileSearchStoreId
+            filesearch_store_id: thesisData.fileSearchStoreId,
+            available_sources: sourcesForGeneration  // Pass real sources!
         })
 
         await job.updateProgress({ stage: 'generation', progress: 100, message: 'Generation complete' })

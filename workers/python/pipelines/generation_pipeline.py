@@ -10,8 +10,10 @@ class ThesisGenerationPipeline:
         specs = job_data['specifications']
         mandatory_sources = job_data.get('mandatory_sources', [])
         filesearch_store_id = job_data['filesearch_store_id']
+        available_sources = job_data.get('available_sources', [])  # Real sources from research!
         
         print(f"Starting generation for thesis: {specs.get('title', 'Untitled')}")
+        print(f"Available sources from research: {len(available_sources)}")
         
         # 2. Generate thesis
         generator = ThesisGenerator()
@@ -21,7 +23,8 @@ class ThesisGenerationPipeline:
             research_question=research_question, 
             specs=specs, 
             mandatory_sources=mandatory_sources, 
-            filesearch_store_id=filesearch_store_id
+            filesearch_store_id=filesearch_store_id,
+            available_sources=available_sources  # Pass real sources!
         )
         
         thesis_text = result.thesis_text
