@@ -12,31 +12,28 @@ services:
     numInstances: 1
     healthCheckPath: /health
     envVars:
-      # Redis (Upstash or similar)
-      - key: REDIS_URL
-        sync: false  # Set manually in Render dashboard
-      
       # Google Gemini API
       - key: GEMINI_KEY
         sync: false
       
       # Supabase
-      - key: NEXT_PUBLIC_SUPABASE_URL
+      - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      
+      # Worker API Key (for authentication)
+      - key: THESIS_WORKER_API_KEY
         sync: false
       
       # Optional: Research APIs
       - key: OPENALEX_EMAIL
         sync: false
-      - key: SEMANTIC_SCHOLAR_API_KEY
-        sync: false
       
-      # Optional: ZeroGPT
-      - key: ZEROGPT_API_KEY
+      # Optional: ZeroGPT (RapidAPI)
+      - key: RAPIDAPI_KEY
         sync: false
       
       # Optional: OpenAI (for embeddings)
       - key: OPENAI_API_KEY
         sync: false
-
