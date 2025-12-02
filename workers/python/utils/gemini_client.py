@@ -6,7 +6,7 @@ load_dotenv()
 
 def get_lm_client():
     """Get a basic LM client using DSPy's built-in Gemini support via LiteLLM"""
-    model_name = os.getenv('GENERATION_MODEL', 'gemini-2.5-pro-preview-06-05')
+    model_name = os.getenv('GENERATION_MODEL', 'gemini-2.5-pro')
     api_key = os.getenv('GEMINI_KEY')
     
     # DSPy uses LiteLLM under the hood, which supports Gemini with the gemini/ prefix
