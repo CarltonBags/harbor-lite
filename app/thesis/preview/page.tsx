@@ -1184,7 +1184,41 @@ export default function ThesisPreviewPage() {
                           }} {...props} />
                         ),
                         p: ({ node, children, ...props }: any) => {
-                          const footnotes = thesis?.metadata?.footnotes || {}
+                          // Extract footnotes from content (format: [^1]: Citation text)
+                          const extractFootnotesFromContent = (text: string): Record<number, string> => {
+                            const footnotes: Record<number, string> = {}
+                            const footnoteRegex = /\[\^(\d+)\]:\s*(.+?)(?=\n\[\^|\n\n|$)/gs
+                            let match
+                            while ((match = footnoteRegex.exec(text)) !== null) {
+                              footnotes[parseInt(match[1], 10)] = match[2].trim()
+                            }
+                            return footnotes
+                          }
+                          
+                          // Try multiple sources for footnotes:
+                          // 1. metadata.footnotes (legacy)
+                          // 2. Extract from content (markdown format)
+                          // 3. metadata.citations (new format - convert to footnotes)
+                          let footnotes: Record<number, string> = thesis?.metadata?.footnotes || {}
+                          
+                          if (Object.keys(footnotes).length === 0 && content) {
+                            footnotes = extractFootnotesFromContent(content)
+                          }
+                          
+                          // If still no footnotes and we have citations, create footnotes from them
+                          if (Object.keys(footnotes).length === 0 && thesis?.metadata?.citations) {
+                            const citations = thesis.metadata.citations as any[]
+                            citations.forEach((citation, idx) => {
+                              const authors = Array.isArray(citation.authors) 
+                                ? citation.authors.join(', ') 
+                                : citation.authors || 'Unbekannt'
+                              const year = citation.year || ''
+                              const title = citation.title || ''
+                              const pages = citation.pages || ''
+                              footnotes[idx + 1] = `${authors} (${year}): ${title}${pages ? `, S. ${pages}` : ''}`
+                            })
+                          }
+                          
                           const citationStyle = thesis?.citation_style
 
                           // Check if this paragraph should be highlighted (related passage)
@@ -1208,8 +1242,8 @@ export default function ThesisPreviewPage() {
                           // Check if this paragraph contains the pending edit's old text
                           const hasPendingEdit = pendingEdit && paragraphText.includes(pendingEdit.oldText)
 
-                          // For German citation style, process footnotes in paragraphs
-                          if (citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
+                          // Process footnotes in paragraphs (for any citation style that uses ^N markers)
+                          if (paragraphText.includes('^') && Object.keys(footnotes).length > 0) {
                             // Convert entire paragraph content to string for processing
                             const getTextContent = (node: any): string => {
                               if (typeof node === 'string') return node

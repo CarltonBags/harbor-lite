@@ -21,20 +21,12 @@ export class ThesisAssembler {
             date?: string
         }
     }): string {
-        // 1. Build Inhaltsverzeichnis
-        const toc = this.buildTableOfContents(components.outline)
-
-        // 2. Combine components
-        // Add title page or header if needed, but usually just the content
-        // Markdown format
+        // Note: Inhaltsverzeichnis is NOT included here because:
+        // 1. The preview page renders it from the outline JSON
+        // 2. The LaTeX export generates it automatically
+        // This prevents duplicate TOCs
 
         const thesis = `# ${components.metadata.title}
-
-## Inhaltsverzeichnis
-
-${toc}
-
----
 
 ${components.mainText}
 
@@ -45,27 +37,5 @@ ${components.mainText}
 ${components.bibliography}
 `
         return thesis
-    }
-
-    private buildTableOfContents(outline: OutlineChapter[]): string {
-        let toc = ''
-
-        for (const chapter of outline) {
-            toc += `- **${chapter.number} ${chapter.title}**\n`
-
-            if (chapter.sections) {
-                for (const section of chapter.sections) {
-                    toc += `  - ${section.number} ${section.title}\n`
-
-                    if (section.subsections) {
-                        for (const sub of section.subsections) {
-                            toc += `    - ${sub.number} ${sub.title}\n`
-                        }
-                    }
-                }
-            }
-        }
-
-        return toc
     }
 }
