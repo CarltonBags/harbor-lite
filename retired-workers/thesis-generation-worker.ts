@@ -1960,73 +1960,11 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   console.log(`[ThesisGeneration] Available sources: ${rankedSources.length}`)
   console.log(`[ThesisGeneration] Using top ${rankedSources.length} sources by relevance for RAG context`)
 
-  const chapterWordTargets = outlineChapters.length
-    ? extractChapterWordTargets(thesisPlan || '', outlineChapters, targetWordCount, thesisData.language === 'german' ? 'german' : 'english')
-    : []
-
   const isGerman = thesisData.language === 'german'
-  const useChapterGeneration = outlineChapters.length > 0
-
-  if (useChapterGeneration) {
-    console.log('[ThesisGeneration] Using per-chapter generation strategy')
-    const chapterContents: string[] = []
-    let totalWordCount = 0
-
-    // Helper function to check if a chapter should be skipped (e.g., Verzeichnisse, Bibliography)
-    const shouldSkipChapter = (chapter: OutlineChapterInfo): boolean => {
-      const title = (chapter.title || '').toLowerCase().trim()
-      const skipKeywords = [
-        'verzeichnisse', 'verzeichnis', 'literaturverzeichnis', 'bibliography', 'references',
-        'anhang', 'appendix', 'abbildungsverzeichnis', 'tabellenverzeichnis',
-        'abkürzungsverzeichnis', 'list of figures', 'list of tables', 'abbreviations'
-      ]
-      return skipKeywords.some(keyword => title.includes(keyword))
-    }
-
-    for (let i = 0; i < outlineChapters.length; i++) {
-      const chapter = outlineChapters[i]
-
-      // Skip non-content chapters (Verzeichnisse, Bibliography, etc.)
-      if (shouldSkipChapter(chapter)) {
-        console.log(`[ThesisGeneration] Skipping chapter ${chapter.number} "${chapter.title}" (non-content chapter)`)
-        continue
-      }
-
-      const chapterTarget = chapterWordTargets[i] || Math.max(800, Math.round(targetWordCount / outlineChapters.length))
-      console.log(`[ThesisGeneration] Generating chapter ${chapter.number} (${chapterTarget} words target)`)
-
-      const { content: chapterText, wordCount: chapterWordCount } = await generateChapterContent({
-        thesisData,
-        chapter,
-        chapterTargetWords: chapterTarget,
-        thesisPlan: thesisPlan || '',
-        previousContent: chapterContents.join('\n\n'),
-        isGerman,
-      })
-
-      chapterContents.push(chapterText.trim())
-      totalWordCount += chapterWordCount
-      console.log(`[ThesisGeneration] Chapter ${chapter.number} complete (~${chapterWordCount} words, total ${totalWordCount}/${expectedWordCount})`)
-    }
-
-    let combinedContent = chapterContents.join('\n\n\n')
-
-    if (totalWordCount < expectedWordCount) {
-      const extensionResult = await extendThesisContent({
-        thesisData,
-        thesisPlan: thesisPlan || '',
-        currentContent: combinedContent,
-        expectedWordCount,
-        outlineChapters,
-        isGerman,
-      })
-      combinedContent = extensionResult.content
-      totalWordCount = extensionResult.wordCount
-      console.log(`[ThesisGeneration] ✓ Word count reached after extension: ~${totalWordCount}/${expectedWordCount} words`)
-    }
-
-    return combinedContent
-  }
+  
+  // DISABLED: Per-chapter generation - it overshoots word counts and doesn't use sources properly
+  // Using single-call generation with FileSearchStore RAG instead
+  console.log('[ThesisGeneration] Using single-call generation with FileSearchStore RAG')
 
   // Build mandatory sources section
   const mandatorySources = rankedSources.filter(s => s.mandatory)
@@ -2080,13 +2018,17 @@ ${mandatorySourcesSection}
 QUELLENNUTZUNG
 ═══════════════════════════════════════════════════════════════════════════════
 
-**Grundregel:** Nutze AUSSCHLIESSLICH die im FileSearchStore bereitgestellten Quellen.
+**KRITISCH - Quellennutzung:**
+Du MUSST die Quellen aus dem FileSearchStore aktiv nutzen und zitieren!
+Eine Thesis OHNE Zitationen ist NICHT akzeptabel und wird abgelehnt.
 
-- Jeder Absatz mit Forschungsergebnissen braucht Zitationen
-- Ziel: ca. 1 Zitation pro 150-200 Wörter
-- Empfohlene Quellenanzahl: ${recommendedSourceCount}-${recommendedSourceCount + 5} verschiedene Quellen
-- Verteile Zitationen gleichmäßig über alle Kapitel
+- Nutze AUSSCHLIESSLICH die im FileSearchStore bereitgestellten Quellen
+- JEDER Absatz mit Forschungsergebnissen MUSS Zitationen enthalten
+- Ziel: mindestens 1 Zitation pro 150-200 Wörter
+- Mindestens ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} verschiedene Quellen müssen zitiert werden
+- Verteile Zitationen gleichmäßig über alle Kapitel (2-3 pro Kapitel)
 - KEINE erfundenen Quellen, KEINE Platzhalter, KEINE hypothetischen Studien
+- Wenn du Informationen aus einer Quelle verwendest, ZITIERE sie sofort
 
 **Seitenzahlen:** JEDE Zitation muss eine Seitenzahl enthalten (S. XX oder S. XX-YY).
 
