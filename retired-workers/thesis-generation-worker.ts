@@ -2028,363 +2028,150 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     return combinedContent
   }
 
-  const prompt = isGerman ? `Du bist ein wissenschaftlicher Assistent, der akademische Texte ausschließlich auf Basis der bereitgestellten, indexierten Quellen (RAG / File Search) schreibt.
+  // Build mandatory sources section
+  const mandatorySources = rankedSources.filter(s => s.mandatory)
+  const mandatorySourcesSection = mandatorySources.length > 0 ? `
+**PFLICHTQUELLEN - MÜSSEN ZITIERT WERDEN:**
+Die folgenden Quellen wurden vom Nutzer als Pflichtquellen markiert und MÜSSEN in der Thesis zitiert werden:
+${mandatorySources.map((s, i) => `${i + 1}. "${s.title}" (${s.authors.slice(0, 2).join(', ')}${s.authors.length > 2 ? ' et al.' : ''}, ${s.year || 'o.J.'})`).join('\n')}
 
-**WICHTIG - Forschungs- und Quellenkontext:**
-- Du hast die Quellen SELBST recherchiert und ausgewählt - du bist sowohl Autor als auch Forscher dieser Thesis.
-- Die bereitgestellten Quellen sind das Ergebnis deiner eigenen Literaturrecherche und wurden von dir als relevant und ausreichend für diese Thesis bewertet.
-- Es ist NICHT angemessen, im Text zu erwähnen, dass "die bereitgestellten Quellen unzureichend sind" oder dass "weitere Quellen benötigt werden".
-- Wenn bestimmte Aspekte nicht vollständig abgedeckt werden können, formuliere dies wissenschaftlich neutral (z.B. "Weitere Forschung wäre wünschenswert" oder "Dieser Aspekt bedarf weiterer Untersuchung"), aber NIE als Kritik an der eigenen Quellenauswahl.
-- Du schreibst als Forscher, der seine Quellen selbst ausgewählt hat - daher sind die vorhandenen Quellen per Definition ausreichend für die Thesis.
+Jede Pflichtquelle muss mindestens einmal sinnvoll im Text zitiert werden.
+` : ''
 
-**ABSOLUT VERBOTEN - KI-Limitierungen und visuelle Elemente:**
-- NIEMALS erwähnen, dass du "keine Bilder erstellen kannst", "keine Tabellen erstellen kannst" oder ähnliche KI-Limitierungen.
-- NIEMALS Sätze wie "Da ich keine Bilder erstellen kann, beschreibe ich..." oder "Ich kann keine Tabellen erstellen, daher..." verwenden.
-- NIEMALS deine Fähigkeiten oder Limitierungen erwähnen - schreibe wie ein menschlicher Autor, der einfach Text schreibt.
-- ABSOLUT VERBOTEN: Tabellen, Bilder, Grafiken, Diagramme, Charts oder andere visuelle Elemente zu erstellen oder zu beschreiben.
-- ABSOLUT VERBOTEN: Markdown-Tabellen (| Spalte 1 | Spalte 2 |) oder HTML-Tabellen zu verwenden.
-- ABSOLUT VERBOTEN: Beschreibungen wie "Die folgende Tabelle zeigt..." oder "In der Grafik ist zu sehen..." zu verwenden.
-- NUR reiner Fließtext ist erlaubt - keine Tabellen, keine Bilder, keine Grafiken.
-- Mathematische Formeln sind erlaubt (im korrekten Format: $...$ für inline, $$...$$ für display), aber KEINE Tabellen oder visuellen Elemente.
-- Wenn Daten oder Vergleiche dargestellt werden müssen, beschreibe sie im Fließtext - niemals in Tabellenform.
-- Schreibe natürlich und menschlich - niemals wie eine KI, die ihre Limitierungen erklärt.
+  const prompt = isGerman ? `Du schreibst eine wissenschaftliche ${thesisData.thesisType} zum Thema "${thesisData.title}".
 
-**Thesis-Informationen:**
-- Titel/Thema: ${thesisData.title}
-- Fachbereich: ${thesisData.field}
-- Art: ${thesisData.thesisType}
-- Forschungsfrage: ${thesisData.researchQuestion}
-- Zitationsstil: ${citationStyleLabel}
-- Ziel-Länge: ${targetWordCount} Wörter (ABSOLUTES MAXIMUM: ${maxWordCount} Wörter - NUR 10% Überschreitung erlaubt!)
-- Sprache: ${thesisData.language}
+═══════════════════════════════════════════════════════════════════════════════
+KERNAUFGABE
+═══════════════════════════════════════════════════════════════════════════════
 
-**KRITISCH - WORTANZAHL-MANAGEMENT:**
-- Ziel: ${targetWordCount} Wörter (ohne Literaturverzeichnis)
-- Absolutes Maximum: ${maxWordCount} Wörter (= ${targetWordCount} + 10%)
-- Das Literaturverzeichnis wird NICHT zur Wortanzahl gezählt
-- STOPPE die Hauptkapitel bei ca. ${targetWordCount} Wörtern, BEVOR du das Literaturverzeichnis schreibst
-- Überschreite NIEMALS ${maxWordCount} Wörter im Haupttext (vor dem Literaturverzeichnis)
-- Eine Überschreitung von mehr als 10% ist INAKZEPTABEL und führt zur Ablehnung
+Erstelle den vollständigen Fließtext für alle Kapitel der Thesis. Du erstellst NUR den Kapiteltext - kein Inhaltsverzeichnis, kein Literaturverzeichnis.
 
-${thesisPlan ? `**DETAILLIERTER THESIS-PLAN (BLUEPRINT) - STRIKTE BEFOLGUNG:**
-Folge diesem Plan strikt für die Struktur und die Verwendung der Quellen. Dies ist dein Bauplan:
-${thesisPlan}
-` : ''}
+**Was du erstellst:**
+- Vollständiger wissenschaftlicher Text für ALLE Kapitel aus der Gliederung
+- Zitationen im korrekten Stil (${citationStyleLabel})
+- ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'Fußnoten-Definitionen am Ende (Format: [^1]: Autor, Titel, Jahr, S. XX)' : 'In-Text-Zitationen im korrekten Format'}
 
-${(() => {
-      const mandatorySources = rankedSources.filter(s => s.mandatory)
-      if (mandatorySources.length === 0) return ''
-      return `**PFLICHTQUELLEN (KRITISCH - MÜSSEN ZITIERT WERDEN):**
-Die folgenden Quellen sind PFLICHTQUELLEN und MÜSSEN in deiner Thesis zitiert werden:
-${mandatorySources.map((s, i) => `${i + 1}. ${s.title} (${s.authors.join(', ')}, ${s.year || 'o.J.'})`).join('\n')}
+**Was du NICHT erstellst:**
+- KEIN Inhaltsverzeichnis (wird automatisch generiert)
+- KEIN Literaturverzeichnis (wird aus den Zitationsmetadaten erstellt)
+- KEIN Titelblatt, KEINE Überschrift mit "Bachelorarbeit/Hausarbeit" etc.
+- KEINE Tabellen, Bilder, Grafiken oder Anhänge
 
-- Du MUSST jede dieser Pflichtquellen mindestens einmal in der Thesis zitieren
-- Diese Quellen sollten natürlich integriert werden, wo sie thematisch relevant sind
-- Das Nicht-Zitieren von Pflichtquellen ist INAKZEPTABEL und führt zur Ablehnung
-- Pflichtquellen sind oft Arbeiten des Professors oder zentrale Werke des Fachgebiets
-`
-    })()}
+═══════════════════════════════════════════════════════════════════════════════
+THESIS-INFORMATIONEN
+═══════════════════════════════════════════════════════════════════════════════
+
+- **Titel:** ${thesisData.title}
+- **Fachbereich:** ${thesisData.field}
+- **Art:** ${thesisData.thesisType}
+- **Forschungsfrage:** ${thesisData.researchQuestion}
+- **Zitationsstil:** ${citationStyleLabel}
+- **Ziel-Länge:** ${targetWordCount} Wörter (ca. ${targetPages} Seiten)
+- **Sprache:** Deutsch
 
 **Gliederung:**
 ${JSON.stringify(thesisData.outline, null, 2)}
 
-**Quellenverwendung (KRITISCH - strikt befolgen):**
-- **CRITICAL: Du MUSST die FileSearchStore-Quellen aktiv nutzen und zitieren!**
-- **CRITICAL: Eine Thesis OHNE Zitationen wird ABGELEHNT und du musst neu generieren!**
-- **CRITICAL: Das Literaturverzeichnis DARF KEINE Platzhalter oder Beispieltexte enthalten!**
-- **CRITICAL: Nutze ausschließlich die im Kontext bereitgestellten Quellen (File Search / RAG).
-- Verwende nur Informationen, die eindeutig in diesen Quellen enthalten sind.
-- **JEDER Absatz mit Forschungsergebnissen MUSS Zitationen enthalten.**
-- **Minimum: ~1 Zitation pro 150 Wörter (${targetWordCount} Wörter = mindestens ${Math.ceil(targetWordCount / 150)} Zitationen).**
-- Keine erfundenen Seitenzahlen, keine erfundenen Zitate, keine erfundenen Quellen.
-- ABSOLUT VERBOTEN: Hypothetische Quellen, Platzhalter-Quellen oder Quellen mit "(Hypothetische Quelle)" oder "(Hypothetical Source)" zu erstellen.
-- ABSOLUT VERBOTEN: Quellen zu zitieren, die NICHT im FileSearchStore/RAG-Kontext sind.
-- ABSOLUT VERBOTEN: Eine Thesis ohne Verwendung der FileSearchStore-Quellen zu schreiben.
-- ABSOLUT VERBOTEN: Ein Literaturverzeichnis mit Beispieltext wie "Dies ist nur ein Beispiel" zu erstellen.
-- Wenn eine Quelle nicht im RAG-Kontext verfügbar ist, DARFST du sie NICHT zitieren, auch wenn du weißt, dass sie existiert.
-- Du DARFST NUR Quellen verwenden, die tatsächlich während der Generierung aus dem FileSearchStore abgerufen wurden.
+${thesisPlan ? `**Detaillierter Plan:**
+${thesisPlan}
+` : ''}
+${mandatorySourcesSection}
+═══════════════════════════════════════════════════════════════════════════════
+QUELLENNUTZUNG
+═══════════════════════════════════════════════════════════════════════════════
 
-**SEITENZAHLEN - ABSOLUT WICHTIG (PFLICHT):**
-- JEDE Zitation MUSS Seitenzahlen enthalten - dies ist eine PFLICHT.
-- Seitenzahlen sind in ALLEN Zitationsstilen erforderlich (APA, Harvard, MLA, Deutsche Zitierweise).
-- Wenn du Informationen aus einer Quelle verwendest, MUSST du die Seitenzahl angeben, wo diese Information zu finden ist.
-- Verwende die Seitenzahlen aus den Quellen (File Search / RAG Kontext).
-- Format je nach Zitationsstil:
-  * APA/Harvard: (Autor, Jahr, S. XX) oder (Autor, Jahr, S. XX-YY)
-  * MLA: (Autor XX) oder (Autor XX-YY)
-  * Deutsche Zitierweise: In den Fußnoten: Autor, Titel, Jahr, S. XX
-- Wenn die Seitenzahl im RAG-Kontext nicht explizit angegeben ist, verwende die Seitenzahlen aus den Metadaten der Quelle oder schätze basierend auf dem Kontext (z.B. wenn der Kontext aus "Kapitel 3" stammt, verwende eine plausible Seitenzahl).
-- NIEMALS eine Zitation ohne Seitenzahl - Seitenzahlen sind PFLICHT.
+**Grundregel:** Nutze AUSSCHLIESSLICH die im FileSearchStore bereitgestellten Quellen.
 
-- Wenn bestimmte Aspekte nicht vollständig in den Quellen abgedeckt sind, formuliere dies wissenschaftlich neutral (z.B. "Dieser Aspekt bedarf weiterer Untersuchung" oder "Weitere Forschung wäre wünschenswert"), aber NIE als Kritik an der eigenen Quellenauswahl oder als Hinweis auf "unzureichende Quellen".
+- Jeder Absatz mit Forschungsergebnissen braucht Zitationen
+- Ziel: ca. 1 Zitation pro 150-200 Wörter
+- Empfohlene Quellenanzahl: ${recommendedSourceCount}-${recommendedSourceCount + 5} verschiedene Quellen
+- Verteile Zitationen gleichmäßig über alle Kapitel
+- KEINE erfundenen Quellen, KEINE Platzhalter, KEINE hypothetischen Studien
 
-**QUELLENANZAHL - ABSOLUT WICHTIG:**
-${sourceUsageGuidance}
+**Seitenzahlen:** JEDE Zitation muss eine Seitenzahl enthalten (S. XX oder S. XX-YY).
 
-**Konkrete Anweisungen zur Quellenverwendung:**
-- Du MUSST mindestens ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} verschiedene Quellen im Text zitieren - NICHT nur 2 oder 3 Quellen!
-- Verwende ${recommendedSourceCount}-${recommendedSourceCount + 3} verschiedene Quellen im gesamten Text.
-- Jede Quelle muss einen klaren, essentiellen Beitrag leisten.
-- Verteile die Zitationen gleichmäßig über die gesamte Arbeit - nicht alle Quellen in einem Kapitel.
-- Jedes Hauptkapitel sollte mehrere verschiedene Quellen zitieren (mindestens 2-3 verschiedene Quellen pro Kapitel).
-- ABSOLUT VERBOTEN: Nur 1-2 Quellen zu verwenden - das ist unzureichend für eine wissenschaftliche Arbeit.
-- ABSOLUT VERBOTEN: Alle Zitationen in einem einzigen Kapitel zu konzentrieren.
-- Bei kurzen Arbeiten: Weniger ist mehr. ${targetPages < 15 ? `Eine ${targetPages}-Seiten-Arbeit mit 30+ Quellen wirkt unprofessionell und übertrieben.` : ''}
-- Qualität über Quantität: Lieber ${recommendedSourceCount} hochwertige, relevante Quellen als 30 oberflächliche.
-- Die Quellenanzahl muss zur Länge der Arbeit passen. Eine kurze Hausarbeit sollte nicht wie eine Dissertation zitiert werden.
-- Im Literaturverzeichnis MUSS ALLE im Text zitierten Quellen enthalten sein (mindestens ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} Quellen, maximal ${recommendedSourceCount + 3}).
+${thesisData.citationStyle === 'deutsche-zitierweise' ? `**Deutsche Zitierweise (Fußnoten):**
+- Im Text: Verwende "^N" direkt nach dem zitierten Inhalt (z.B. "Die Forschung zeigt^1")
+- Am Ende: Definiere alle Fußnoten als [^N]: Autor, Titel, Jahr, S. XX
+- Fortlaufende Nummerierung (1, 2, 3...) in der Reihenfolge des Erscheinens
+- Jede neue Zitation = neue Nummer (auch bei wiederholter Quelle)
 
-**MENSCHLICHER STIL UND AI-ERKENNUNGS-VERMEIDUNG (KRITISCH):**
+Beispiel:
+Text: "Die Digitalisierung verändert Arbeitsprozesse grundlegend^1. Studien belegen^2..."
+[^1]: Müller, Hans. Digitale Transformation. Berlin: Verlag, 2023, S. 45.
+[^2]: Schmidt, Anna. "Arbeit 4.0." Zeitschrift, 2022, S. 12-15.` : `**${citationStyleLabel}:**
+- Zitiere im Text: (Autor, Jahr, S. XX) oder (Autor, Jahr, S. XX-YY)
+- Bei mehreren Autoren: (Autor et al., Jahr, S. XX)`}
 
-Der Text muss von Anfang an wie von einem menschlichen Autor geschrieben klingen und darf nicht als KI-generiert erkannt werden.
+═══════════════════════════════════════════════════════════════════════════════
+SCHREIBSTIL
+═══════════════════════════════════════════════════════════════════════════════
 
-**1. Satz-Burstiness (SEHR WICHTIG):**
-- Mische aktiv kurze (5-10 Wörter), mittlere (15-20 Wörter) und lange (25-35 Wörter) Sätze.
-- Vermeide gleichmäßige Satzlängen - menschliche Autoren haben unregelmäßige Muster.
-- Beginne manche Sätze mit Subjekt, andere mit Adverbial, wieder andere mit Partizipialkonstruktionen.
-- Beispiel: "Die Forschung zeigt klare Ergebnisse. Während frühere Studien noch Unsicherheiten aufwiesen, lassen sich heute präzise Aussagen treffen. Dies gilt insbesondere für den medizinischen Bereich."
+**Wissenschaftlicher Ton:**
+- Objektiv, präzise, sachlich
+- Keine persönlichen Meinungen oder Marketing-Sprache
+- Ergebnisse den Autoren zuschreiben: "Müller (2021) zeigt..." statt "Es ist bewiesen..."
 
-**2. Perplexität und Variation:**
-- Vermeide übermäßig vorhersehbare Formulierungen.
-- Verwende unterschiedliche Synonyme statt immer derselben Wörter.
-- Variiere Satzanfänge stark (nicht immer "Die", "Es", "Dies", "Diese").
-- Vermeide perfekt glatte, "polierte" LLM-Phrasen.
-- Beispiel: Statt immer "zeigt" → variiere mit "demonstriert", "belegt", "verdeutlicht", "legt nahe", "weist nach".
+**Sprachliche Regeln:**
+- KEINE persönlichen Pronomen ("wir", "ich", "uns")
+  ✗ "Wir werden im nächsten Abschnitt..."
+  ✓ "Im nächsten Abschnitt wird..."
+- KEINE unprofessionellen Wörter: "freilich", "sicherlich", "natürlich" (als Füllwort)
+- Verwende Passiv oder unpersönliche Konstruktionen
 
-**3. Syntax-Variation:**
-- Wechsle zwischen einfachen, zusammengesetzten und komplexen Satzstrukturen.
-- Verwende manchmal Nebensätze, manchmal Hauptsätze.
-- Variiere die Position von Nebensätzen (vor/nach Hauptsatz).
-- Beispiel: "Obwohl die Ergebnisse vielversprechend sind, bleiben Fragen offen." vs. "Die Ergebnisse sind vielversprechend. Dennoch bleiben Fragen offen."
+**Natürlicher Stil (Anti-AI-Detection):**
+- Variiere Satzlängen: kurz (5-10 Wörter), mittel (15-20), lang (25-35)
+- Variiere Satzanfänge (nicht immer "Die", "Es", "Dies")
+- Verwende unterschiedliche Synonyme
+- Vermeide KI-typische Phrasen: "zunächst", "ferner", "zusammenfassend", "darüber hinaus"
+- Nutze natürliche Übergänge: "Dabei zeigt sich", "Vor diesem Hintergrund", "In diesem Kontext"
 
-**4. Natürliche Abschwächungen:**
-- Verwende verschiedene Formulierungen: "möglicherweise", "lässt sich vermuten", "zum Teil", "unter Umständen", "in gewissem Maße", "tendenziell", "vermutlich", "anscheinend".
-- Variiere zwischen direkter und vorsichtiger Formulierung.
+═══════════════════════════════════════════════════════════════════════════════
+STRUKTUR UND LÄNGE
+═══════════════════════════════════════════════════════════════════════════════
 
-**5. KI-Diskursmarker VERMEIDEN:**
-- NICHT verwenden: "zunächst", "ferner", "zusammenfassend", "insgesamt gesehen", "es ist wichtig zu beachten", "darüber hinaus", "des Weiteren", "in diesem Zusammenhang", "zudem", "außerdem".
-- Stattdessen: natürlichere Übergänge wie "In diesem Kontext", "Vor diesem Hintergrund", "Dabei zeigt sich", "Hierbei", "In diesem Rahmen", "In der Folge", "Dementsprechend".
+**Ziel-Länge:** ${targetWordCount} Wörter (Maximum: ${maxWordCount} Wörter = +10%)
 
-**6. Asymmetrien einbauen:**
-- Leicht unregelmäßige Taktung (nicht perfekt rhythmisch).
-- Nicht-uniforme Übergänge zwischen Absätzen.
-- Variierte Absatzeröffnungen (nicht immer derselbe Stil).
-- Manchmal direkte Sprache, manchmal umschreibende Formulierungen.
+**Strukturelle Anforderungen:**
+1. Beginne SOFORT mit "## 1. Einleitung" (kein Text davor!)
+2. Schreibe ALLE Kapitel aus der Gliederung vollständig
+3. Jedes Kapitel muss seinen wissenschaftlichen Zweck erfüllen
+4. Ende mit dem letzten Kapitel (Fazit/Diskussion) - KEIN Literaturverzeichnis
 
-**7. Natürliche Variation:**
-- Variiere zwischen aktiver und passiver Sprache (aber nicht zu viel Passiv).
-- Verwende manchmal direkte Aussagen, manchmal indirekte Formulierungen.
-- Sei facettenreich in deiner Formulierung - keine monotonen Wiederholungen.
-- 
+**Aufbau der Arbeit (in Einleitung):**
+- Beschreibe NUR die nachfolgenden Kapitel (2, 3, 4...)
+- NICHT Kapitel 1 beschreiben (ist bereits geschrieben)
+  ✗ "Das erste Kapitel führt ein..."
+  ✓ "Im zweiten Kapitel wird..., das dritte Kapitel behandelt..."
 
-**8. Wissenschaftlicher Ton beibehalten:**
-- Wenn du über Ergebnisse aus Quellen schreibst, schreibe sie den Autoren zu, anstatt sie als absolute Fakten darzustellen. Schreibe beispielsweise "Müller (2021) hat festgestellt, dass..." statt "Die Zahl der x wächst..." wenn du Forschungsergebnisse diskutierst.
-- Schreibe mit einem objektiven, kritischen akademischen Mindset durchgehend im Text.
-- Verwende präzise, sachliche Sprache, bleibe dabei aber differenziert und vermeide absolute Aussagen über Forschungsergebnisse.
-- Füge keine persönlichen Meinungen, Marketing-Sprache oder Füllsätze ein.
-- Halte eine klare Struktur und einen klaren roten Faden durchgehend ein.
-- Biete saubere Definitionen, methodische Klarheit und kritische Reflexion, wo angemessen.
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT-FORMAT
+═══════════════════════════════════════════════════════════════════════════════
 
-**9. VERBOTENE WÖRTER UND FORMULIERUNGEN (ABSOLUT KRITISCH):**
-- ABSOLUT VERBOTEN: Unprofessionelle Wörter wie "freilich", "gewiss", "sicherlich" (in umgangssprachlicher Verwendung), "natürlich" (als Füllwort), "selbstverständlich", "ohne Frage", "zweifellos".
-- ABSOLUT VERBOTEN: Persönliche Pronomen wie "wir", "ich", "uns", "unser" - verwende stattdessen passive oder unpersönliche Konstruktionen.
-  FALSCH: "Wir werden im nächsten Abschnitt darauf eingehen..."
-  RICHTIG: "Im nächsten Abschnitt wird darauf eingegangen..."
-  FALSCH: "Wir müssen beachten, dass..."
-  RICHTIG: "Es ist zu beachten, dass..." oder "Zu beachten ist, dass..."
-  FALSCH: "Wir können feststellen, dass..."
-  RICHTIG: "Es lässt sich feststellen, dass..." oder "Festzustellen ist, dass..."
-- ABSOLUT VERBOTEN: Direkte Ansprache des Lesers ("man", "Sie" in direkter Anrede).
-- Verwende stattdessen: Passivkonstruktionen, unpersönliche Formulierungen, Nominalisierungen.
-- Beispiele für korrekte Formulierungen:
-  - "Im Folgenden wird untersucht..." statt "Wir werden im Folgenden untersuchen..."
-  - "Es zeigt sich, dass..." statt "Wir sehen, dass..."
-  - "Dabei handelt es sich um..." statt "Wir haben es hier mit... zu tun"
-  - "Die Untersuchung ergab..." statt "Wir haben festgestellt..."
+Gib den Text in Markdown aus:
 
-**Wissenschaftlicher Stil (${thesisData.language === 'german' ? 'deutsch' : 'englisch'}):**
-- Objektiv, präzise, sachlich.
-- Keine Meinungen, kein Marketing, keine Füllsätze.
-- Klare Struktur, klarer roter Faden.
-- Saubere Definitionen, methodische Klarheit, kritische Reflexion.
-
-**Struktur:**
-- Verwende das vorgegebene Outline.
-- Nimm nur minimale Anpassungen vor, wenn sie die logische Struktur verbessern.
-- Jeder Abschnitt muss einen klaren wissenschaftlichen Zweck erfüllen.
-
-**Zitationsstil:**
-- Halte dich exakt an den vorgegebenen Zitationsstil (${citationStyleLabel}).
-- Der Zitationsstil MUSS ebenfalls im Fließtext berücksichtigt werden. Dort wo eine Quelle verwendet wird, ist dies im entsprechenden Zitationsstil zu kennzeichnen.
-- Im Text und im Literaturverzeichnis strikt korrekt formatieren.
-
-**SEITENZAHLEN IN ZITATIONEN - PFLICHT:**
-- JEDE Zitation MUSS Seitenzahlen enthalten - dies ist eine absolute PFLICHT.
-- Seitenzahlen sind in ALLEN Zitationsstilen erforderlich.
-- Verwende die Seitenzahlen aus dem RAG-Kontext oder den Quellen-Metadaten.
-- Format: (Autor, Jahr, S. XX) oder (Autor, Jahr, S. XX-YY) je nach Stil.
-- Wenn die Seitenzahl nicht explizit im Kontext steht, verwende eine plausible Seitenzahl basierend auf dem Kontext (z.B. Kapitel, Abschnitt).
-- NIEMALS eine Zitation ohne Seitenzahl ausgeben.
-${thesisData.citationStyle === 'deutsche-zitierweise' ? `
-**KRITISCH - Deutsche Zitierweise (Fußnoten) - ABSOLUT WICHTIG:**
-
-**WANN Fußnoten verwenden:**
-- JEDE Verwendung einer Quelle im Text MUSS sofort mit einer Fußnote markiert werden.
-- JEDE Information, die aus einer Quelle stammt, MUSS eine Fußnote haben - auch indirekte Zitate, Paraphrasen, Fakten, Statistiken, Definitionen.
-- JEDE Quelle, die im Literaturverzeichnis steht, MUSS mindestens einmal im Text mit einer Fußnote zitiert werden.
-- Wenn du Informationen aus mehreren Quellen kombinierst, verwende mehrere Fußnoten: "Text^1^2" oder "Text^1,^2".
-- Wenn du 8 Quellen im Literaturverzeichnis hast, müssen ALLE 8 Quellen auch im Text mit Fußnoten zitiert werden.
-- Jede Stelle im Text, wo Informationen aus einer Quelle verwendet werden, MUSS eine Fußnote haben - KEINE Ausnahmen.
-
-**FORMAT - Exakt befolgen:**
-- Im Text: Verwende IMMER das Format "^N" direkt nach dem Wort/Satz, wo die Quelle verwendet wird.
-  Beispiel: "Künstliche Intelligenz wird zunehmend eingesetzt^1. Die Technologie ermöglicht^2..."
-  NICHT: "Künstliche Intelligenz wird zunehmend eingesetzt [^1]" oder "Künstliche Intelligenz wird zunehmend eingesetzt (^1)"
-  RICHTIG: "Künstliche Intelligenz wird zunehmend eingesetzt^1"
-  
-- Fußnoten-Definitionen: Am Ende des Dokuments (vor dem Literaturverzeichnis) oder am Ende jedes Absatzes als:
-  [^1]: Autor, Vorname. Titel. Ort: Verlag, Jahr, S. XX.
-  [^2]: Autor, Vorname. "Artikel-Titel." Zeitschrift, Jahr, S. XX-YY.
-  
-- Jede Fußnote bekommt eine fortlaufende Nummer (1, 2, 3, 4, ...) in der Reihenfolge, wie sie im Text erscheinen.
-- WICHTIG: Die Fußnoten-Nummern sind ZÄHLNUMMERN, keine Quellen-IDs. Jede neue Fußnote im Text bekommt die nächste fortlaufende Nummer, unabhängig davon, welche Quelle zitiert wird.
-- Beispiel: Wenn Quelle A zuerst zitiert wird → ^1, dann Quelle B → ^2, dann Quelle A wieder → ^3 (NICHT ^1!).
-- Die Fußnoten müssen vollständig sein: Autor, Titel, Jahr, Seitenzahl (PFLICHT - immer angeben), Verlag/Journal.
-- JEDE Fußnote MUSS eine Seitenzahl enthalten - Seitenzahlen sind PFLICHT.
-
-**BEISPIEL für korrektes Format:**
-Text: "Die Forschung zeigt^1, dass KI-Systeme^2 in der Medizin^3 zunehmend eingesetzt werden^4."
-
-Fußnoten:
-[^1]: Müller, J. (2023). KI in der Medizin. Berlin: Verlag, S. 45.
-[^2]: Schmidt, A. (2022). "KI-Systeme." Journal, 12(3), S. 67-89.
-[^3]: Weber, M. (2024). Medizinische Anwendungen. München: Verlag, S. 12.
-[^4]: Becker, K. (2023). "Einsatz von KI." Zeitschrift, 5(2), S. 23-34.
-
-**WICHTIG:**
-- Dein Text MUSS mit dem ersten Kapitel beginnen. Keine Kommentare, keine Einführung, KEIN Titel, KEINE Überschrift mit "Bachelorarbeit", "Masterarbeit" oder "Hausarbeit", KEINE Meta-Informationen.
-- ABSOLUT VERBOTEN: Titel, Thesis-Typ (Bachelorarbeit/Masterarbeit/Hausarbeit), oder irgendwelche anderen Texte VOR dem ersten Kapitel zu schreiben.
-- Das erste Wort deines Outputs MUSS der erste Buchstabe des ersten Kapitels sein (z.B. "#" für die Überschrift "## 1. Einleitung").
-- BEGINNE SOFORT mit "## 1. Einleitung" oder "## Einleitung" - NICHTS davor.
-- Stelle sicher, dass der Text vollständig ist und nicht abgebrochen wird - auch wenn viele Fußnoten verwendet werden.
-- Jede Quelle im Literaturverzeichnis MUSS mindestens eine Fußnote im Text haben.
-- Wenn du Informationen aus einer Quelle verwendest, MUSS sofort eine Fußnote folgen.` : ''}
-
-**Literaturverzeichnis (ABSOLUT KRITISCH - MUSS VOLLSTÄNDIG SEIN - NUR ZITIERTE QUELLEN):**
-- Am Ende des Dokuments MUSS ein vollständiges, korrekt formatiertes Literaturverzeichnis mit TATSÄCHLICHEN Quellen stehen.
-- ABSOLUT KRITISCH: Das Literaturverzeichnis MUSS vorhanden sein und darf NICHT leer sein.
-- ABSOLUT KRITISCH: Das Literaturverzeichnis muss mindestens ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} Quellen enthalten (basierend auf der Anzahl der im Text zitierten Quellen).
-- ABSOLUT KRITISCH: Das Literaturverzeichnis darf NUR Quellen enthalten, die TATSÄCHLICH im Text mit einer Fußnote zitiert wurden.
-- ABSOLUT VERBOTEN: Ein leeres Literaturverzeichnis zu erstellen.
-- ABSOLUT VERBOTEN: Quellen ins Literaturverzeichnis aufzunehmen, die NICHT im Text zitiert wurden.
-- ABSOLUT VERBOTEN: Quellen ins Literaturverzeichnis aufzunehmen, die keine Fußnote im Text haben.
-- Nur Quellen aufnehmen, die:
-  1. Tatsächlich im Text mit einer Fußnote (^1, ^2, etc.) zitiert wurden
-  2. Tatsächlich im FileSearchStore/RAG-Kontext verfügbar sind
-  3. Tatsächlich während des Generierungsprozesses abgerufen wurden
-- Das Literaturverzeichnis MUSS ALLE im Text zitierten Quellen enthalten (keine darf fehlen).
-- Das Literaturverzeichnis DARF KEINE Quellen enthalten, die nicht im Text zitiert wurden.
-- ABSOLUT VERBOTEN: Quellen mit "(Hypothetische Quelle)", "(Hypothetical Source)" oder Platzhalter-Quellen aufzunehmen.
-- ABSOLUT VERBOTEN: Quellen zu erfinden oder zu erstellen, die nicht im RAG-Kontext sind.
-- Wenn du eine Quelle nicht im RAG-Kontext findest, DARFST du sie NICHT ins Literaturverzeichnis aufnehmen, aber du MUSST alle Quellen aufnehmen, die du tatsächlich mit Fußnoten zitiert hast.
-- Jede Quelle im Literaturverzeichnis MUSS:
-  * Aus dem FileSearchStore abgerufen worden sein
-  * Mindestens einmal im Text mit einer Fußnote zitiert worden sein
-- Alphabetisch sortiert.
-- Format entsprechend dem Zitationsstil (${citationStyleLabel}).
-- DOI, URL und Journal-Metadaten verwenden, sofern in den tatsächlichen Quellen-Metadaten vorhanden.
-- Keine doppelten Einträge.
-- Wenn eine Quelle im RAG-Kontext fehlt, zitiere sie einfach nicht - erstelle KEINE hypothetische Version.
-- WICHTIG: Das Literaturverzeichnis ist ein PFLICHT-Teil der Arbeit - es MUSS vorhanden sein, darf NICHT leer sein, und muss NUR zitierten Quellen enthalten.
-
-**RAG-Nutzung (PFLICHT):**
-- Nutze aktiv die Inhalte der bereitgestellten Quellen (File Search / Embeddings).
-- Extrahiere relevante Aussagen und verarbeite sie wissenschaftlich.
-- Keine Inhalte außerhalb der bereitgestellten Daten außer allgemein anerkanntes Basiswissen (Definitionen, Methodik).
-- Du DARFST NUR Quellen zitieren, die von der FileSearchStore während deiner Abfragen zurückgegeben wurden.
-- Wenn eine Quelle nicht in den RAG-Ergebnissen ist, existiert sie für diese Thesis NICHT - zitiere sie NICHT.
-- NIEMALS Platzhalter-Quellen erstellen oder Quellen als hypothetisch markieren.
-
-**WICHTIG - Inhaltsverzeichnis und Titel:**
-- ERSTELLE KEIN Inhaltsverzeichnis (Table of Contents / Inhaltsverzeichnis) im generierten Text.
-- Das Inhaltsverzeichnis wird automatisch aus der Gliederung generiert und separat angezeigt.
-- ABSOLUT VERBOTEN: KEIN Titel, KEINE Überschrift mit "Bachelorarbeit", "Masterarbeit", "Hausarbeit" oder dem Thesis-Titel VOR dem ersten Kapitel.
-- ABSOLUT VERBOTEN: Irgendwelche Texte, Überschriften oder Meta-Informationen VOR dem ersten Kapitel.
-- Beginne direkt mit dem ersten Kapitel (z.B. "## 1. Einleitung" oder "## Einleitung").
-- Keine Überschrift "Inhaltsverzeichnis" oder "Table of Contents" im Text.
-- Das erste Zeichen deines Outputs MUSS "#" sein (für die erste Kapitelüberschrift).
-
-**Output-Format:**
-- Gib die komplette Arbeit in Markdown mit klaren Überschriften aus.
-- Strukturbeispiel (BEGINNE SOFORT mit diesem Format, KEIN Titel davor):
   ## 1. Einleitung
-  ...
-  ## Fazit
-  ## Literaturverzeichnis
-- BEGINNE direkt mit dem ersten Kapitel - KEIN Titel, KEIN Inhaltsverzeichnis, KEINE Meta-Informationen.
+[Einleitungstext mit Zitationen^1^2...]
 
-**KRITISCH - VOLLSTÄNDIGKEIT UND LÄNGE (ABSOLUT WICHTIG):**
+## 2. [Kapitelname]
+[Kapiteltext...]
 
-**1. VOLLSTÄNDIGE STRUKTUR - MUSS ERFÜLLT WERDEN:**
-- Du MUSST ALLE Kapitel aus der Gliederung vollständig ausarbeiten.
-- Jedes Kapitel muss vollständig sein - keine unvollendeten Abschnitte.
-- Die Arbeit muss mit dem Literaturverzeichnis enden - niemals mitten in einem Kapitel stoppen.
-- Wenn die Gliederung ${thesisData.outline?.length || 'X'} Kapitel hat, müssen ALLE ${thesisData.outline?.length || 'X'} Kapitel vollständig geschrieben werden.
-- KEINE Ausnahmen - die Arbeit muss strukturell vollständig sein.
+## 3. [Kapitelname]
+[Kapiteltext...]
 
-**2. ZIEL-LÄNGE - MUSS ERREICHT WERDEN (ABER VOLLSTÄNDIGKEIT IST WICHTIGER):**
-- Ziel-Länge: ${thesisData.targetLength} ${thesisData.lengthUnit} (ca. ${targetPages} Seiten, ca. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter).
-${thesisData.lengthUnit === 'words' ? `- Bei wortbasierter Länge kannst du bis zu 5% länger sein (max ${Math.ceil(thesisData.targetLength * 1.05)} Wörter), aber Vollständigkeit ist wichtiger als die exakte Wortanzahl.\n` : ''}- Du MUSST mindestens diese Länge erreichen - die Arbeit darf NICHT früher enden.
-- Wenn du bei ${Math.round(targetPages * 0.3)} Seiten bist, bist du erst bei 30% - du musst weitermachen!
-- Eine Arbeit von ${targetPages} Seiten benötigt ca. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter.
-- Wenn du nur 1500 Wörter geschrieben hast, fehlen noch ${(thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250) - 1500} Wörter - du musst ALLE Kapitel vollständig ausarbeiten.
-- **KRITISCH: Das Erreichen der Ziel-Wortanzahl bedeutet NICHT, dass du stoppen kannst!**
-- **Du MUSST weiterschreiben, bis ALLE Kapitel vollständig sind UND das Literaturverzeichnis geschrieben ist.**
-- **Auch wenn du ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter erreicht hast, MUSST du trotzdem das vollständige Literaturverzeichnis mit allen Quellen schreiben.**
-- Die Arbeit ist erst fertig, wenn:
-  * ALLE Kapitel aus der Gliederung vollständig sind
-  * Die Ziel-Länge erreicht ist (${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter${thesisData.lengthUnit === 'words' ? `, kann bis zu ${Math.ceil(thesisData.targetLength * 1.05)} Wörter sein` : ''})
-  * Das Literaturverzeichnis vorhanden ist UND tatsächliche Quelleneinträge enthält (NICHT leer)
-  * ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'Alle Fußnoten vorhanden sind' : 'Alle Zitationen korrekt sind'}
+[... alle weiteren Kapitel ...]
 
-**3. KEIN FRÜHES ABBRECHEN:**
-- Die Arbeit darf NICHT mitten in Kapitel 1 enden.
-- Die Arbeit darf NICHT ohne Literaturverzeichnis enden.
-- Die Arbeit darf NICHT ohne ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'Fußnoten' : 'Zitationen'} enden.
-- Wenn du merkst, dass du noch nicht die Ziel-Länge erreicht hast, arbeite die Kapitel tiefer aus, füge mehr Details hinzu, erweitere die Diskussion.
-- Jedes Kapitel sollte proportional zur Gesamtlänge ausführlich sein.
+## [Letztes Kapitel - Fazit/Diskussion]
+[Fazittext...]
 
-**4. STRUKTURELLE VOLLSTÄNDIGKEIT:**
-- Einleitung: Vollständig mit Hinführung, Problemstellung, Forschungsfrage, Aufbau der Arbeit
-  **WICHTIG - Aufbau der Arbeit:**
-  - Der Abschnitt "Aufbau der Arbeit" oder "Methodische Vorgehensweise" beschreibt NUR die nachfolgenden Kapitel (Kapitel 2, 3, 4, etc.), NICHT das aktuelle Kapitel 1.
-  - FALSCH: "Das erste Kapitel führt ins Thema ein..." (Kapitel 1 ist bereits geschrieben, es sollte nicht beschrieben werden)
-  - RICHTIG: "Das zweite Kapitel untersucht...", "Im dritten Kapitel wird...", "Das vierte Kapitel behandelt..."
-  - Beginne die Beschreibung mit dem zweiten Kapitel, da Kapitel 1 bereits vorliegt.
-- Hauptkapitel: Jedes Kapitel vollständig ausgearbeitet
-- Diskussion/Fazit: Vollständig mit Zusammenfassung, Beantwortung der Forschungsfrage, Ausblick
-- Literaturverzeichnis: Vollständig mit allen zitierten Quellen
-${thesisData.citationStyle === 'deutsche-zitierweise' ? '- Fußnoten: Vollständig mit allen Zitationen\n' : ''}
+${thesisData.citationStyle === 'deutsche-zitierweise' ? `
+---
+FUSSNOTEN:
+[^1]: [Vollständige Quellenangabe mit Seitenzahl]
+[^2]: [Vollständige Quellenangabe mit Seitenzahl]
+[... alle Fußnoten ...]` : ''}
 
-**5. QUALITÄT BEI VOLLSTÄNDIGKEIT:**
-- Die Arbeit muss vollständig sein, aber auch qualitativ hochwertig.
-- Nicht einfach Fülltext hinzufügen - sondern die Kapitel inhaltlich vollständig ausarbeiten.
-- Jedes Kapitel sollte seine Funktion erfüllen und zur Forschungsfrage beitragen.
-
-**WICHTIG:**
-- Wenn die API dich stoppt, bevor du fertig bist, ist das ein Fehler - du musst die VOLLSTÄNDIGE Arbeit schreiben.
-- Die Arbeit ist erst fertig, wenn ALLE Anforderungen erfüllt sind: Vollständige Struktur, Ziel-Länge erreicht, Literaturverzeichnis vorhanden.
-
-**Ziel:**
-Erstelle eine VOLLSTÄNDIGE, VOLL-LÄNGEN, zitierfähige, wissenschaftlich fundierte Arbeit, die:
-1. ALLE Kapitel aus der Gliederung vollständig implementiert
-2. Die Ziel-Länge von ${thesisData.targetLength} ${thesisData.lengthUnit} (${targetPages} Seiten, ~${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} Wörter) erreicht
-3. Ein vollständiges Literaturverzeichnis enthält
-${thesisData.citationStyle === 'deutsche-zitierweise' ? '4. Alle Fußnoten enthält\n' : '4. Alle Zitationen enthält\n'}5. Logisch aufgebaut ist und den Zitationsstil korrekt umsetzt
-6. Ausschließlich validierte Quellen nutzt
-7. Von Anfang an natürlich und menschlich klingt, nicht wie KI-generiert
-
-STOPPE NICHT, bis alle Anforderungen erfüllt sind. Die Arbeit muss VOLLSTÄNDIG sein.`
+BEGINNE JETZT mit "## 1. Einleitung" - schreibe die vollständige Thesis.`
 
     : `You are a scientific assistant who writes academic texts exclusively based on the provided, indexed sources (RAG / File Search).
 
