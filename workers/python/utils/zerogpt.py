@@ -4,8 +4,9 @@ from typing import Dict, Any
 
 class ZeroGPTClient:
     def __init__(self):
-        self.api_key = os.getenv('ZEROGPT_API_KEY')
-        self.api_url = "https://api.zerogpt.com/api/detect/detectText"
+        # Try RAPIDAPI_KEY first (used in frontend), fall back to ZEROGPT_API_KEY
+        self.api_key = os.getenv('RAPIDAPI_KEY') or os.getenv('ZEROGPT_API_KEY')
+        self.api_url = "https://zerogpt.p.rapidapi.com/api/v1/detectText"
     
     def check(self, text: str) -> Dict[str, Any]:
         if not self.api_key:
@@ -14,12 +15,12 @@ class ZeroGPTClient:
             
         try:
             payload = {
-                "text": text,
                 "input_text": text
             }
             headers = {
                 "Content-Type": "application/json",
-                "ApiKey": self.api_key
+                "X-RapidAPI-Key": self.api_key,
+                "X-RapidAPI-Host": "zerogpt.p.rapidapi.com"
             }
             
             response = requests.post(self.api_url, json=payload, headers=headers)
@@ -27,19 +28,16 @@ class ZeroGPTClient:
             
             data = response.json()
             
-            # Extract score
-            # Note: Actual API response structure might vary, adjusting based on common ZeroGPT API format
-            # Usually returns 'fakePercentage' or similar.
-            # Let's assume data['data']['fakePercentage'] or similar.
+            # RapidAPI ZeroGPT response format:
+            # { "success": true, "data": { "is_human_written": 85, "is_gpt_generated": 15, ... } }
             
-            # If we can't verify exact API response now, we'll wrap it safely.
-            # Assuming 'fakePercentage' is returned (0-100)
-            
-            fake_percentage = data.get('fakePercentage', 0)
-            if 'data' in data and 'fakePercentage' in data['data']:
-                fake_percentage = data['data']['fakePercentage']
-                
-            human_percentage = 100 - fake_percentage
+            if data.get('success') and 'data' in data:
+                human_percentage = data['data'].get('is_human_written', 0)
+                fake_percentage = data['data'].get('is_gpt_generated', 0)
+            else:
+                # Fallback for other formats
+                fake_percentage = data.get('fakePercentage', 0)
+                human_percentage = 100 - fake_percentage
             
             return {
                 "human_percentage": human_percentage,

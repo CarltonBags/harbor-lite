@@ -238,37 +238,27 @@ export async function POST(request: NextRequest) {
 
     console.log(`ZeroGPT check completed: ${chunks.length} chunk(s), ${result.isHumanWritten}% human, ${result.isGptGenerated}% AI`)
 
-      // Update thesis metadata with ZeroGPT result
-      const existingMetadata = (thesis.metadata as any) || {}
-      const updatedMetadata = {
-        ...existingMetadata,
-        zeroGptResult: result,
-      }
+    // Update thesis metadata with ZeroGPT result
+    const existingMetadata = (thesis.metadata as any) || {}
+    const updatedMetadata = {
+      ...existingMetadata,
+      zeroGptResult: result,
+    }
 
-      const { error: updateError } = await supabase
-        .from('theses')
-        .update({ metadata: updatedMetadata })
-        .eq('id', thesisId)
+    const { error: updateError } = await supabase
+      .from('theses')
+      .update({ metadata: updatedMetadata })
+      .eq('id', thesisId)
 
-      if (updateError) {
-        console.error('Error updating thesis metadata:', updateError)
-        return NextResponse.json(
-          { error: 'Failed to save ZeroGPT result' },
-          { status: 500 }
-        )
-      }
-
-      return NextResponse.json({ success: true, result })
-    } else {
-      console.error('Invalid ZeroGPT response format:', data)
+    if (updateError) {
+      console.error('Error updating thesis metadata:', updateError)
       return NextResponse.json(
-        { 
-          error: 'Invalid response from ZeroGPT API',
-          details: data,
-        },
+        { error: 'Failed to save ZeroGPT result' },
         { status: 500 }
       )
     }
+
+    return NextResponse.json({ success: true, result })
   } catch (error) {
     console.error('Error checking ZeroGPT:', error)
     return NextResponse.json(

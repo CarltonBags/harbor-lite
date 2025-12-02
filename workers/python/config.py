@@ -8,11 +8,11 @@ load_dotenv()
 
 # API Keys
 GEMINI_API_KEY = os.getenv('GEMINI_KEY')
-ZEROGPT_API_KEY = os.getenv('ZEROGPT_API_KEY')
+RAPIDAPI_KEY = os.getenv('RAPIDAPI_KEY')  # Used for ZeroGPT via RapidAPI
 
 # Model Configuration
-GENERATION_MODEL = 'gemini-2.0-flash-exp'  # or gemini-2.5-pro for better quality
-HUMANIZATION_MODEL = 'gemini-2.0-flash-exp'
+GENERATION_MODEL = 'gemini-2.5-pro'  # or gemini-2.5-pro for better quality
+HUMANIZATION_MODEL = 'gemini-2.5-pro'
 
 # Generation Settings
 MAX_OUTPUT_TOKENS = 400000  # Gemini 2.0 Flash supports up to 8k output

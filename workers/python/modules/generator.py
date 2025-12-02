@@ -23,7 +23,7 @@ class GenerateThesisSignature(dspy.Signature):
     1. Schreibe den VOLLSTÄNDIGEN Thesis-Text für ALLE Kapitel in der Gliederung.
     2. Verwende NUR die bereitgestellten Quellen aus dem File Search / RAG Kontext.
     3. Folge STRIKT der vorgegebenen Gliederungsstruktur - jedes Kapitel, jeder Abschnitt, jeder Unterabschnitt.
-    4. ERSTELLE KEIN Inhaltsverzeichnis (Table of Contents / Inhaltsverzeichnis) - wir haben es bereits.
+    4. **ABSOLUT VERBOTEN - INHALTSVERZEICHNIS:** ERSTELLE NIEMALS ein Inhaltsverzeichnis! Kein "Inhaltsverzeichnis", kein "Table of Contents", keine Auflistung von Kapiteln mit Seitenzahlen. Wir haben das Inhaltsverzeichnis bereits separat!
     5. ERSTELLE KEIN Literaturverzeichnis (Bibliography) - wir generieren es aus den Metadaten.
     6. ERSTELLE KEINE Bilder, Tabellen, Charts, Anhang oder andere visuelle Elemente. Nur Text.
     7. Zitiere Quellen im angegebenen Zitationsstil durchgehend im Text.
@@ -31,16 +31,19 @@ class GenerateThesisSignature(dspy.Signature):
     9. Schreibe in wissenschaftlichem, akademischem Stil. Keine persönlichen Pronomen (ich, wir, we, I).
     10. Halte die Ziel-Wortanzahl ein (±10%). Dies ist KRITISCH.
     11. Für Deutsche Zitierweise: Verwende Fußnoten mit vollständiger Zitation beim ersten Vorkommen.
-    12. Für APA/Harvard: Verwende In-Text-Zitationen im Format (Autor, Jahr).
-    13. Beginne direkt mit der ersten Kapitelüberschrift (z.B. ## 1. Einleitung).
-    14. KEIN Titelblatt, KEIN Abstract vor dem ersten Kapitel.
+    12. Für APA/Harvard: Verwende In-Text-Zitationen im Format (Autor, Jahr, S. XX).
+    13. Beginne direkt mit der ersten Kapitelüberschrift (z.B. ## 1. Einleitung). KEIN Inhaltsverzeichnis davor!
+    14. KEIN Titelblatt, KEIN Abstract, KEIN Inhaltsverzeichnis vor dem ersten Kapitel.
 
     **SEITENZAHLEN - ABSOLUT WICHTIG (PFLICHT):**
     - JEDE Zitation MUSS Seitenzahlen enthalten - dies ist eine PFLICHT.
     - Seitenzahlen sind in ALLEN Zitationsstilen erforderlich.
+    - WICHTIG FÜR DEUTSCHE TEXTE: Verwende IMMER "S." für Seitenzahlen, NIEMALS "p." oder "pp."!
     - Format je nach Zitationsstil:
-      * APA/Harvard: (Autor, Jahr, S. XX) oder (Autor, Jahr, S. XX-YY)
+      * APA/Harvard (Deutsch): (Autor, Jahr, S. XX) oder (Autor, Jahr, S. XX-YY)
       * Deutsche Zitierweise: In den Fußnoten: Autor, Titel, Jahr, S. XX
+      * FALSCH: (Müller, 2020, p. 45) - NIEMALS "p." verwenden!
+      * RICHTIG: (Müller, 2020, S. 45)
     - NIEMALS eine Zitation ohne Seitenzahl.
 
     **MENSCHLICHER STIL UND AI-ERKENNUNGS-VERMEIDUNG (KRITISCH):**
@@ -127,11 +130,11 @@ class ThesisGenerator(dspy.Module):
         print(f"Mandatory sources: {len(mandatory_sources)}")
         
         with dspy.context(lm=lm):
-            result = self.generate(
-                outline_json=outline_str,
-                research_question=research_question,
-                specifications=specs_str,
-                mandatory_sources_list=mandatory_str
-            )
+                result = self.generate(
+                    outline_json=outline_str,
+                    research_question=research_question,
+                    specifications=specs_str,
+                    mandatory_sources_list=mandatory_str
+                )
         
         return result
