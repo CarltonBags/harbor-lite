@@ -2,7 +2,7 @@
 # https://render.com/docs/blueprint-spec
 
 services:
-  - type: worker
+  - type: web
     name: thesis-worker
     env: docker
     dockerfilePath: ./Dockerfile
@@ -10,6 +10,7 @@ services:
     region: frankfurt  # EU region for GDPR compliance
     plan: starter  # Can be upgraded based on needs
     numInstances: 1
+    healthCheckPath: /health
     envVars:
       # Redis (Upstash or similar)
       - key: REDIS_URL
