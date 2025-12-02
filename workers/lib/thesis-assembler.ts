@@ -28,18 +28,17 @@ export class ThesisAssembler {
         // Add title page or header if needed, but usually just the content
         // Markdown format
 
-        const thesis = `
-# ${components.metadata.title}
+        const thesis = `# ${components.metadata.title}
 
 ## Inhaltsverzeichnis
 
 ${toc}
 
-<div style="page-break-after: always;"></div>
+---
 
 ${components.mainText}
 
-<div style="page-break-after: always;"></div>
+---
 
 ## Literaturverzeichnis
 
