@@ -173,6 +173,25 @@ const worker = new Worker('thesis-generation', async (job: Job<ThesisJob>) => {
         // ============================================
         await job.updateProgress({ stage: 'saving', progress: 0, message: 'Saving to database...' })
 
+        // Format sources for uploaded_sources column
+        const uploadedSourcesData = researchResult.sources.map(source => ({
+            title: source.title,
+            authors: source.authors,
+            year: source.year,
+            doi: source.doi,
+            url: source.url,
+            pdf_url: source.pdfUrl,
+            abstract: source.abstract,
+            journal: source.journal,
+            publisher: source.publisher,
+            citation_count: source.citationCount,
+            relevance_score: source.relevanceScore,
+            source_type: source.source,
+            chapter_number: source.chapterNumber,
+            chapter_title: source.chapterTitle,
+            mandatory: source.mandatory || false,
+        }))
+
         await supabase
             .from('theses')
             .update({
@@ -180,6 +199,7 @@ const worker = new Worker('thesis-generation', async (job: Job<ThesisJob>) => {
                 status: 'completed',
                 completed_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
+                uploaded_sources: uploadedSourcesData, // Save research sources
                 metadata: {
                     word_count: generationResult.word_count,
                     zerogpt_score: humanizationResult.final_score?.human_percentage || 0,

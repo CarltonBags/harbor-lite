@@ -15,11 +15,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (!RAPIDAPI_KEY) {
+      console.error('RAPIDAPI_KEY environment variable is not set')
       return NextResponse.json(
-        { error: 'ZeroGPT API key not configured' },
+        { error: 'ZeroGPT API key not configured. Please set RAPIDAPI_KEY environment variable.' },
         { status: 500 }
       )
     }
+    
+    console.log(`ZeroGPT check starting for thesis ${thesisId}, API key present: ${RAPIDAPI_KEY.substring(0, 8)}...`)
 
     // Get thesis content
     const supabase = createSupabaseServerClient()
@@ -142,6 +145,7 @@ export async function POST(request: NextRequest) {
       console.log(`Checking chunk ${i + 1}/${chunks.length} (${chunk.length} chars)...`)
 
       try {
+        console.log(`Making API request to ZeroGPT...`)
         const response = await fetch('https://zerogpt.p.rapidapi.com/api/v1/detectText', {
           method: 'POST',
           headers: {
@@ -153,6 +157,8 @@ export async function POST(request: NextRequest) {
             input_text: chunk,
           }),
         })
+
+        console.log(`ZeroGPT response status: ${response.status}`)
 
         if (!response.ok) {
           let errorData: any = {}
@@ -184,23 +190,28 @@ export async function POST(request: NextRequest) {
         let data: any
         try {
           data = await response.json()
+          console.log(`ZeroGPT response data:`, JSON.stringify(data).substring(0, 200))
         } catch (e) {
           console.error(`Failed to parse ZeroGPT response for chunk ${i + 1}:`, e)
           continue
         }
 
-        if (data.error || data.message) {
-          console.error(`ZeroGPT API returned error for chunk ${i + 1}:`, data.error || data.message)
+        // Check for error in response body (not just HTTP status)
+        if (data.error) {
+          console.error(`ZeroGPT API returned error for chunk ${i + 1}:`, data.error)
           continue
         }
 
         if (data.success && data.data) {
+          console.log(`Chunk ${i + 1} result: ${data.data.is_human_written}% human`)
           chunkResults.push({
             isHumanWritten: data.data.is_human_written || 0,
             isGptGenerated: data.data.is_gpt_generated || 0,
             wordsCount: data.data.words_count || 0,
             feedbackMessage: data.data.feedback_message || '',
           })
+        } else {
+          console.error(`Unexpected response format for chunk ${i + 1}:`, data)
         }
       } catch (error) {
         console.error(`Error checking chunk ${i + 1}:`, error)

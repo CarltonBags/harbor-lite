@@ -257,10 +257,17 @@ export default function ThesisPreviewPage() {
       setContent(thesisContent)
       setOriginalContent(thesisContent)
 
-      // Extract sources from bibliography
+      // Load sources - use uploaded_sources directly (from research pipeline)
+      // or fall back to extracting from bibliography for older theses
       const uploadedSources = thesisData.uploaded_sources || []
-      const bibliographySources = extractBibliographySources(thesisContent, uploadedSources)
-      setBibliographySources(bibliographySources)
+      if (uploadedSources.length > 0) {
+        // New format: sources are stored directly
+        setBibliographySources(uploadedSources)
+      } else {
+        // Legacy: try to extract from bibliography text
+        const bibliographySources = extractBibliographySources(thesisContent, uploadedSources)
+        setBibliographySources(bibliographySources)
+      }
 
       // Load user profile for cover page
       const supabase = createSupabaseClient()
@@ -1645,72 +1652,97 @@ export default function ThesisPreviewPage() {
                           </h3>
 
                           <div className="space-y-1 text-sm text-gray-600 dark:text-gray-300">
-                            {source.metadata?.authors && source.metadata.authors.length > 0 && (
+                            {/* Authors - handle both flat and nested formats */}
+                            {(source.authors || source.metadata?.authors) && (
                               <p>
                                 <span className="font-medium">Autoren:</span>{' '}
-                                {Array.isArray(source.metadata.authors)
-                                  ? source.metadata.authors.join(', ')
-                                  : source.metadata.authors}
+                                {Array.isArray(source.authors || source.metadata?.authors)
+                                  ? (source.authors || source.metadata?.authors).join(', ')
+                                  : (source.authors || source.metadata?.authors)}
                               </p>
                             )}
 
-                            {source.metadata?.year && (
+                            {/* Year - handle both flat and nested */}
+                            {(source.year || source.metadata?.year) && (
                               <p>
-                                <span className="font-medium">Jahr:</span> {source.metadata.year}
+                                <span className="font-medium">Jahr:</span> {source.year || source.metadata?.year}
                               </p>
                             )}
 
-                            {source.metadata?.journal && (
+                            {/* Journal - handle both flat and nested */}
+                            {(source.journal || source.metadata?.journal) && (
                               <p>
-                                <span className="font-medium">Journal:</span> {source.metadata.journal}
+                                <span className="font-medium">Journal:</span> {source.journal || source.metadata?.journal}
                               </p>
                             )}
 
-                            {source.doi && (
+                            {/* DOI */}
+                            {(source.doi || source.metadata?.doi) && (
                               <p>
                                 <span className="font-medium">DOI:</span>{' '}
                                 <a
-                                  href={`https://doi.org/${source.doi}`}
+                                  href={`https://doi.org/${source.doi || source.metadata?.doi}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-red-600 dark:text-red-500 hover:underline"
+                                  className="text-yellow-600 dark:text-yellow-500 hover:underline"
                                 >
-                                  {source.doi}
+                                  {source.doi || source.metadata?.doi}
                                 </a>
                               </p>
                             )}
 
-                            {source.metadata?.pages && (
+                            {/* PDF URL */}
+                            {(source.pdf_url || source.pdfUrl) && (
                               <p>
-                                <span className="font-medium">Seiten:</span> {source.metadata.pages}
+                                <span className="font-medium">PDF:</span>{' '}
+                                <a
+                                  href={source.pdf_url || source.pdfUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-green-600 dark:text-green-500 hover:underline"
+                                >
+                                  PDF öffnen
+                                </a>
                               </p>
                             )}
 
-                            {source.metadata?.pageStart && source.metadata?.pageEnd && (
-                              <p>
-                                <span className="font-medium">Seitenbereich:</span> {source.metadata.pageStart} - {source.metadata.pageEnd}
-                              </p>
-                            )}
-
-                            {source.sourceUrl && (
+                            {/* URL */}
+                            {(source.url || source.sourceUrl) && (
                               <p>
                                 <span className="font-medium">URL:</span>{' '}
                                 <a
-                                  href={source.sourceUrl}
+                                  href={source.url || source.sourceUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-purple-600 dark:text-purple-400 hover:underline break-all"
+                                  className="text-blue-600 dark:text-blue-400 hover:underline break-all"
                                 >
-                                  {source.sourceUrl.length > 60 ? `${source.sourceUrl.substring(0, 60)}...` : source.sourceUrl}
+                                  {(source.url || source.sourceUrl).length > 60 
+                                    ? `${(source.url || source.sourceUrl).substring(0, 60)}...` 
+                                    : (source.url || source.sourceUrl)}
                                 </a>
                               </p>
                             )}
 
-                            {source.metadata?.abstract && (
+                            {/* Relevance Score */}
+                            {source.relevance_score && (
+                              <p>
+                                <span className="font-medium">Relevanz:</span> {Math.round(source.relevance_score * 100)}%
+                              </p>
+                            )}
+
+                            {/* Chapter assignment */}
+                            {source.chapter_title && (
+                              <p>
+                                <span className="font-medium">Kapitel:</span> {source.chapter_number} {source.chapter_title}
+                              </p>
+                            )}
+
+                            {/* Abstract */}
+                            {(source.abstract || source.metadata?.abstract) && (
                               <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
                                 <p className="font-medium mb-1">Abstract:</p>
                                 <p className="text-gray-600 dark:text-gray-400 italic text-xs line-clamp-3">
-                                  {source.metadata.abstract}
+                                  {source.abstract || source.metadata?.abstract}
                                 </p>
                               </div>
                             )}
