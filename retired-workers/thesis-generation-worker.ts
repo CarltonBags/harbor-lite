@@ -2092,14 +2092,13 @@ QUELLENNUTZUNG
 
 ${thesisData.citationStyle === 'deutsche-zitierweise' ? `**Deutsche Zitierweise (Fußnoten):**
 - Im Text: Verwende "^N" direkt nach dem zitierten Inhalt (z.B. "Die Forschung zeigt^1")
-- Am Ende: Definiere alle Fußnoten als [^N]: Autor, Titel, Jahr, S. XX
-- Fortlaufende Nummerierung (1, 2, 3...) in der Reihenfolge des Erscheinens
+- Fortlaufende Nummerierung (^1, ^2, ^3...) in der Reihenfolge des Erscheinens
 - Jede neue Zitation = neue Nummer (auch bei wiederholter Quelle)
+- WICHTIG: Schreibe KEINE Fußnoten-Definitionen ([^1]: ...) am Ende des Textes!
+- Die Fußnoten-Metadaten werden automatisch aus den FileSearchStore-Quellen generiert
 
-Beispiel:
-Text: "Die Digitalisierung verändert Arbeitsprozesse grundlegend^1. Studien belegen^2..."
-[^1]: Müller, Hans. Digitale Transformation. Berlin: Verlag, 2023, S. 45.
-[^2]: Schmidt, Anna. "Arbeit 4.0." Zeitschrift, 2022, S. 12-15.` : `**${citationStyleLabel}:**
+Beispiel im Text:
+"Die Digitalisierung verändert Arbeitsprozesse grundlegend^1. Studien belegen^2..."` : `**${citationStyleLabel}:**
 - Zitiere im Text: (Autor, Jahr, S. XX) oder (Autor, Jahr, S. XX-YY)
 - Bei mehreren Autoren: (Autor et al., Jahr, S. XX)`}
 
@@ -2165,11 +2164,10 @@ Gib den Text in Markdown aus:
 [Fazittext...]
 
 ${thesisData.citationStyle === 'deutsche-zitierweise' ? `
----
-FUSSNOTEN:
-[^1]: [Vollständige Quellenangabe mit Seitenzahl]
-[^2]: [Vollständige Quellenangabe mit Seitenzahl]
-[... alle Fußnoten ...]` : ''}
+**Fußnoten-Format im Text:**
+- Markiere Zitationen mit ^N direkt nach dem zitierten Inhalt (z.B. "Die Forschung zeigt^1")
+- Die Fußnoten-Metadaten werden automatisch verarbeitet - schreibe KEINE Fußnoten-Definitionen am Ende
+- Verwende fortlaufende Nummerierung (^1, ^2, ^3...)` : ''}
 
 BEGINNE JETZT mit "## 1. Einleitung" - schreibe die vollständige Thesis.`
 
