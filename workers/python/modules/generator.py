@@ -30,10 +30,33 @@ class GenerateThesisSignature(dspy.Signature):
     8. PFLICHTQUELLEN müssen zitiert werden, wenn angegeben.
     9. Schreibe in wissenschaftlichem, akademischem Stil. Keine persönlichen Pronomen (ich, wir, we, I).
     10. Halte die Ziel-Wortanzahl ein (±10%). Dies ist KRITISCH.
-    11. Für Deutsche Zitierweise: Verwende Fußnoten mit vollständiger Zitation beim ersten Vorkommen.
-    12. Für APA/Harvard: Verwende In-Text-Zitationen im Format (Autor, Jahr, S. XX).
-    13. Beginne direkt mit der ersten Kapitelüberschrift (z.B. ## 1. Einleitung). KEIN Inhaltsverzeichnis davor!
-    14. KEIN Titelblatt, KEIN Abstract, KEIN Inhaltsverzeichnis vor dem ersten Kapitel.
+    11. Für APA/Harvard: Verwende In-Text-Zitationen im Format (Autor, Jahr, S. XX).
+    12. Beginne direkt mit der ersten Kapitelüberschrift (z.B. ## 1. Einleitung). KEIN Inhaltsverzeichnis davor!
+    13. KEIN Titelblatt, KEIN Abstract, KEIN Inhaltsverzeichnis vor dem ersten Kapitel.
+    
+    **DEUTSCHE ZITIERWEISE - FUSSNOTENFORMAT (KRITISCH):**
+    Wenn der Zitationsstil "deutsche-zitierweise" ist, verwende EXAKT dieses Markdown-Format:
+    
+    - Im Text: Verwende ^1, ^2, ^3 usw. (Caret + Zahl) direkt nach dem Zitat oder der Aussage.
+    - KEINE Unicode-Hochzahlen (¹²³) - NUR ^1, ^2, ^3!
+    - Am ENDE des GESAMTEN Textes (nach dem letzten Kapitel): Liste ALLE Fußnoten auf.
+    
+    **BEISPIEL FÜR DEUTSCHE ZITIERWEISE:**
+    
+    Im Fließtext:
+    "Die Simulationshypothese wurde erstmals systematisch von Bostrom formuliert.^1 Diese Theorie basiert auf probabilistischen Überlegungen.^2"
+    
+    Am Ende des Textes (nach dem letzten Kapitel, VOR dem Literaturverzeichnis):
+    
+    [^1]: Vgl. Bostrom, Nick: Are You Living in a Computer Simulation?, in: Philosophical Quarterly, 53 (211), 2003, S. 243-255, hier S. 244.
+    [^2]: Vgl. Schmidt, Hanna: Digitale Welten und die Frage der Realität, Frankfurt am Main: Campus Verlag, 2018, S. 112.
+    
+    **WICHTIG:** 
+    - Verwende [^1]: Format für Fußnotendefinitionen
+    - Vollständige Angabe beim ersten Vorkommen: Autor, Vorname: Titel, Ort: Verlag, Jahr, S. XX.
+    - Bei Kurzbeleg: Vgl. Autor, Kurztitel, Jahr, S. XX.
+    - "Ebd." nur bei direkter Wiederholung derselben Quelle.
+    - KEINE Fußnotenliste mitten im Text - NUR am Ende!
 
     **SEITENZAHLEN - ABSOLUT WICHTIG (PFLICHT):**
     - JEDE Zitation MUSS Seitenzahlen enthalten - dies ist eine PFLICHT.

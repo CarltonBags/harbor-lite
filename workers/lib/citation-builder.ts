@@ -5,9 +5,12 @@ export interface Citation {
     title: string
     journal?: string
     publisher?: string
+    location?: string  // City/Place of publication
     doi?: string
     pages?: string
     url?: string
+    volume?: string
+    issue?: string
 }
 
 export class CitationBuilder {
@@ -103,11 +106,31 @@ export class CitationBuilder {
     private buildDeutsche(citations: Citation[]): string {
         return citations.map(c => {
             const authors = this.formatAuthors(c.authors, 'deutsche')
-            const title = c.title ? `${c.title}` : ''
-            const source = c.journal || c.publisher || ''
+            const title = c.title || ''
             const year = c.year ? `${c.year}` : 'o.J.'
+            
+            // Build source info based on what's available
+            let sourceInfo = ''
+            
+            if (c.journal) {
+                // Journal article
+                sourceInfo = `in: ${c.journal}`
+                if (c.volume) sourceInfo += `, ${c.volume}`
+                if (c.issue) sourceInfo += ` (${c.issue})`
+                sourceInfo += `, ${year}`
+                if (c.pages) sourceInfo += `, S. ${c.pages}`
+            } else if (c.publisher) {
+                // Book
+                if (c.location) {
+                    sourceInfo = `${c.location}: ${c.publisher}, ${year}`
+                } else {
+                    sourceInfo = `${c.publisher}, ${year}`
+                }
+            } else {
+                sourceInfo = year
+            }
 
-            return `${authors}: ${title}, ${source} ${year}.`
+            return `${authors}: ${title}, ${sourceInfo}.`
         }).join('\n\n')
     }
 }
