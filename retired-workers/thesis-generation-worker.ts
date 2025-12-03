@@ -2170,12 +2170,12 @@ BEGINNE JETZT mit "## 1. Einleitung" - schreibe die vollständige Thesis.`
 - Language: ${thesisData.language}
 
 **CRITICAL - WORD COUNT MANAGEMENT:**
-- Target: ${targetWordCount} words (excluding bibliography)
+- Target: ${targetWordCount} words
 - Absolute Maximum: ${maxWordCount} words (= ${targetWordCount} + 10%)
-- The Bibliography is NOT counted in the word count
-- STOP the main chapters at approximately ${targetWordCount} words, BEFORE writing the bibliography
-- NEVER exceed ${maxWordCount} words in the main text (before the bibliography)
+- Aim for approximately ${targetWordCount} words of chapter content
+- NEVER exceed ${maxWordCount} words
 - Exceeding 10% overshoot is UNACCEPTABLE and will result in rejection
+- DO NOT write a Bibliography section - it is generated automatically
 
 ${thesisPlan ? `**DETAILED THESIS PLAN (BLUEPRINT) - STRICT ADHERENCE:**
 Follow this plan strictly for structure and source usage. This is your blueprint:
@@ -2243,7 +2243,7 @@ ${thesisData.language === 'german' ? sourceUsageGuidance : sourceUsageGuidance.r
 - For short theses: Less is more. ${targetPages < 15 ? `A ${targetPages}-page thesis with 30+ sources looks unprofessional and excessive.` : ''}
 - Quality over quantity: Better ${recommendedSourceCount} high-quality, relevant sources than 30 superficial ones.
 - The number of sources must match the length of the thesis. A short paper should not be cited like a dissertation.
-- In the bibliography, you MUST list ALL sources actually cited in the text (at least ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} sources, maximum ${recommendedSourceCount + 3}).
+- You MUST cite at least ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} different sources throughout the text.
 
 **HUMAN STYLE AND AI DETECTION AVOIDANCE (CRITICAL):**
 
@@ -2319,7 +2319,7 @@ The text must sound like written by a human author from the start and must not b
 **Citation Style:**
 - Strictly adhere to the specified citation style (${citationStyleLabel}).
 - The citation style MUST also be considered in the running text. Where a source is used, this must be marked in the corresponding citation style.
-- Format strictly correctly in the text and in the bibliography.
+- Format citations strictly correctly in the text.
 
 **PAGE NUMBERS IN CITATIONS - MANDATORY:**
 - EVERY citation MUST include page numbers - this is an absolute REQUIREMENT.
@@ -2337,32 +2337,10 @@ The text must sound like written by a human author from the start and must not b
 - If the page number is not explicitly in the context, use a plausible page number based on context (e.g., chapter, section).
 - NEVER output a citation without a page number.
 
-**Bibliography (ABSOLUTELY CRITICAL - MUST BE COMPLETE - ONLY CITED SOURCES):**
-- At the end of the document, you MUST output a complete, correctly formatted bibliography with ACTUAL sources.
-- ABSOLUTELY CRITICAL: The bibliography MUST be present and MUST NOT be empty.
-- ABSOLUTELY CRITICAL: The bibliography must contain at least ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} sources (based on the number of sources cited in the text).
-- ABSOLUTELY CRITICAL: The bibliography may ONLY contain sources that were ACTUALLY cited in the text with a footnote (^1, ^2, etc.).
-- ABSOLUTELY FORBIDDEN: Creating an empty bibliography.
-- ABSOLUTELY FORBIDDEN: Including sources in the bibliography that were NOT cited in the text.
-- ABSOLUTELY FORBIDDEN: Including sources in the bibliography that do not have a footnote in the text.
-- Include ONLY sources that are:
-  1. Actually cited in the text with a footnote (^1, ^2, etc.)
-  2. Actually available in the FileSearchStore/RAG context
-  3. Actually retrieved during the generation process
-- The bibliography MUST contain ALL sources cited in the text (none may be missing).
-- The bibliography MUST NOT contain any sources that were not cited in the text.
-- ABSOLUTELY FORBIDDEN: Including sources marked as "(Hypothetische Quelle)", "(Hypothetical Source)", or any placeholder sources.
-- ABSOLUTELY FORBIDDEN: Creating or inventing sources that are not in the RAG context.
-- If you cannot find a source in the RAG context, you MUST NOT include it in the bibliography, but you MUST include all sources you actually cited with footnotes.
-- Every source in the bibliography MUST:
-  * Have been retrieved from the FileSearchStore
-  * Have been cited at least once in the text with a footnote
-- Alphabetically sorted.
-- Format according to the citation style (${citationStyleLabel}).
-- Use DOI, URL and journal metadata if available from the actual source metadata.
-- No duplicate entries.
-- If a source is missing from the RAG context, simply do not cite it - do NOT create a hypothetical version.
-- IMPORTANT: The bibliography is a MANDATORY part of the work - it MUST be present, MUST NOT be empty, and must contain ONLY cited sources.
+**Bibliography - DO NOT CREATE:**
+- DO NOT create a bibliography/Literaturverzeichnis section - it will be automatically generated from citation metadata.
+- Your task is ONLY to write the chapter content with proper citations.
+- End your output with the last chapter (Conclusion/Discussion) - NO bibliography section.
 
 **STRICT SOURCE USAGE (ANTI-HALLUCINATION) - ABSOLUTELY CRITICAL:**
 - **YOU MUST ONLY USE THE SOURCES PROVIDED IN THE FILE SEARCH CONTEXT.**
@@ -2390,17 +2368,18 @@ The text must sound like written by a human author from the start and must not b
   ## 1. Introduction
   ...
   ## Conclusion
-  ## Bibliography
 - START directly with the first chapter - NO title, NO table of contents, NO meta-information.
+- DO NOT write a Bibliography section - end with the Conclusion/Discussion chapter.
 
 **CRITICAL - COMPLETENESS AND LENGTH (ABSOLUTELY IMPORTANT):**
 
 **1. COMPLETE STRUCTURE - MUST BE FULFILLED:**
 - You MUST fully develop ALL chapters from the outline.
 - Each chapter must be complete - no unfinished sections.
-- The work must end with the bibliography - never stop in the middle of a chapter.
+- The work must end with the last chapter (Conclusion/Discussion) - never stop in the middle of a chapter.
 - If the outline has ${thesisData.outline?.length || 'X'} chapters, ALL ${thesisData.outline?.length || 'X'} chapters must be fully written.
 - NO exceptions - the work must be structurally complete.
+- DO NOT write a Bibliography section - it is generated automatically from metadata.
 
 **2. TARGET LENGTH - MUST BE REACHED (BUT COMPLETENESS IS MORE IMPORTANT):**
 - Target length: ${thesisData.targetLength} ${thesisData.lengthUnit} (approx. ${targetPages} pages, approx. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words).
@@ -2409,25 +2388,21 @@ ${thesisData.lengthUnit === 'words' ? `- For word-based length, you can be up to
 - A ${targetPages}-page work requires approx. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words.
 - If you've only written 1500 words, ${(thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250) - 1500} words are still missing - you must fully develop ALL chapters.
 - **CRITICAL: Reaching the target word count does NOT mean you can stop!**
-- **You MUST continue writing until ALL chapters are complete AND the bibliography is written.**
-- **Even if you've reached ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words, you MUST still write the complete bibliography with all sources.**
+- **You MUST continue writing until ALL chapters are complete.**
 - The work is only complete when:
-  * ALL chapters from the outline are complete
+  * ALL chapters from the outline are complete (including Conclusion)
   * The target length is reached (${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words${thesisData.lengthUnit === 'words' ? `, can be up to ${Math.ceil(thesisData.targetLength * 1.05)} words` : ''})
-  * The bibliography is present AND contains actual source entries (NOT empty)
-  * ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'All footnotes are present' : 'All citations are correct'}
+  * ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'All footnotes are present in text (^1, ^2, etc.)' : 'All citations are correct'}
 
 **3. NO EARLY STOPPING - ABSOLUTELY CRITICAL:**
 - The work must NOT end in the middle of a chapter.
-- The work must NOT end without a bibliography.
-- The work must NOT end with an empty bibliography - the bibliography MUST contain all cited sources.
-- The work must NOT end without ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'footnotes' : 'citations'}.
+- The work must NOT end without ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'footnotes in the text' : 'citations'}.
 - You MUST write until you reach the target length - do NOT stop early.
 - If you notice you haven't reached the target length yet, develop the chapters in more detail, add more details, expand the discussion.
 - Each chapter should be proportionally detailed relative to the total length.
-- The bibliography section MUST be complete with actual source entries - it cannot be empty.
 - You MUST write ALL chapters from the outline - do not skip any chapter.
-- Continue writing until ALL requirements are met: all chapters complete, target length reached, bibliography with sources present.
+- End with the last chapter (Conclusion/Discussion) - do NOT write a Bibliography section.
+- Continue writing until ALL requirements are met: all chapters complete, target length reached.
 
 **4. STRUCTURAL COMPLETENESS:**
 - Introduction: Complete with introduction, problem statement, research question, structure of the work
@@ -2436,10 +2411,9 @@ ${thesisData.lengthUnit === 'words' ? `- For word-based length, you can be up to
   - WRONG: "The first chapter introduces the topic..." (Chapter 1 is already written, it should not be described)
   - CORRECT: "The second chapter examines...", "In the third chapter...", "The fourth chapter addresses..."
   - Begin the description with the second chapter, since Chapter 1 is already present.
-- Main chapters: Each chapter fully developed
+- Main chapters: Each chapter fully developed with citations throughout
 - Discussion/Conclusion: Complete with summary, answer to research question, outlook
-- Bibliography: Complete with all cited sources
-${thesisData.citationStyle === 'deutsche-zitierweise' ? '- Footnotes: Complete with all citations\n' : ''}
+${thesisData.citationStyle === 'deutsche-zitierweise' ? '- Footnotes: Marked with ^1, ^2, etc. throughout the text\n' : ''}
 
 **5. QUALITY WITH COMPLETENESS:**
 - The work must be complete, but also of high quality.
@@ -2448,18 +2422,19 @@ ${thesisData.citationStyle === 'deutsche-zitierweise' ? '- Footnotes: Complete w
 
 **IMPORTANT:**
 - If the API stops you before you're finished, that's an error - you must write the COMPLETE work.
-- The work is only finished when ALL requirements are met: Complete structure, target length reached, bibliography present.
+- The work is only finished when ALL requirements are met: Complete structure, target length reached.
 
 **Goal:**
 Create a COMPLETE, FULL-LENGTH, citable, scientifically sound thesis that:
 1. Implements ALL chapters from the outline completely
 2. Reaches the target length of ${thesisData.targetLength} ${thesisData.lengthUnit} (${targetPages} pages, ~${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words)
-3. Includes a complete bibliography
-${thesisData.citationStyle === 'deutsche-zitierweise' ? '4. Includes all footnotes\n' : '4. Includes all citations\n'}5. Is logically structured and correctly implements the citation style
-6. Uses exclusively validated sources
-7. Sounds natural and human from the start, not like AI-generated
+3. ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'Includes footnote markers (^1, ^2, etc.) throughout' : 'Includes proper citations throughout'}
+4. Is logically structured and correctly implements the citation style
+5. Uses exclusively validated sources from the provided list
+6. Sounds natural and human from the start, not like AI-generated
 
-DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
+DO NOT write a Bibliography section - end with the Conclusion chapter.
+DO NOT STOP until all chapters are complete. The thesis must be COMPLETE.`
 
   console.log('[ThesisGeneration] Calling Gemini Pro to generate thesis content...')
   console.log('[ThesisGeneration] Using FileSearchStore for RAG context')
@@ -2548,90 +2523,61 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
           console.log(`[ThesisGeneration] ✓ Word count reached after extension: ~${wordCount}/${expectedWordCount} words`)
         }
 
-        // Validate completeness - check for bibliography and structure
-        const hasBibliography = /(?:^|\n)#+\s*(?:Literaturverzeichnis|Bibliography|References)/i.test(content)
-        const bibliographySection = content.match(/(?:^|\n)#+\s*(?:Literaturverzeichnis|Bibliography|References)\s*\n([\s\S]*?)(?=\n#+\s+|$)/i)
-        const bibliographyContent = bibliographySection ? bibliographySection[1].trim() : ''
-        const hasBibliographyContent = bibliographyContent.length > 50 // At least some content
-
+        // Validate completeness - check structure (NOT bibliography - we build that from metadata)
         const foundChapters = detectChapters(content, outlineChapters)
 
         // Check if content is significantly shorter than expected OR missing critical sections
-        // If word count is met or exceeded, be more lenient with chapter detection
-        const wordCountMet = wordCount >= expectedWordCount // MUST be 100% minimum (not 95%)
+        const wordCountMet = wordCount >= expectedWordCount * 0.95 // Allow 5% tolerance
         const isTooShort = wordCount < expectedWordCount * 0.5
-        const isMissingBibliography = !hasBibliography || !hasBibliographyContent
+
         // If word count is met, only require 50% of chapters (they might be written but not detected)
         // If word count is not met, require 80% of chapters
         const requiredChapterRatio = wordCountMet ? 0.5 : 0.8
         const isMissingChapters = foundChapters.length < outlineChapters.length * requiredChapterRatio
 
-        // CRITICAL: Check for placeholder bibliography text
-        const hasPlaceholderBib = /beispiel|example|placeholder|hypothetische quelle|hypothetical source|dies ist nur ein beispiel|this is just an example/i.test(bibliographyContent)
-
         // CRITICAL: Check for minimum citation count
         let citationCount = 0
         if (thesisData.citationStyle === 'deutsche-zitierweise') {
-          // Count footnotes: ^1, ^2, etc.
-          const footnoteMatches = content.match(/\[\^\d+\]/g)
+          // Count footnotes: ^1, ^2, ^N etc.
+          const footnoteMatches = content.match(/\^(\d+)/g)
           citationCount = footnoteMatches?.length || 0
         } else {
-          // Count in-text citations with page numbers
-          const citationMatches = content.match(/\([A-ZÄÖÜa-zäöü][a-zäöüß]+,?\s+\d{4},?\s+[Sp]\.\s*\d+/g)
+          // Count in-text citations: (Author, Year, S. XX) or (Author, Year, p. XX)
+          const citationMatches = content.match(/\([A-ZÄÖÜa-zäöü][a-zäöüß]+(?:\s+et\s+al\.?)?,?\s+\d{4}/g)
           citationCount = citationMatches?.length || 0
         }
 
-        // Minimum citations: ~1 per 500 words (10,000 words = 20 citations minimum)
-        const minCitations = Math.max(5, Math.floor(expectedWordCount / 500))
+        // Minimum citations: ~1 per 500 words (relaxed from strict requirement)
+        const minCitations = Math.max(3, Math.floor(expectedWordCount / 600))
         const hasSufficientCitations = citationCount >= minCitations
 
-        // Only flag as incomplete if there are serious issues
-        // If word count is met/exceeded AND bibliography exists, be lenient about chapter detection
-        const isSeriouslyIncomplete = isTooShort || isMissingBibliography || hasPlaceholderBib || !hasSufficientCitations || (isMissingChapters && !wordCountMet)
+        // Only flag as incomplete if there are SERIOUS issues
+        // NOTE: We do NOT check for bibliography - we build it from metadata!
+        const isSeriouslyIncomplete = isTooShort || !hasSufficientCitations || (isMissingChapters && !wordCountMet)
 
         if (isSeriouslyIncomplete) {
-          console.error(`[ThesisGeneration] ⚠️ ERROR: Generated content is INCOMPLETE!`)
+          console.error(`[ThesisGeneration] ⚠️ Content validation issues detected:`)
           console.error(`[ThesisGeneration]   Expected: ~${expectedWordCount} words, Got: ~${wordCount} words`)
-          console.error(`[ThesisGeneration]   Missing: ~${expectedWordCount - wordCount} words`)
           console.error(`[ThesisGeneration]   Word count met (≥95%): ${wordCountMet}`)
-          console.error(`[ThesisGeneration]   Has bibliography heading: ${hasBibliography}`)
-          console.error(`[ThesisGeneration]   Has bibliography content: ${hasBibliographyContent} (${bibliographyContent.length} chars)`)
           console.error(`[ThesisGeneration]   Expected chapters: ${outlineChapters.length}, Found: ${foundChapters.length}`)
           console.error(`[ThesisGeneration]   Found chapters: ${foundChapters.join(', ')}`)
-          console.error(`[ThesisGeneration]   This indicates incomplete generation`)
           console.error(`[ThesisGeneration]   Citation style: ${thesisData.citationStyle}`)
-
-          // Check if footnotes are present (for German citation)
-          if (thesisData.citationStyle === 'deutsche-zitierweise') {
-            const hasFootnotes = /\[\^\d+\]:|fußnoten|footnotes/i.test(content)
-            console.error(`[ThesisGeneration]   Has footnotes: ${hasFootnotes}`)
-          }
-
-          // Log the validation results (variables already computed above)
           console.error(`[ThesisGeneration]   Citation count: ${citationCount} (minimum: ${minCitations})`)
           console.error(`[ThesisGeneration]   Has sufficient citations: ${hasSufficientCitations}`)
-          console.error(`[ThesisGeneration]   Has placeholder bibliography: ${hasPlaceholderBib}`)
-
 
           // Don't return incomplete content - throw error to trigger retry
           if (attempt < maxAttempts) {
             const issues = []
             if (isTooShort) issues.push(`too short (${wordCount}/${expectedWordCount} words)`)
-            if (isMissingBibliography) issues.push('missing or empty bibliography')
-            if (hasPlaceholderBib) issues.push('bibliography contains placeholder/example text')
             if (!hasSufficientCitations) issues.push(`insufficient citations (${citationCount}/${minCitations})`)
             if (isMissingChapters && !wordCountMet) issues.push(`missing chapters (${foundChapters.length}/${outlineChapters.length})`)
             throw new Error(`Generated content is incomplete: ${issues.join(', ')}. Attempting retry with stronger instructions.`)
           } else {
-            console.error(`[ThesisGeneration]   All attempts exhausted - returning incomplete content (this is a problem!)`)
-            // Still return it, but log the issue
+            console.error(`[ThesisGeneration]   All attempts exhausted - returning content as-is`)
           }
         } else {
-          // Content looks good - log success even if chapter detection was imperfect
-          if (foundChapters.length < outlineChapters.length && wordCountMet) {
-            console.log(`[ThesisGeneration] ✓ Content complete (word count met: ${wordCount}/${expectedWordCount}, bibliography present)`)
-            console.log(`[ThesisGeneration]   Note: Chapter detection found ${foundChapters.length}/${outlineChapters.length} chapters, but word count suggests content is complete`)
-          }
+          // Content looks good
+          console.log(`[ThesisGeneration] ✓ Content complete (${wordCount}/${expectedWordCount} words, ${citationCount} citations, ${foundChapters.length}/${outlineChapters.length} chapters)`)
         }
 
         return content

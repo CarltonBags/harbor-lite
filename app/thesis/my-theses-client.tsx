@@ -232,6 +232,9 @@ export function MyThesesPageClient() {
                 onClick={() => {
                   if (thesis.status === 'completed') {
                     router.push(`/thesis/preview?id=${thesis.id}`)
+                  } else if (thesis.status === 'generating') {
+                    // Show generation progress page instead of allowing re-submission
+                    router.push(`/thesis/generate?id=${thesis.id}`)
                   } else {
                     router.push(`/thesis/new?id=${thesis.id}`)
                   }
