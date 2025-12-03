@@ -326,19 +326,29 @@ async function queryOpenAlex(query: string, language: 'german' | 'english'): Pro
     const works = data.results || []
     console.log(`[OpenAlex] Found ${works.length} results for "${query}" (took ${duration}ms)`)
 
-    const sources = works.map((work: any): Source => ({
-      title: work.title || 'Untitled',
-      authors: (work.authorships || []).map((a: any) => a.author?.display_name || '').filter(Boolean),
-      year: work.publication_year || null,
-      doi: work.doi ? work.doi.replace('https://doi.org/', '') : null,
-      url: work.primary_location?.landing_page_url || work.doi || null,
-      pdfUrl: work.primary_location?.pdf_url || null,
-      abstract: work.abstract || null,
-      journal: work.primary_location?.source?.display_name || null,
-      publisher: null,
-      citationCount: work.cited_by_count || null,
-      source: 'openalex',
-    }))
+    const sources = works.map((work: any): Source => {
+      // Extract page numbers from biblio (journal page numbers like 239-253)
+      const firstPage = work.biblio?.first_page || null
+      const lastPage = work.biblio?.last_page || null
+      
+      return {
+        title: work.title || 'Untitled',
+        authors: (work.authorships || []).map((a: any) => a.author?.display_name || '').filter(Boolean),
+        year: work.publication_year || null,
+        doi: work.doi ? work.doi.replace('https://doi.org/', '') : null,
+        url: work.primary_location?.landing_page_url || work.doi || null,
+        pdfUrl: work.primary_location?.pdf_url || null,
+        abstract: work.abstract || null,
+        journal: work.primary_location?.source?.display_name || null,
+        publisher: null,
+        citationCount: work.cited_by_count || null,
+        source: 'openalex',
+        // Use API-provided page numbers (these are the actual journal page numbers for citations)
+        pageStart: firstPage,
+        pageEnd: lastPage,
+        pages: firstPage && lastPage ? `${firstPage}-${lastPage}` : (firstPage || null),
+      }
+    })
 
     const withPdf = sources.filter((s: Source) => s.pdfUrl).length
     const withDoi = sources.filter((s: Source) => s.doi).length
@@ -1007,45 +1017,57 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     }
     console.log(`[DocUpload] Document validation passed: valid ${fileType.type.toUpperCase()} format, size OK`)
 
-    // Extract page numbers using Gemini 2.5 Flash (only for PDFs)
-    console.log(`[DocUpload] Extracting page numbers...`)
-    const pageExtractStart = Date.now()
+    // Page numbers priority:
+    // 1. API-provided page numbers (journal pages like 239-253) - MOST ACCURATE for citations
+    // 2. PDF extraction via Gemini - good fallback but gives PDF internal pages
+    // 3. Estimation from file size - last resort
+    
     let pageStart: string | null = null
     let pageEnd: string | null = null
-
-    if (fileType.type === 'pdf') {
-      try {
-        const pageNumbers = await extractPageNumbers(docBuffer)
-        pageStart = pageNumbers.pageStart
-        pageEnd = pageNumbers.pageEnd
-        const pageExtractDuration = Date.now() - pageExtractStart
-        console.log(`[DocUpload] Page extraction completed (${pageExtractDuration}ms)`)
-      } catch (error) {
-        console.warn(`[DocUpload] WARNING: Page number extraction failed, using fallback estimation:`, error)
-        // Fallback: Estimate page count from PDF size
-        // Average academic PDF page is ~50-75 KB, use conservative 50 KB per page
-        const estimatedPages = Math.max(1, Math.ceil(fileSizeKB / 50))
-        pageStart = "1"
-        pageEnd = estimatedPages.toString()
-        console.log(`[DocUpload] Using fallback: estimated ${estimatedPages} pages based on file size (${fileSizeKB.toFixed(2)} KB / 50 KB per page)`)
+    
+    // FIRST: Check if source already has page numbers from API (OpenAlex/Semantic Scholar)
+    // These are the JOURNAL page numbers which are correct for citations (e.g., 239-253)
+    if (source.pageStart && source.pageEnd) {
+      pageStart = String(source.pageStart)
+      pageEnd = String(source.pageEnd)
+      console.log(`[DocUpload] Using API-provided page numbers: ${pageStart}-${pageEnd} (journal pages)`)
+    } else if (source.pages) {
+      // Parse pages string like "239-253"
+      const pagesMatch = source.pages.match(/(\d+)\s*[-–]\s*(\d+)/)
+      if (pagesMatch) {
+        pageStart = pagesMatch[1]
+        pageEnd = pagesMatch[2]
+        console.log(`[DocUpload] Parsed API page range: ${pageStart}-${pageEnd}`)
       }
-    } else {
-      // For DOC/DOCX, estimate pages based on file size
-      // DOC/DOCX files are typically larger per page than PDFs
-      // Average academic DOC/DOCX page is ~75-100 KB, use conservative 75 KB per page
-      const estimatedPages = Math.max(1, Math.ceil(fileSizeKB / 75))
-      pageStart = "1"
-      pageEnd = estimatedPages.toString()
-      console.log(`[DocUpload] Estimated ${estimatedPages} pages for ${fileType.type.toUpperCase()} based on file size (${fileSizeKB.toFixed(2)} KB / 75 KB per page)`)
     }
-
-    // Ensure we have page numbers (fallback if extraction returned null)
+    
+    // SECOND: If no API pages, try PDF extraction
     if (!pageStart || !pageEnd) {
-      console.warn(`[DocUpload] WARNING: Page extraction returned null, using fallback estimation`)
+      console.log(`[DocUpload] No API page numbers, extracting from PDF...`)
+      const pageExtractStart = Date.now()
+      
+      if (fileType.type === 'pdf') {
+        try {
+          const pageNumbers = await extractPageNumbers(docBuffer)
+          if (pageNumbers.pageStart && pageNumbers.pageEnd) {
+            pageStart = pageNumbers.pageStart
+            pageEnd = pageNumbers.pageEnd
+            const pageExtractDuration = Date.now() - pageExtractStart
+            console.log(`[DocUpload] PDF extraction: pages ${pageStart}-${pageEnd} (${pageExtractDuration}ms)`)
+            console.log(`[DocUpload] NOTE: These are PDF-internal pages, not journal pages`)
+          }
+        } catch (error) {
+          console.warn(`[DocUpload] WARNING: Page extraction failed:`, error)
+        }
+      }
+    }
+    
+    // THIRD: Fallback to file size estimation
+    if (!pageStart || !pageEnd) {
       const estimatedPages = Math.max(1, Math.ceil(fileSizeKB / (fileType.type === 'pdf' ? 50 : 75)))
       pageStart = "1"
       pageEnd = estimatedPages.toString()
-      console.log(`[DocUpload] Using fallback: estimated ${estimatedPages} pages based on file size`)
+      console.log(`[DocUpload] Fallback: estimated ${estimatedPages} pages from file size (${fileSizeKB.toFixed(2)} KB)`)
     }
 
     // Create a Blob from Buffer for SDK compatibility with correct MIME type
