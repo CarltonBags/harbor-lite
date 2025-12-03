@@ -2640,15 +2640,16 @@ DO NOT STOP until all chapters are complete. The thesis must be COMPLETE.`
 
 /**
  * Check content with GPTZero API and return flagged sentences
+ * Returns null if API is unavailable or fails - NO FAKE SCORES
  */
 async function checkWithGPTZero(content: string): Promise<{
   isHumanWritten: number
   isGptGenerated: number
   gptGeneratedSentences: string[]
-}> {
+} | null> {
   if (!RAPIDAPI_KEY) {
     console.warn('[GPTZero] RapidAPI key not configured, skipping check')
-    return { isHumanWritten: 100, isGptGenerated: 0, gptGeneratedSentences: [] }
+    return null // Return null instead of fake 100% score
   }
 
   console.log('[GPTZero] Checking content for AI detection...')
@@ -2689,7 +2690,7 @@ async function checkWithGPTZero(content: string): Promise<{
 
     if (!response.ok) {
       console.error('[GPTZero] API error:', response.status, response.statusText)
-      return { isHumanWritten: 100, isGptGenerated: 0, gptGeneratedSentences: [] }
+      return null // Return null instead of fake 100% score
     }
 
     const data = await response.json() as any
@@ -2705,10 +2706,11 @@ async function checkWithGPTZero(content: string): Promise<{
       return { isHumanWritten, isGptGenerated, gptGeneratedSentences }
     }
 
-    return { isHumanWritten: 100, isGptGenerated: 0, gptGeneratedSentences: [] }
+    console.warn('[GPTZero] Invalid API response format')
+    return null // Return null instead of fake 100% score
   } catch (error) {
     console.error('[GPTZero] Error checking content:', error)
-    return { isHumanWritten: 100, isGptGenerated: 0, gptGeneratedSentences: [] }
+    return null // Return null instead of fake 100% score
   }
 }
 
@@ -2852,7 +2854,17 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
     console.log(`[HumanCheck] Iteration ${iteration}/${MAX_ITERATIONS}`)
 
     const result = await checkWithGPTZero(currentContent)
-    finalResult = result // Store the latest result
+    
+    // If GPTZero API failed or is unavailable, return content WITHOUT a fake score
+    if (!result) {
+      console.warn('[HumanCheck] GPTZero API unavailable, returning content without score')
+      return {
+        content: currentContent,
+        zeroGptResult: null // NO FAKE SCORES - null means "not checked"
+      }
+    }
+    
+    finalResult = result // Store the latest valid result
 
     if (result.isHumanWritten >= MIN_HUMAN_SCORE) {
       console.log(`[HumanCheck] ✓ Content passed with ${result.isHumanWritten}% human score`)
