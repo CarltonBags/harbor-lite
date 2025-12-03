@@ -4059,16 +4059,31 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     }
 
     // Step 7.5: Humanize the text to avoid AI detection
-    console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
-    const humanizeStart = Date.now()
-    try {
-      thesisContent = await humanizeThesisContent(thesisContent, thesisData)
-      const humanizeDuration = Date.now() - humanizeStart
-      console.log(`[PROCESS] Humanization completed in ${humanizeDuration}ms`)
-    } catch (error) {
-      console.error('[PROCESS] ERROR in humanization:', error)
-      console.warn('[PROCESS] Continuing with original content (humanization failed)')
-      // Continue with original content if humanization fails
+    // SKIP if Step 7.4 already achieved a good score (>= 70%)
+    const humanScoreThreshold = 70
+    const alreadyHumanEnough = zeroGptResult && zeroGptResult.isHumanWritten >= humanScoreThreshold
+    
+    if (alreadyHumanEnough) {
+      console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
+      console.log(`[PROCESS] ✓ SKIPPING humanization - content already scored ${zeroGptResult.isHumanWritten}% human (>= ${humanScoreThreshold}%)`)
+      console.log('[PROCESS] No additional humanization needed')
+    } else {
+      console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
+      if (zeroGptResult) {
+        console.log(`[PROCESS] Content scored ${zeroGptResult.isHumanWritten}% human - running additional humanization`)
+      } else {
+        console.log('[PROCESS] No ZeroGPT score available - running humanization as fallback')
+      }
+      const humanizeStart = Date.now()
+      try {
+        thesisContent = await humanizeThesisContent(thesisContent, thesisData)
+        const humanizeDuration = Date.now() - humanizeStart
+        console.log(`[PROCESS] Humanization completed in ${humanizeDuration}ms`)
+      } catch (error) {
+        console.error('[PROCESS] ERROR in humanization:', error)
+        console.warn('[PROCESS] Continuing with original content (humanization failed)')
+        // Continue with original content if humanization fails
+      }
     }
 
     // Step 7.6: ZeroGPT Detection Check - Now done in Step 7.4
