@@ -2121,11 +2121,27 @@ STRUKTUR UND LÄNGE
 
 **Ziel-Länge:** ${targetWordCount} Wörter (Maximum: ${maxWordCount} Wörter = +10%)
 
+**⚠️ STRIKTE GLIEDERUNGSTREUE - ABSOLUT KRITISCH:**
+- Schreibe NUR die Kapitel, die in der Gliederung vorgegeben sind
+- KEINE zusätzlichen Kapitel, Abschnitte oder Ergänzungen hinzufügen!
+- KEINE "Ergänzungen zu Kapitel X" oder ähnliche Nachträge
+- KEINE Zusammenfassungen einzelner Kapitel am Ende
+- Das letzte Kapitel der Gliederung IST das Ende der Arbeit
+- Nach dem letzten Kapitel kommt NICHTS mehr (kein Text, keine Ergänzungen)
+
+**STRENG VERBOTEN nach dem letzten Kapitel:**
+- ✗ "Ergänzungen zu Kapitel 2..."
+- ✗ "Zusätzliche Anmerkungen..."
+- ✗ "Weitere Überlegungen..."
+- ✗ "Nachträge..."
+- ✗ Jeglicher Text nach dem Fazit/Schlusskapitel
+
 **Strukturelle Anforderungen:**
 1. Beginne SOFORT mit "## 1. Einleitung" (kein Text davor!)
-2. Schreibe ALLE Kapitel aus der Gliederung vollständig
+2. Schreibe ALLE Kapitel aus der Gliederung vollständig und IN DER RICHTIGEN REIHENFOLGE
 3. Jedes Kapitel muss seinen wissenschaftlichen Zweck erfüllen
-4. Ende mit dem letzten Kapitel (Fazit/Diskussion) - KEIN Literaturverzeichnis
+4. Ende mit dem letzten Kapitel (Fazit/Diskussion) - DANN STOPP!
+5. Wenn du mehr Inhalt brauchst, erweitere die BESTEHENDEN Kapitel, füge KEINE neuen hinzu
 
 **Aufbau der Arbeit (in Einleitung):**
 - Beschreibe NUR die nachfolgenden Kapitel (2, 3, 4...)
@@ -2137,21 +2153,30 @@ STRUKTUR UND LÄNGE
 OUTPUT-FORMAT
 ═══════════════════════════════════════════════════════════════════════════════
 
-Gib den Text in Markdown aus:
+Gib den Text in Markdown aus - EXAKT nach der vorgegebenen Gliederung:
 
-  ## 1. Einleitung
+## 1. Einleitung
 [Einleitungstext mit Zitationen^1^2...]
 
-## 2. [Kapitelname]
+## 2. [Exakter Kapitelname aus Gliederung]
 [Kapiteltext...]
 
-## 3. [Kapitelname]
+## 3. [Exakter Kapitelname aus Gliederung]
 [Kapiteltext...]
 
-[... alle weiteren Kapitel ...]
+[... alle Kapitel EXAKT wie in der Gliederung ...]
 
-## [Letztes Kapitel - Fazit/Diskussion]
+## [Letztes Kapitel aus Gliederung - z.B. Fazit]
 [Fazittext...]
+
+--- ENDE DER ARBEIT ---
+
+**⚠️ NACH DEM LETZTEN KAPITEL KOMMT NICHTS MEHR!**
+- Kein weiterer Text
+- Keine Ergänzungen
+- Keine Zusammenfassungen
+- Keine zusätzlichen Abschnitte
+- STOPP nach dem letzten Satz des Fazits/Schlusskapitels
 
 ${thesisData.citationStyle === 'deutsche-zitierweise' ? `
 **Fußnoten-Format im Text:**
@@ -2159,7 +2184,8 @@ ${thesisData.citationStyle === 'deutsche-zitierweise' ? `
 - Die Fußnoten-Metadaten werden automatisch verarbeitet - schreibe KEINE Fußnoten-Definitionen am Ende
 - Verwende fortlaufende Nummerierung (^1, ^2, ^3...)` : ''}
 
-BEGINNE JETZT mit "## 1. Einleitung" - schreibe die vollständige Thesis.`
+BEGINNE JETZT mit "## 1. Einleitung" - schreibe die vollständige Thesis.
+HALTE DICH STRIKT an die vorgegebene Gliederung - KEINE zusätzlichen Kapitel oder Ergänzungen!`
 
     : `You are a scientific assistant who writes academic texts exclusively based on the provided, indexed sources (RAG / File Search).
 
