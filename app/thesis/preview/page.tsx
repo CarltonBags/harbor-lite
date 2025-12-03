@@ -1220,28 +1220,49 @@ export default function ThesisPreviewPage() {
                           }
                           
                           // Build a map of footnote numbers to PDF URLs by matching citation text with sources
+                          // STRICT matching: must match BOTH year AND first author's last name
                           const footnotePdfUrls: Record<number, string | null> = {}
                           if (bibliographySources && bibliographySources.length > 0) {
                             Object.entries(footnotes).forEach(([numStr, citationText]) => {
                               const num = parseInt(numStr, 10)
-                              // Try to find matching source by author name or title
+                              const citation = citationText as string
+                              
+                              // Extract year from citation (e.g., "(2022)" or "2022:" or ", 2022,")
+                              const yearMatch = citation.match(/[\(\s,](\d{4})[\)\s,:]/)
+                              const citationYear = yearMatch ? yearMatch[1] : null
+                              
+                              // Extract first author's last name from citation
+                              // Patterns: "Merola (2022)" or "Merola, Korinek (2022)" or "Korinek/Stiglitz (2017)"
+                              const authorMatch = citation.match(/^([A-ZÄÖÜa-zäöüß][a-zäöüß]+)(?:\s|,|\/|\(|\:)/)
+                              const citationAuthorLastName = authorMatch ? authorMatch[1].toLowerCase() : null
+                              
+                              if (!citationYear && !citationAuthorLastName) {
+                                return // Can't match without year or author
+                              }
+                              
+                              // Find source with matching year AND first author's last name
                               const matchingSource = bibliographySources.find((source: any) => {
                                 const meta = source.metadata || source
+                                const sourceYear = String(meta.year || source.year || '')
                                 const authors = meta.authors || []
-                                const title = meta.title || source.title || ''
-                                const citationLower = (citationText as string).toLowerCase()
                                 
-                                // Check if any author name appears in the citation
-                                const authorMatch = authors.some((author: string) => {
-                                  const lastName = author.split(' ').pop()?.toLowerCase() || ''
-                                  return lastName.length > 2 && citationLower.includes(lastName)
-                                })
+                                // Get first author's last name from source
+                                const firstAuthor = authors[0] || ''
+                                const sourceAuthorLastName = firstAuthor.split(' ').pop()?.toLowerCase() || ''
                                 
-                                // Check if title words appear (at least 2 significant words)
-                                const titleWords = title.toLowerCase().split(/\s+/).filter((w: string) => w.length > 4)
-                                const titleMatch = titleWords.filter((w: string) => citationLower.includes(w)).length >= 2
-                                
-                                return authorMatch || titleMatch
+                                // STRICT: Must match year AND author (if we have both)
+                                if (citationYear && citationAuthorLastName) {
+                                  return sourceYear === citationYear && sourceAuthorLastName === citationAuthorLastName
+                                }
+                                // If only year available, match by year
+                                if (citationYear) {
+                                  return sourceYear === citationYear
+                                }
+                                // If only author available, match by author
+                                if (citationAuthorLastName) {
+                                  return sourceAuthorLastName === citationAuthorLastName
+                                }
+                                return false
                               })
                               
                               if (matchingSource) {
