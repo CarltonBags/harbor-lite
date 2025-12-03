@@ -1219,6 +1219,37 @@ export default function ThesisPreviewPage() {
                             })
                           }
                           
+                          // Build a map of footnote numbers to PDF URLs by matching citation text with sources
+                          const footnotePdfUrls: Record<number, string | null> = {}
+                          if (bibliographySources && bibliographySources.length > 0) {
+                            Object.entries(footnotes).forEach(([numStr, citationText]) => {
+                              const num = parseInt(numStr, 10)
+                              // Try to find matching source by author name or title
+                              const matchingSource = bibliographySources.find((source: any) => {
+                                const meta = source.metadata || source
+                                const authors = meta.authors || []
+                                const title = meta.title || source.title || ''
+                                const citationLower = (citationText as string).toLowerCase()
+                                
+                                // Check if any author name appears in the citation
+                                const authorMatch = authors.some((author: string) => {
+                                  const lastName = author.split(' ').pop()?.toLowerCase() || ''
+                                  return lastName.length > 2 && citationLower.includes(lastName)
+                                })
+                                
+                                // Check if title words appear (at least 2 significant words)
+                                const titleWords = title.toLowerCase().split(/\s+/).filter((w: string) => w.length > 4)
+                                const titleMatch = titleWords.filter((w: string) => citationLower.includes(w)).length >= 2
+                                
+                                return authorMatch || titleMatch
+                              })
+                              
+                              if (matchingSource) {
+                                footnotePdfUrls[num] = matchingSource.sourceUrl || matchingSource.metadata?.sourceUrl || matchingSource.pdfUrl || null
+                              }
+                            })
+                          }
+                          
                           const citationStyle = thesis?.citation_style
 
                           // Check if this paragraph should be highlighted (related passage)
@@ -1270,6 +1301,8 @@ export default function ThesisPreviewPage() {
                                   if (footnoteMatch) {
                                     const footnoteNum = parseInt(footnoteMatch[1], 10)
                                     const footnoteText = footnotes[footnoteNum] || `[Fußnote ${footnoteNum}]`
+                                    const pdfUrl = footnotePdfUrls[footnoteNum]
+                                    const hasPdf = !!pdfUrl
                                     processedParts.push(
                                       <sup
                                         key={`fn-${idx}`}
@@ -1277,18 +1310,27 @@ export default function ThesisPreviewPage() {
                                           fontSize: '0.75em',
                                           verticalAlign: 'super',
                                           lineHeight: 0,
-                                          cursor: 'help',
-                                          color: '#0066cc',
+                                          cursor: hasPdf ? 'pointer' : 'help',
+                                          color: hasPdf ? '#0066cc' : '#666',
                                           textDecoration: 'underline',
-                                          textDecorationStyle: 'dotted',
+                                          textDecorationStyle: hasPdf ? 'solid' : 'dotted',
                                           fontWeight: 'normal',
                                           marginLeft: '1px',
                                         }}
-                                        title={footnoteText}
+                                        title={hasPdf ? `${footnoteText}\n\n📄 Klicken zum Öffnen der PDF` : footnoteText}
+                                        onClick={(e) => {
+                                          if (pdfUrl) {
+                                            e.preventDefault()
+                                            e.stopPropagation()
+                                            window.open(pdfUrl, '_blank', 'noopener,noreferrer')
+                                          }
+                                        }}
                                         onMouseEnter={(e) => {
                                           const tooltip = document.createElement('div')
                                           tooltip.id = `footnote-tooltip-${footnoteNum}`
-                                          tooltip.textContent = footnoteText
+                                          tooltip.innerHTML = hasPdf 
+                                            ? `${footnoteText}<br/><span style="color: #4CAF50; font-size: 10pt; margin-top: 4px; display: block;">📄 Klicken zum Öffnen der PDF</span>`
+                                            : footnoteText
                                           tooltip.style.cssText = `
                                           position: fixed;
                                           background: #333;
