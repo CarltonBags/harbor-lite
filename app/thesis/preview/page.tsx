@@ -1650,8 +1650,14 @@ export default function ThesisPreviewPage() {
                               // Sort by first author's last name
                               const getLastName = (source: any) => {
                                 const authors = source.metadata?.authors || source.authors || []
-                                if (authors.length === 0) return 'ZZZ'
-                                const firstAuthor = authors[0] || ''
+                                // Filter out "et al." variations to get real authors
+                                const realAuthors = authors.filter((auth: string) => {
+                                  const lower = (auth || '').toLowerCase().trim()
+                                  return lower !== 'et al.' && lower !== 'et al' && lower !== 'et' && lower !== 'al.' && !lower.match(/^et\s+al/)
+                                })
+                                if (realAuthors.length === 0) return 'ZZZ'
+                                // Clean "et al." from the end of author names
+                                const firstAuthor = (realAuthors[0] || '').replace(/\s+et\s+al\.?$/i, '').trim()
                                 const parts = firstAuthor.split(' ')
                                 return parts[parts.length - 1] || 'ZZZ'
                               }
@@ -1668,8 +1674,27 @@ export default function ThesisPreviewPage() {
                               const doi = meta.doi || source.doi
                               
                               // Format authors (Last, First; Last, First)
-                              const formattedAuthors = authors.length > 0 
-                                ? authors.slice(0, 3).map((a: string) => {
+                              // First, clean and filter authors - remove "et al." variations
+                              const cleanedAuthors = authors
+                                .map((a: string) => a.trim())
+                                // Remove "et al." from end of names like "Thomas Knaus et al."
+                                .map((a: string) => a.replace(/\s+et\s+al\.?$/i, '').trim())
+                                // Filter out standalone "et al.", "et", "al.", etc.
+                                .filter((a: string) => {
+                                  const lower = a.toLowerCase().trim()
+                                  return a.length > 0 && 
+                                    lower !== 'et al.' && 
+                                    lower !== 'et al' && 
+                                    lower !== 'et' && 
+                                    lower !== 'al.' && 
+                                    lower !== 'al' &&
+                                    lower !== 'u.a.' &&
+                                    lower !== 'u. a.' &&
+                                    !lower.match(/^et\s+al/)
+                                })
+                              
+                              const formattedAuthors = cleanedAuthors.length > 0 
+                                ? cleanedAuthors.slice(0, 3).map((a: string) => {
                                     const parts = a.trim().split(' ')
                                     if (parts.length >= 2) {
                                       const lastName = parts[parts.length - 1]
@@ -1677,7 +1702,7 @@ export default function ThesisPreviewPage() {
                                       return `${lastName}, ${firstName}`
                                     }
                                     return a
-                                  }).join('; ') + (authors.length > 3 ? ' et al.' : '')
+                                  }).join('; ') + (cleanedAuthors.length > 3 ? ' et al.' : '')
                                 : 'o.V.'
                               
                               return (
