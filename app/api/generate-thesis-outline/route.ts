@@ -26,8 +26,9 @@ export async function POST(request: Request) {
       bachelor: 'Bachelorarbeit',
     }
 
-    // Determine if this is a source-based thesis (no own research/methodology)
-    const isSourceBasedThesis = thesisType === 'hausarbeit' || thesisType === 'seminararbeit'
+    // ALL theses are literature-based - no own research/methodology allowed
+    // We do NOT conduct studies, surveys, interviews, or experiments
+    const isSourceBasedThesis = true // Always true - all theses are literature-based
 
     const citationStyleLabels: Record<string, string> = {
       apa: 'APA',
@@ -69,35 +70,54 @@ export async function POST(request: Request) {
         : 'IMPORTANT: This thesis is long (over 80 pages). Create a detailed outline with chapters, sections, and subsections. Deeper nesting is allowed but should be used sparingly.'
     }
 
-    // Additional instructions for source-based theses (Hausarbeit, Seminararbeit)
-    let thesisTypeSpecificInstruction = ''
-    if (isSourceBasedThesis) {
-      thesisTypeSpecificInstruction = language === 'german'
-        ? `WICHTIG für ${thesisTypeLabels[thesisType]}:
-- Diese Arbeit basiert AUSSCHLIESSLICH auf Literaturrecherche und Quellenanalyse
-- Es gibt KEINE eigene empirische Forschung, Datenerhebung oder Methodik-Kapitel
-- Die Struktur sollte thematisch/argumentativ aufgebaut sein, NICHT methodisch
-- Typische Kapitel: Einleitung, Theoretischer Hintergrund/Begriffsklärung, Hauptteil (thematisch gegliedert), Diskussion/Kritische Würdigung, Fazit
-- KEINE Kapitel wie "Methodik", "Forschungsdesign", "Datenerhebung", "Empirische Analyse" oder "Ergebnisse" (im Sinne eigener Forschung)
-- Der Hauptteil sollte thematisch strukturiert sein und verschiedene Aspekte des Themas beleuchten`
-        : `IMPORTANT for ${thesisTypeLabels[thesisType]}:
-- This work is based EXCLUSIVELY on literature research and source analysis
-- There is NO own empirical research, data collection, or methodology chapter
-- The structure should be thematic/argumentative, NOT methodological
-- Typical chapters: Introduction, Theoretical Background/Definitions, Main Body (thematically structured), Discussion/Critical Analysis, Conclusion
-- NO chapters like "Methodology", "Research Design", "Data Collection", "Empirical Analysis", or "Results" (in terms of own research)
-- The main body should be thematically structured and illuminate different aspects of the topic`
-    } else {
-      thesisTypeSpecificInstruction = language === 'german'
-        ? `WICHTIG für ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'}:
-- Diese Arbeit kann eigene Forschung/Methodik enthalten
-- Typische Kapitel: Einleitung, Theoretischer Hintergrund, Methodik, Ergebnisse, Diskussion, Fazit
-- Falls das Thema empirische Forschung erfordert, sollte ein Methodik-Kapitel enthalten sein`
-        : `IMPORTANT for ${thesisTypeLabels[thesisType] || 'Bachelor thesis'}:
-- This work may contain own research/methodology
-- Typical chapters: Introduction, Theoretical Background, Methodology, Results, Discussion, Conclusion
-- If the topic requires empirical research, a methodology chapter should be included`
-    }
+    // ALL theses are literature-based - stronger instruction
+    const thesisTypeSpecificInstruction = language === 'german'
+      ? `🚫 ABSOLUT KRITISCH für ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'}:
+
+Diese Arbeit ist eine REINE LITERATURARBEIT. Es wird KEINE eigene Forschung durchgeführt!
+
+**STRENG VERBOTENE KAPITEL-TYPEN:**
+- ✗ "Methodik" / "Methodisches Vorgehen" / "Forschungsmethodik"
+- ✗ "Forschungsdesign" / "Untersuchungsdesign"
+- ✗ "Datenerhebung" / "Datensammlung" / "Stichprobe"
+- ✗ "Empirische Untersuchung" / "Empirische Analyse"
+- ✗ "Ergebnisse" (im Sinne eigener Forschung)
+- ✗ "Auswertung" (im Sinne eigener Datenauswertung)
+- ✗ "Befragung" / "Interview" / "Umfrage"
+- ✗ "Fallstudie" (im Sinne eigener Forschung)
+- ✗ "Experiment" / "Experimentelles Design"
+
+**ERLAUBTE STRUKTUR:**
+- ✓ Einleitung (Problemstellung, Zielsetzung, Aufbau der Arbeit)
+- ✓ Theoretischer Hintergrund / Begriffsklärung / Grundlagen
+- ✓ Thematisch gegliederte Hauptkapitel (verschiedene Aspekte des Themas)
+- ✓ Diskussion / Kritische Würdigung / Vergleich verschiedener Positionen
+- ✓ Fazit / Schlussbetrachtung
+
+Die Arbeit analysiert und vergleicht BESTEHENDE Literatur - sie führt KEINE eigene empirische Forschung durch!`
+      : `🚫 ABSOLUTELY CRITICAL for ${thesisTypeLabels[thesisType] || 'Bachelor thesis'}:
+
+This work is a PURE LITERATURE REVIEW. NO own research is conducted!
+
+**STRICTLY FORBIDDEN CHAPTER TYPES:**
+- ✗ "Methodology" / "Research Methods" / "Methodological Approach"
+- ✗ "Research Design" / "Study Design"
+- ✗ "Data Collection" / "Sampling" / "Sample"
+- ✗ "Empirical Investigation" / "Empirical Analysis"
+- ✗ "Results" (in terms of own research)
+- ✗ "Analysis" (in terms of own data analysis)
+- ✗ "Survey" / "Interview" / "Questionnaire"
+- ✗ "Case Study" (in terms of own research)
+- ✗ "Experiment" / "Experimental Design"
+
+**ALLOWED STRUCTURE:**
+- ✓ Introduction (Problem Statement, Objectives, Structure)
+- ✓ Theoretical Background / Definitions / Fundamentals
+- ✓ Thematically structured main chapters (different aspects of the topic)
+- ✓ Discussion / Critical Analysis / Comparison of different positions
+- ✓ Conclusion / Final Remarks
+
+The work analyzes and compares EXISTING literature - it does NOT conduct own empirical research!`
 
     // Build prompt in the selected language
     const prompt = language === 'german'
@@ -163,7 +183,7 @@ WICHTIG:
 - Jedes Kapitel sollte mindestens 2-3 Abschnitte haben (bei sehr kurzen Thesen können es auch weniger sein)
 - Abschnitte können Unterabschnitte haben, ABER NUR wenn der Umfang dies rechtfertigt
 - KEINE Verschachtelung tiefer als 3 Ebenen (Kapitel > Abschnitt > Unterabschnitt) - niemals 1.1.1.1 oder tiefer
-- Die Gliederung sollte typische Kapitel für eine ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'} enthalten${isSourceBasedThesis ? ' (z.B. Einleitung, Theoretischer Hintergrund, thematisch gegliederter Hauptteil, Diskussion, Fazit - KEINE Methodik!)' : ' (z.B. Einleitung, Theoretischer Hintergrund, Methodik, Ergebnisse, Diskussion, Fazit)'}
+- Die Gliederung sollte typische Kapitel für eine LITERATURARBEIT enthalten (z.B. Einleitung, Theoretischer Hintergrund, thematisch gegliederter Hauptteil, Diskussion, Fazit - KEINE Methodik, KEINE eigene Forschung!)
 - Passe die Gliederung an das spezifische Thema und den Fachbereich an
 - Die Anzahl der Kapitel und die Detailtiefe sollten dem Umfang von ${lengthText} (ca. ${avgPages} Seiten) angemessen sein
 
@@ -237,7 +257,7 @@ IMPORTANT:
 - Each chapter should have at least 2-3 sections (for very short theses it can be fewer)
 - Sections can have subsections, BUT ONLY if the length justifies it
 - NO nesting deeper than 3 levels (Chapter > Section > Subsection) - never 1.1.1.1 or deeper
-- The outline should contain typical chapters for a ${thesisTypeLabels[thesisType] || 'Bachelor thesis'}${isSourceBasedThesis ? ' (e.g., Introduction, Theoretical Background, thematically structured main body, Discussion, Conclusion - NO Methodology!)' : ' (e.g., Introduction, Theoretical Background, Methodology, Results, Discussion, Conclusion)'}
+- The outline should contain typical chapters for a LITERATURE REVIEW (e.g., Introduction, Theoretical Background, thematically structured main body, Discussion, Conclusion - NO Methodology, NO own research!)
 - Adapt the outline to the specific topic and field
 - The number of chapters and level of detail should be appropriate for the length of ${lengthText} (approx. ${avgPages} pages)
 
@@ -277,8 +297,9 @@ These elements are AUTOMATICALLY added by the system and must NOT appear in the 
       throw new Error('Invalid outline format')
     }
 
-    // Filter out forbidden chapters (Verzeichnisse, Anhang, etc.)
+    // Filter out forbidden chapters (Verzeichnisse, Anhang, and methodology/research chapters)
     const forbiddenTitles = [
+      // Verzeichnisse
       'literaturverzeichnis', 'quellenverzeichnis', 'bibliography', 'references', 'works cited',
       'inhaltsverzeichnis', 'table of contents',
       'abbildungsverzeichnis', 'tabellenverzeichnis', 'abkürzungsverzeichnis',
@@ -286,6 +307,13 @@ These elements are AUTOMATICALLY added by the system and must NOT appear in the 
       'anhang', 'appendix', 'appendices', 'anlagen',
       'deckblatt', 'titelseite', 'title page', 'cover page',
       'eidesstattliche erklärung', 'declaration', 'statutory declaration',
+      // Methodology/Research chapters - FORBIDDEN for literature-based theses
+      'methodik', 'methodisches vorgehen', 'forschungsmethodik', 'methodology', 'research methods',
+      'forschungsdesign', 'untersuchungsdesign', 'research design', 'study design',
+      'datenerhebung', 'datensammlung', 'data collection', 'sampling',
+      'empirische untersuchung', 'empirische analyse', 'empirical investigation', 'empirical analysis',
+      'stichprobe', 'sample', 'befragung', 'interview', 'umfrage', 'survey', 'questionnaire',
+      'experiment', 'experimentelles design', 'experimental design',
     ]
     
     const filteredOutline = outline.filter((item: any) => {
