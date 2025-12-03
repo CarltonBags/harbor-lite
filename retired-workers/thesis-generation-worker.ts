@@ -2059,6 +2059,30 @@ QUELLENNUTZUNG - ABSOLUT KRITISCH
 Du darfst NUR die unten aufgelisteten Quellen zitieren. KEINE anderen.
 Erfundene Quellen (wie "McAfee", "Autor, 2003", etc.) sind STRENG VERBOTEN.
 
+**🚫 ABSOLUT VERBOTEN: EIGENE STUDIEN BEHAUPTEN 🚫**
+Dies ist eine LITERATURBASIERTE Arbeit - du hast KEINE eigene Forschung durchgeführt!
+
+NIEMALS behaupten:
+- ✗ "In dieser Studie wurde untersucht..." → DU hast KEINE Studie durchgeführt!
+- ✗ "Unsere Analyse zeigt..." → Es gibt KEINE "unsere Analyse"!
+- ✗ "Die Ergebnisse dieser Untersuchung..." → DU hast NICHTS untersucht!
+- ✗ "Wir haben festgestellt..." → DU hast NICHTS festgestellt!
+- ✗ "Die vorliegende Studie belegt..." → Es gibt KEINE "vorliegende Studie"!
+- ✗ "Im Rahmen dieser Arbeit wurden X Teilnehmer befragt..." → LÜGE!
+- ✗ "Die Datenanalyse ergab..." → Du hast KEINE Daten analysiert!
+
+STATTDESSEN - Forschung den ECHTEN Autoren zuschreiben:
+- ✓ "Müller (2021) zeigt in seiner Studie, dass..."
+- ✓ "Die Untersuchung von Schmidt et al. (2020) belegt..."
+- ✓ "Laut der Analyse von Weber (2019)..."
+- ✓ "Die Forschungsergebnisse von Korinek und Stiglitz (2017) deuten darauf hin..."
+
+Du schreibst eine LITERATURARBEIT:
+- Du ANALYSIERST und VERGLEICHST bestehende Forschung
+- Du FASST ZUSAMMEN, was andere Forscher herausgefunden haben
+- Du DISKUTIERST verschiedene Standpunkte aus der Literatur
+- Du führst KEINE eigene empirische Forschung durch!
+
 **VERFÜGBARE QUELLEN (NUR DIESE DARFST DU ZITIEREN):**
 ${availableSourcesList}
 
@@ -2086,6 +2110,10 @@ ${availableSourcesList}
 - ✗ "Studien zeigen..." ohne konkrete Zitation
 - ✗ "Es ist bekannt, dass..." ohne Quelle
 - ✗ "Forschungen belegen..." ohne Nachweis
+- ✗ "In dieser Studie/Arbeit wurde untersucht..." → LÜGE!
+- ✗ "Unsere Ergebnisse zeigen..." → Es gibt KEINE eigenen Ergebnisse!
+- ✗ "Die Datenerhebung ergab..." → Es gab KEINE Datenerhebung!
+- ✗ Jegliche Behauptung eigener empirischer Forschung
 
 **SEITENZAHLEN:** JEDE Zitation muss eine Seitenzahl enthalten (S. XX oder S. XX-YY).
 Verwende die Seitenzahlen aus der obigen Quellenliste.
