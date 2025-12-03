@@ -2062,13 +2062,30 @@ Erfundene Quellen (wie "McAfee", "Autor, 2003", etc.) sind STRENG VERBOTEN.
 **VERFÜGBARE QUELLEN (NUR DIESE DARFST DU ZITIEREN):**
 ${availableSourcesList}
 
-**ZITATIONSREGELN:**
+**ZITATIONSREGELN - STRIKT EINHALTEN:**
 - Nutze AUSSCHLIESSLICH die oben aufgelisteten ${rankedSources.length} Quellen
-- JEDER Absatz mit Forschungsergebnissen MUSS Zitationen aus obiger Liste enthalten
-- Ziel: mindestens 1 Zitation pro 150-200 Wörter
 - Mindestens ${Math.max(5, Math.floor(rankedSources.length * 0.6))} verschiedene Quellen müssen zitiert werden
-- Verteile Zitationen gleichmäßig über ALLE Kapitel (mindestens 2-3 pro Kapitel)
-- Wenn du Informationen verwendest, ZITIERE SOFORT die entsprechende Quelle aus der Liste
+
+**⚠️ ZITATIONSDICHTE - ABSOLUT KRITISCH:**
+- JEDER Absatz mit Fakten, Theorien oder Forschungsergebnissen MUSS mindestens 1 Zitation haben
+- Ziel: 1 Zitation pro 100-150 Wörter (NICHT 200!)
+- Pro Kapitel: mindestens 3-5 verschiedene Zitationen
+- KEINE langen Passagen (>150 Wörter) ohne Zitation!
+- Theoretische Abschnitte: besonders viele Zitationen (alle 2-3 Sätze)
+
+**WAS ZITIERT WERDEN MUSS:**
+- Definitionen und Begriffserklärungen → IMMER zitieren
+- Statistische Daten und Zahlen → IMMER zitieren
+- Theorien und Modelle → IMMER zitieren
+- Forschungsergebnisse → IMMER zitieren
+- Behauptungen über den Stand der Forschung → IMMER zitieren
+- Nur eigene Schlussfolgerungen im Fazit dürfen ohne Zitation bleiben
+
+**VERBOTEN:**
+- ✗ Absätze mit Fakten OHNE Zitation
+- ✗ "Studien zeigen..." ohne konkrete Zitation
+- ✗ "Es ist bekannt, dass..." ohne Quelle
+- ✗ "Forschungen belegen..." ohne Nachweis
 
 **SEITENZAHLEN:** JEDE Zitation muss eine Seitenzahl enthalten (S. XX oder S. XX-YY).
 Verwende die Seitenzahlen aus der obigen Quellenliste.
