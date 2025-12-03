@@ -2167,12 +2167,28 @@ STRUKTUR UND LÄNGE
 **Ziel-Länge:** ${targetWordCount} Wörter (Maximum: ${maxWordCount} Wörter = +10%)
 
 **⚠️ STRIKTE GLIEDERUNGSTREUE - ABSOLUT KRITISCH:**
-- Schreibe NUR die Kapitel, die in der Gliederung vorgegeben sind
+- Schreibe NUR die Kapitel/Unterkapitel, die in der Gliederung vorgegeben sind
 - KEINE zusätzlichen Kapitel, Abschnitte oder Ergänzungen hinzufügen!
 - KEINE "Ergänzungen zu Kapitel X" oder ähnliche Nachträge
 - KEINE Zusammenfassungen einzelner Kapitel am Ende
 - Das letzte Kapitel der Gliederung IST das Ende der Arbeit
 - Nach dem letzten Kapitel kommt NICHTS mehr (kein Text, keine Ergänzungen)
+
+**🚫 VERBOT: KEINE EIGENEN UNTERKAPITEL ERFINDEN!**
+- Wenn die Gliederung nur 5.1 und 5.2 hat, darfst du KEINE 5.1.1, 5.1.2 etc. erstellen!
+- Du darfst die Gliederung NICHT vertiefen oder erweitern!
+- Schreibe NUR die Überschriften, die in der Gliederung stehen!
+- Beispiel: Gliederung hat "5.1 Zusammenfassung" → Schreibe NUR "### 5.1 Zusammenfassung"
+- VERBOTEN: Gliederung hat "5.1" aber du schreibst "#### 5.1.1", "#### 5.1.2" → FALSCH!
+
+**📝 FAZIT / SCHLUSSKAPITEL - SPEZIELLE REGELN:**
+Das Fazit/Schlusskapitel muss KURZ und PRÄGNANT sein:
+- NUR eine Zusammenfassung der wichtigsten Erkenntnisse (keine neue Analyse!)
+- KEINE neuen Argumente, Theorien oder Zitationen im Fazit
+- Wenn "Ausblick" vorhanden: NUR 2-3 Sätze zu möglichem Forschungsbedarf
+- KEINE tiefen Analysen oder ausführlichen Diskussionen im Fazit
+- Das Fazit wiederholt KURZ die Hauptergebnisse, mehr nicht
+- Typische Länge: 1-2 Seiten, NICHT mehr!
 
 **STRENG VERBOTEN nach dem letzten Kapitel:**
 - ✗ "Ergänzungen zu Kapitel 2..."
@@ -2187,6 +2203,7 @@ STRUKTUR UND LÄNGE
 3. Jedes Kapitel muss seinen wissenschaftlichen Zweck erfüllen
 4. Ende mit dem letzten Kapitel (Fazit/Diskussion) - DANN STOPP!
 5. Wenn du mehr Inhalt brauchst, erweitere die BESTEHENDEN Kapitel, füge KEINE neuen hinzu
+6. KEINE Unterkapitel erfinden, die nicht in der Gliederung stehen!
 
 **Aufbau der Arbeit (in Einleitung):**
 - Beschreibe NUR die nachfolgenden Kapitel (2, 3, 4...)
