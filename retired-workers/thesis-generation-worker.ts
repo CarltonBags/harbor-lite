@@ -1717,6 +1717,22 @@ async function extendThesisContent({
   let wordCount = updatedContent.split(/\s+/).length
   const maxPasses = 4
 
+  // Check if Fazit/conclusion is already written - if so, thesis is COMPLETE
+  const fazitPatterns = [
+    /#{1,3}\s*\d+\.?\d*\.?\s*(fazit|schluss|zusammenfassung|conclusion|summary|ausblick)/i,
+    /#{1,3}\s*(fazit|schluss|conclusion|summary)\s*(und|and)?\s*(ausblick)?/i,
+  ]
+  const hasFazit = fazitPatterns.some(pattern => pattern.test(updatedContent))
+  
+  // Find the last chapter in the outline
+  const lastChapter = outlineChapters[outlineChapters.length - 1]
+  const lastChapterWritten = lastChapter && detectChapters(updatedContent, [lastChapter]).length > 0
+
+  if (hasFazit && lastChapterWritten) {
+    console.log(`[ThesisGeneration] [Extension] ⚠️ Fazit already written and last chapter complete - NOT extending further to prevent hallucinated chapters`)
+    return { content: updatedContent, wordCount }
+  }
+
   for (let pass = 1; pass <= maxPasses && wordCount < expectedWordCount; pass++) {
     const remainingWords = expectedWordCount - wordCount
     const roughTarget = Math.max(1500, Math.round(expectedWordCount * 0.1))
@@ -1726,11 +1742,18 @@ async function extendThesisContent({
     )
 
     const missingChapters = getMissingChapters(updatedContent, outlineChapters)
+    
+    // If no chapters are missing AND Fazit is written, STOP - thesis is complete
+    if (missingChapters.length === 0 && hasFazit) {
+      console.log(`[ThesisGeneration] [Extension] ⚠️ All chapters complete including Fazit - stopping extension to prevent extra content`)
+      break
+    }
+    
     const missingChapterSummary = missingChapters.length
       ? missingChapters.map((chapter) => `- ${chapter}`).join('\n')
       : isGerman
-        ? '- Vertiefe alle vorhandenen Kapitel, erweitere Analysen, Methodik, Diskussion und Ausblick.'
-        : '- Deepen all existing chapters and expand analysis, methodology, discussion, and outlook.'
+        ? '- ACHTUNG: Alle Kapitel sind vorhanden! Vertiefe NUR die MITTLEREN Kapitel (2, 3, 4) mit mehr Details. NIEMALS nach dem Fazit weiterschreiben!'
+        : '- WARNING: All chapters present! ONLY expand the MIDDLE chapters (2, 3, 4) with more details. NEVER write after the conclusion!'
 
     const outlineSummary = buildOutlineSummary(outlineChapters)
     const planSnippet = thesisPlan ? thesisPlan.slice(0, 4000) : ''
@@ -1741,8 +1764,74 @@ async function extendThesisContent({
       : `The thesis must contain at least ${expectedWordCount} words, but it currently has only ${wordCount} words. Add AT LEAST ${extensionTargetWords} new words now (more is welcome).`
 
     const extensionPrompt = isGerman
-      ? `Du schreibst eine wissenschaftliche Arbeit mit dem Thema "${thesisData.title}" (${thesisData.field}).\n\nAktueller Umfang: ${wordCount} Wörter.\nZielumfang: mindestens ${expectedWordCount} Wörter.\nFehlende Wörter: mindestens ${remainingWords}.\n\nGliederung:\n${outlineSummary || '- (keine Gliederung verfügbar)'}\n\n${planSnippet ? `Blueprint/Auszug:\n${planSnippet}\n\n` : ''}Noch offene bzw. zu vertiefende Kapitel:\n${missingChapterSummary}\n\nDer bisherige Text endet mit folgendem Ausschnitt (bitte exakt daran anknüpfen und nichts wiederholen):\n<<<AUSZUG-BEGINN>>>\n${recentExcerpt}\n<<<AUSZUG-ENDE>>>\n\n${extensionInstruction}\n- Fahre exakt an der letzten Stelle fort.\n- Ergänze zusätzliche Unterkapitel, Argumentationen, empirische Beispiele, kritische Diskussionen und Übergänge.\n- Verwende weiterhin die Quellen aus dem FileSearchStore und setze konsistente Zitationen/Fußnoten ein.\n- Behalte das bisherige Überschriftsniveau bei (## Kapitel, ### Unterkapitel usw.).\n- Wiederhole keinen vorhandenen Text und gib ausschließlich den neuen Zusatztext zurück (keine Kommentare, keine Meta-Erklärungen).`
-      : `You are writing an academic thesis titled "${thesisData.title}" (${thesisData.field}).\n\nCurrent length: ${wordCount} words.\nTarget length: at least ${expectedWordCount} words.\nWords still missing: at least ${remainingWords}.\n\nOutline:\n${outlineSummary || '- (no outline provided)'}\n\n${planSnippet ? `Blueprint excerpt:\n${planSnippet}\n\n` : ''}Chapters that still need to be covered or expanded:\n${missingChapterSummary}\n\nThe current text ends with the following excerpt (continue seamlessly, never repeat content):\n<<<EXCERPT-START>>>\n${recentExcerpt}\n<<<EXCERPT-END>>>\n\n${extensionInstruction}\n- Continue exactly where the text stops.\n- Add new subchapters, analyses, empirical examples, critical discussions, and transitions.\n- Keep using the FileSearchStore sources and provide consistent citations/footnotes.\n- Preserve the existing heading hierarchy (## Chapter, ### Subchapter, etc.).\n- Output ONLY the additional text (no comments, no explanations).`
+      ? `Du erweiterst eine wissenschaftliche Arbeit mit dem Thema "${thesisData.title}" (${thesisData.field}).
+
+Aktueller Umfang: ${wordCount} Wörter.
+Zielumfang: mindestens ${expectedWordCount} Wörter.
+Fehlende Wörter: mindestens ${remainingWords}.
+
+Gliederung (STRIKT EINHALTEN - KEINE neuen Kapitel/Unterkapitel erfinden!):
+${outlineSummary || '- (keine Gliederung verfügbar)'}
+
+${planSnippet ? `Blueprint/Auszug:\n${planSnippet}\n\n` : ''}Noch zu vertiefende Kapitel:
+${missingChapterSummary}
+
+Der bisherige Text endet mit:
+<<<AUSZUG-BEGINN>>>
+${recentExcerpt}
+<<<AUSZUG-ENDE>>>
+
+${extensionInstruction}
+
+🚫 ABSOLUT VERBOTEN:
+- KEINE neuen Kapitel oder Unterkapitel erstellen (z.B. KEINE 5.3, 5.4, 5.5 wenn nur 5.1, 5.2 in der Gliederung stehen!)
+- KEINE Kapitel aus früheren Teilen wiederholen (z.B. KEIN Kapitel 4 nach Kapitel 5!)
+- WENN das Fazit bereits geschrieben ist: Die Arbeit ist FERTIG - schreibe nichts mehr!
+- KEIN neuer Text nach dem letzten Kapitel der Gliederung!
+
+✅ ERLAUBT:
+- Bestehende Kapitel VERTIEFEN (mehr Details, Beispiele, Argumentationen hinzufügen)
+- Mehr Zitationen und Belege in bestehende Absätze einfügen
+- Übergänge zwischen bestehenden Kapiteln verbessern
+- NUR innerhalb der vorgegebenen Gliederungsstruktur arbeiten!
+
+- Fahre exakt an der letzten Stelle fort (keine Wiederholungen!)
+- Verwende Quellen aus dem FileSearchStore mit korrekten Zitationen
+- Gib ausschließlich den neuen Zusatztext zurück (keine Kommentare)`
+      : `You are extending an academic thesis titled "${thesisData.title}" (${thesisData.field}).
+
+Current length: ${wordCount} words.
+Target length: at least ${expectedWordCount} words.
+Words still missing: at least ${remainingWords}.
+
+Outline (STRICTLY FOLLOW - DO NOT invent new chapters/subchapters!):
+${outlineSummary || '- (no outline provided)'}
+
+${planSnippet ? `Blueprint excerpt:\n${planSnippet}\n\n` : ''}Chapters to expand:
+${missingChapterSummary}
+
+The current text ends with:
+<<<EXCERPT-START>>>
+${recentExcerpt}
+<<<EXCERPT-END>>>
+
+${extensionInstruction}
+
+🚫 ABSOLUTELY FORBIDDEN:
+- DO NOT create new chapters or subchapters (e.g., NO 5.3, 5.4, 5.5 if only 5.1, 5.2 are in the outline!)
+- DO NOT repeat chapters from earlier sections (e.g., NO Chapter 4 after Chapter 5!)
+- IF the conclusion is already written: The thesis is FINISHED - write nothing more!
+- NO new text after the last chapter of the outline!
+
+✅ ALLOWED:
+- EXPAND existing chapters (add more details, examples, arguments)
+- Add more citations and evidence to existing paragraphs
+- Improve transitions between existing chapters
+- ONLY work within the provided outline structure!
+
+- Continue exactly where the text stops (no repetition!)
+- Use FileSearchStore sources with correct citations
+- Output ONLY the additional text (no comments)`
 
     console.log(`[ThesisGeneration] [Extension] Starting pass ${pass}/${maxPasses} (target +${extensionTargetWords} words)`)
 
