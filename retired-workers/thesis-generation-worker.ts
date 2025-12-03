@@ -2146,6 +2146,23 @@ SCHREIBSTIL
 - Keine persönlichen Meinungen oder Marketing-Sprache
 - Ergebnisse den Autoren zuschreiben: "Müller (2021) zeigt..." statt "Es ist bewiesen..."
 
+**🚫 VERBOTEN - Unwissenschaftliche Stilmittel:**
+- NIEMALS ein Kapitel mit einer Frage beginnen!
+  ✗ "Was bedeutet Digitalisierung für die Arbeitswelt?"
+  ✓ "Die Digitalisierung verändert die Arbeitswelt grundlegend."
+- KEINE rhetorischen oder suggestiven Fragen im Text!
+  ✗ "Aber ist das wirklich so?"
+  ✗ "Welche Auswirkungen hat dies?"
+  ✓ Direkte Aussagen und Feststellungen verwenden
+- KEINE emotionalen oder wertenden Adjektive!
+  ✗ "wird heiß diskutiert", "brennend aktuell", "erschreckend", "beeindruckend"
+  ✗ "dramatisch", "revolutionär", "bahnbrechend", "erstaunlich"
+  ✓ "wird kontrovers diskutiert", "ist Gegenstand aktueller Forschung"
+  ✓ "zeigt signifikante Veränderungen", "weist erhebliche Unterschiede auf"
+- KEINE journalistische oder Marketing-Sprache!
+  ✗ "Die Zukunft ist jetzt", "Ein Paradigmenwechsel steht bevor"
+  ✓ Sachliche, nüchterne Beschreibungen
+
 **Sprachliche Regeln:**
 - KEINE persönlichen Pronomen ("wir", "ich", "uns")
   ✗ "Wir werden im nächsten Abschnitt..."
@@ -2159,6 +2176,7 @@ SCHREIBSTIL
 - Verwende unterschiedliche Synonyme
 - Vermeide KI-typische Phrasen: "zunächst", "ferner", "zusammenfassend", "darüber hinaus"
 - Nutze natürliche Übergänge: "Dabei zeigt sich", "Vor diesem Hintergrund", "In diesem Kontext"
+- ABER: Bleibe IMMER sachlich und wissenschaftlich - keine Fragen, keine Emotionen!
 
 ═══════════════════════════════════════════════════════════════════════════════
 STRUKTUR UND LÄNGE
