@@ -1633,6 +1633,71 @@ export default function ThesisPreviewPage() {
                       {content || '*Kein Inhalt verfügbar*'}
                     </ReactMarkdown>
 
+                    {/* Literaturverzeichnis - built from uploaded sources */}
+                    {bibliographySources && bibliographySources.length > 0 && (
+                      <div style={{ pageBreakBefore: 'always', marginTop: '24mm' }}>
+                        <h2 style={{
+                          fontSize: '14pt',
+                          fontWeight: 'bold',
+                          marginBottom: '8mm',
+                          textAlign: 'left',
+                        }}>
+                          Literaturverzeichnis
+                        </h2>
+                        <div style={{ fontSize: '11pt', lineHeight: '1.6' }}>
+                          {bibliographySources
+                            .sort((a: any, b: any) => {
+                              // Sort by first author's last name
+                              const getLastName = (source: any) => {
+                                const authors = source.metadata?.authors || source.authors || []
+                                if (authors.length === 0) return 'ZZZ'
+                                const firstAuthor = authors[0] || ''
+                                const parts = firstAuthor.split(' ')
+                                return parts[parts.length - 1] || 'ZZZ'
+                              }
+                              return getLastName(a).localeCompare(getLastName(b), 'de')
+                            })
+                            .map((source: any, index: number) => {
+                              // Format source for bibliography
+                              const meta = source.metadata || source
+                              const authors = meta.authors || []
+                              const year = meta.year || 'o.J.'
+                              const title = meta.title || source.title || 'Ohne Titel'
+                              const journal = meta.journal || source.journal
+                              const pages = meta.pages || (meta.pageStart && meta.pageEnd ? `${meta.pageStart}-${meta.pageEnd}` : '')
+                              const doi = meta.doi || source.doi
+                              
+                              // Format authors (Last, First; Last, First)
+                              const formattedAuthors = authors.length > 0 
+                                ? authors.slice(0, 3).map((a: string) => {
+                                    const parts = a.trim().split(' ')
+                                    if (parts.length >= 2) {
+                                      const lastName = parts[parts.length - 1]
+                                      const firstName = parts.slice(0, -1).join(' ')
+                                      return `${lastName}, ${firstName}`
+                                    }
+                                    return a
+                                  }).join('; ') + (authors.length > 3 ? ' et al.' : '')
+                                : 'o.V.'
+                              
+                              return (
+                                <p key={index} style={{ 
+                                  marginBottom: '4mm', 
+                                  textIndent: '-10mm', 
+                                  paddingLeft: '10mm',
+                                  textAlign: 'left',
+                                }}>
+                                  {formattedAuthors} ({year}): {title}.
+                                  {journal && ` In: ${journal}.`}
+                                  {pages && ` S. ${pages}.`}
+                                  {doi && ` DOI: ${doi}.`}
+                                </p>
+                              )
+                            })}
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 </div>
 

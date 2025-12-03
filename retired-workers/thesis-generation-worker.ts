@@ -82,6 +82,10 @@ interface Source {
   chapterNumber?: string // Track which chapter this source came from
   chapterTitle?: string // Track chapter title for metadata
   mandatory?: boolean // Flag to indicate this source must be cited in the thesis
+  // Page information for citations
+  pages?: string // e.g., "1-44"
+  pageStart?: string | number
+  pageEnd?: string | number
 }
 
 interface OutlineChapterInfo {
@@ -1966,7 +1970,18 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   // Using single-call generation with FileSearchStore RAG instead
   console.log('[ThesisGeneration] Using single-call generation with FileSearchStore RAG')
 
-  // Build mandatory sources section
+  // Build comprehensive source list for the prompt - THIS IS CRITICAL
+  // The AI MUST know exactly which sources it can cite
+  const availableSourcesList = rankedSources.map((s, i) => {
+    const authors = s.authors && s.authors.length > 0 
+      ? s.authors.slice(0, 3).join(', ') + (s.authors.length > 3 ? ' et al.' : '')
+      : 'Unbekannt'
+    const year = s.year || 'o.J.'
+    const pages = s.pages || (s.pageStart && s.pageEnd ? `${s.pageStart}-${s.pageEnd}` : 'keine Angabe')
+    const journal = s.journal || ''
+    return `[${i + 1}] ${authors} (${year}): "${s.title}"${journal ? `. In: ${journal}` : ''}. Seiten: ${pages}`
+  }).join('\n')
+
   const mandatorySources = rankedSources.filter(s => s.mandatory)
   const mandatorySourcesSection = mandatorySources.length > 0 ? `
 **PFLICHTQUELLEN - MÜSSEN ZITIERT WERDEN:**
@@ -2015,34 +2030,45 @@ ${thesisPlan}
 ` : ''}
 ${mandatorySourcesSection}
 ═══════════════════════════════════════════════════════════════════════════════
-QUELLENNUTZUNG
+QUELLENNUTZUNG - ABSOLUT KRITISCH
 ═══════════════════════════════════════════════════════════════════════════════
 
-**KRITISCH - Quellennutzung:**
-Du MUSST die Quellen aus dem FileSearchStore aktiv nutzen und zitieren!
-Eine Thesis OHNE Zitationen ist NICHT akzeptabel und wird abgelehnt.
+**⚠️ STRENG VERBOTEN: ERFUNDENE QUELLEN ⚠️**
+Du darfst NUR die unten aufgelisteten Quellen zitieren. KEINE anderen.
+Erfundene Quellen (wie "McAfee", "Autor, 2003", etc.) sind STRENG VERBOTEN.
 
-- Nutze AUSSCHLIESSLICH die im FileSearchStore bereitgestellten Quellen
-- JEDER Absatz mit Forschungsergebnissen MUSS Zitationen enthalten
+**VERFÜGBARE QUELLEN (NUR DIESE DARFST DU ZITIEREN):**
+${availableSourcesList}
+
+**ZITATIONSREGELN:**
+- Nutze AUSSCHLIESSLICH die oben aufgelisteten ${rankedSources.length} Quellen
+- JEDER Absatz mit Forschungsergebnissen MUSS Zitationen aus obiger Liste enthalten
 - Ziel: mindestens 1 Zitation pro 150-200 Wörter
-- Mindestens ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} verschiedene Quellen müssen zitiert werden
-- Verteile Zitationen gleichmäßig über alle Kapitel (2-3 pro Kapitel)
-- KEINE erfundenen Quellen, KEINE Platzhalter, KEINE hypothetischen Studien
-- Wenn du Informationen aus einer Quelle verwendest, ZITIERE sie sofort
+- Mindestens ${Math.max(5, Math.floor(rankedSources.length * 0.6))} verschiedene Quellen müssen zitiert werden
+- Verteile Zitationen gleichmäßig über ALLE Kapitel (mindestens 2-3 pro Kapitel)
+- Wenn du Informationen verwendest, ZITIERE SOFORT die entsprechende Quelle aus der Liste
 
-**Seitenzahlen:** JEDE Zitation muss eine Seitenzahl enthalten (S. XX oder S. XX-YY).
+**SEITENZAHLEN:** JEDE Zitation muss eine Seitenzahl enthalten (S. XX oder S. XX-YY).
+Verwende die Seitenzahlen aus der obigen Quellenliste.
 
 ${thesisData.citationStyle === 'deutsche-zitierweise' ? `**Deutsche Zitierweise (Fußnoten):**
-- Im Text: Verwende "^N" direkt nach dem zitierten Inhalt (z.B. "Die Forschung zeigt^1")
+- Im Text: Verwende "^N" direkt nach dem zitierten Inhalt
 - Fortlaufende Nummerierung (^1, ^2, ^3...) in der Reihenfolge des Erscheinens
 - Jede neue Zitation = neue Nummer (auch bei wiederholter Quelle)
-- WICHTIG: Schreibe KEINE Fußnoten-Definitionen ([^1]: ...) am Ende des Textes!
-- Die Fußnoten-Metadaten werden automatisch aus den FileSearchStore-Quellen generiert
+- WICHTIG: Schreibe KEINE Fußnoten-Definitionen ([^1]: ...) am Ende!
+- Die Fußnoten werden automatisch aus den Quellenmetadaten generiert
 
-Beispiel im Text:
-"Die Digitalisierung verändert Arbeitsprozesse grundlegend^1. Studien belegen^2..."` : `**${citationStyleLabel}:**
+**Beispiel mit echten Quellen aus der Liste:**
+"Künstliche Intelligenz verändert die Arbeitswelt grundlegend^1. ${rankedSources.length > 0 ? `${rankedSources[0].authors?.[0]?.split(' ').pop() || 'Autor'} (${rankedSources[0].year || 'o.J.'})` : 'Autor (Jahr)'} argumentiert, dass...^2"
+
+WICHTIG: Verwende NUR die Autoren/Jahre aus der obigen Quellenliste!` : `**${citationStyleLabel}:**
 - Zitiere im Text: (Autor, Jahr, S. XX) oder (Autor, Jahr, S. XX-YY)
-- Bei mehreren Autoren: (Autor et al., Jahr, S. XX)`}
+- Bei mehreren Autoren: (Autor et al., Jahr, S. XX)
+
+**Beispiel mit echten Quellen aus der Liste:**
+${rankedSources.length > 0 ? `"Die Forschung zeigt (${rankedSources[0].authors?.[0]?.split(' ').pop() || 'Autor'}, ${rankedSources[0].year || 'o.J.'}, S. 5)..."` : '"Die Forschung zeigt (Autor, Jahr, S. 5)..."'}
+
+WICHTIG: Verwende NUR die Autoren/Jahre aus der obigen Quellenliste!`}
 
 ═══════════════════════════════════════════════════════════════════════════════
 SCHREIBSTIL
