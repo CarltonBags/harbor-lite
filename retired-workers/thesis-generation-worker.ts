@@ -1715,9 +1715,10 @@ async function extendThesisContent({
 }: ExtendThesisParams): Promise<{ content: string; wordCount: number }> {
   let updatedContent = currentContent
   let wordCount = updatedContent.split(/\s+/).length
-  const maxPasses = 4
+  const maxPasses = 6 // Increased from 4 to allow more extension attempts
+  const minAcceptableRatio = 0.90 // Accept 90% of target as "complete enough"
 
-  // Check if Fazit/conclusion is already written - if so, thesis is COMPLETE
+  // Check if Fazit/conclusion is already written
   const fazitPatterns = [
     /#{1,3}\s*\d+\.?\d*\.?\s*(fazit|schluss|zusammenfassung|conclusion|summary|ausblick)/i,
     /#{1,3}\s*(fazit|schluss|conclusion|summary)\s*(und|and)?\s*(ausblick)?/i,
@@ -1728,32 +1729,68 @@ async function extendThesisContent({
   const lastChapter = outlineChapters[outlineChapters.length - 1]
   const lastChapterWritten = lastChapter && detectChapters(updatedContent, [lastChapter]).length > 0
 
-  if (hasFazit && lastChapterWritten) {
-    console.log(`[ThesisGeneration] [Extension] ⚠️ Fazit already written and last chapter complete - NOT extending further to prevent hallucinated chapters`)
+  const wordRatio = wordCount / expectedWordCount
+  console.log(`[ThesisGeneration] [Extension] Current: ${wordCount}/${expectedWordCount} words (${Math.round(wordRatio * 100)}%)`)
+
+  // Only stop early if we're at 90%+ of target AND structure is complete
+  if (hasFazit && lastChapterWritten && wordRatio >= minAcceptableRatio) {
+    console.log(`[ThesisGeneration] [Extension] ✓ Thesis complete: ${Math.round(wordRatio * 100)}% of target with Fazit written`)
     return { content: updatedContent, wordCount }
+  }
+
+  // If we're significantly under target, we MUST extend even if Fazit exists
+  if (wordRatio < minAcceptableRatio) {
+    console.log(`[ThesisGeneration] [Extension] ⚠️ Only ${Math.round(wordRatio * 100)}% of target - MUST extend even though Fazit exists`)
   }
 
   for (let pass = 1; pass <= maxPasses && wordCount < expectedWordCount; pass++) {
     const remainingWords = expectedWordCount - wordCount
-    const roughTarget = Math.max(1500, Math.round(expectedWordCount * 0.1))
+    const currentRatio = wordCount / expectedWordCount
+    
+    // Stop if we've reached acceptable threshold
+    if (currentRatio >= minAcceptableRatio) {
+      console.log(`[ThesisGeneration] [Extension] ✓ Reached ${Math.round(currentRatio * 100)}% - acceptable threshold met`)
+      break
+    }
+    
+    const roughTarget = Math.max(2000, Math.round(expectedWordCount * 0.15)) // Increased minimum target
     const extensionTargetWords = Math.min(
       remainingWords,
-      Math.min(4500, Math.max(roughTarget, Math.ceil(remainingWords / (maxPasses - pass + 1))))
+      Math.min(6000, Math.max(roughTarget, Math.ceil(remainingWords / (maxPasses - pass + 1)))) // Increased max per pass
     )
 
     const missingChapters = getMissingChapters(updatedContent, outlineChapters)
     
-    // If no chapters are missing AND Fazit is written, STOP - thesis is complete
-    if (missingChapters.length === 0 && hasFazit) {
-      console.log(`[ThesisGeneration] [Extension] ⚠️ All chapters complete including Fazit - stopping extension to prevent extra content`)
-      break
+    // Build appropriate expansion instruction based on what's missing
+    let missingChapterSummary: string
+    if (missingChapters.length > 0) {
+      missingChapterSummary = missingChapters.map((chapter) => `- ${chapter}`).join('\n')
+    } else if (hasFazit && currentRatio < minAcceptableRatio) {
+      // Fazit exists but we're still under target - expand middle chapters ONLY
+      missingChapterSummary = isGerman
+        ? `- ⚠️ WORTANZAHL ZU NIEDRIG (${wordCount}/${expectedWordCount})!
+- Alle Kapitel sind vorhanden, aber die Arbeit ist zu KURZ!
+- Vertiefe die Kapitel 2, 3, und 4 mit:
+  • Mehr theoretischen Erklärungen
+  • Zusätzlichen Beispielen und Anwendungen
+  • Kritischer Würdigung der Literatur
+  • Detaillierterer Diskussion der Forschungsergebnisse
+- NIEMALS nach dem Fazit weiterschreiben!
+- NIEMALS neue Kapitel oder Unterkapitel hinzufügen!`
+        : `- ⚠️ WORD COUNT TOO LOW (${wordCount}/${expectedWordCount})!
+- All chapters present but thesis too SHORT!
+- Expand chapters 2, 3, and 4 with:
+  • More theoretical explanations
+  • Additional examples and applications
+  • Critical analysis of literature
+  • More detailed discussion of research findings
+- NEVER write after the conclusion!
+- NEVER add new chapters or subchapters!`
+    } else {
+      missingChapterSummary = isGerman
+        ? '- Vertiefe die vorhandenen Kapitel mit mehr Details und Analyse.'
+        : '- Expand existing chapters with more details and analysis.'
     }
-    
-    const missingChapterSummary = missingChapters.length
-      ? missingChapters.map((chapter) => `- ${chapter}`).join('\n')
-      : isGerman
-        ? '- ACHTUNG: Alle Kapitel sind vorhanden! Vertiefe NUR die MITTLEREN Kapitel (2, 3, 4) mit mehr Details. NIEMALS nach dem Fazit weiterschreiben!'
-        : '- WARNING: All chapters present! ONLY expand the MIDDLE chapters (2, 3, 4) with more details. NEVER write after the conclusion!'
 
     const outlineSummary = buildOutlineSummary(outlineChapters)
     const planSnippet = thesisPlan ? thesisPlan.slice(0, 4000) : ''
@@ -2268,10 +2305,36 @@ SCHREIBSTIL
 - ABER: Bleibe IMMER sachlich und wissenschaftlich - keine Fragen, keine Emotionen!
 
 ═══════════════════════════════════════════════════════════════════════════════
-STRUKTUR UND LÄNGE
+STRUKTUR UND LÄNGE - ⚠️ KRITISCH: WORTANZAHL EINHALTEN!
 ═══════════════════════════════════════════════════════════════════════════════
 
-**Ziel-Länge:** ${targetWordCount} Wörter (Maximum: ${maxWordCount} Wörter = +10%)
+**🎯 PFLICHT-WORTANZAHL: MINDESTENS ${targetWordCount} Wörter!**
+
+⚠️ **ABSOLUT KRITISCH - LÄNGENANFORDERUNG:**
+- Du MUSST mindestens ${targetWordCount} Wörter schreiben!
+- Eine Arbeit mit weniger als ${Math.floor(targetWordCount * 0.9)} Wörtern ist INAKZEPTABEL!
+- Maximum: ${maxWordCount} Wörter (aber NIEMALS unter ${targetWordCount}!)
+- ${targetWordCount} Wörter = ca. ${Math.ceil(targetWordCount / 250)} Seiten
+
+**WORTVERTEILUNG PRO KAPITEL (ungefähr):**
+- Einleitung: ${Math.ceil(targetWordCount * 0.08)}-${Math.ceil(targetWordCount * 0.12)} Wörter (~8-12%)
+- Theoretischer Rahmen/Grundlagen: ${Math.ceil(targetWordCount * 0.20)}-${Math.ceil(targetWordCount * 0.25)} Wörter (~20-25%)
+- Hauptteil (Kapitel 3+4): ${Math.ceil(targetWordCount * 0.45)}-${Math.ceil(targetWordCount * 0.55)} Wörter (~45-55%)
+- Fazit: ${Math.ceil(targetWordCount * 0.08)}-${Math.ceil(targetWordCount * 0.12)} Wörter (~8-12%)
+
+**WIE DU DIE WORTANZAHL ERREICHST:**
+1. Jedes Kapitel AUSFÜHRLICH behandeln - nicht nur oberflächlich
+2. Theorien und Konzepte DETAILLIERT erklären
+3. Mehrere Quellen PRO Argument diskutieren
+4. Beispiele und Anwendungen einbringen
+5. Kritische Würdigung der Literatur einbauen
+6. Übergänge zwischen Kapiteln ausführlich gestalten
+
+**VERBOTEN:**
+- ✗ Zu kurze, oberflächliche Kapitel
+- ✗ Nur 1-2 Sätze pro Unterkapitel
+- ✗ Aufzählungen statt Fließtext
+- ✗ Eine Arbeit mit ${Math.floor(targetWordCount * 0.6)} Wörtern abliefern, wenn ${targetWordCount} gefordert sind!
 
 **⚠️ STRIKTE GLIEDERUNGSTREUE - ABSOLUT KRITISCH:**
 - Schreibe NUR die Kapitel/Unterkapitel, die in der Gliederung vorgegeben sind
