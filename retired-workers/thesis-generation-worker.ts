@@ -2732,6 +2732,57 @@ DO NOT STOP until all chapters are complete. The thesis must be COMPLETE.`
       console.log(`[ThesisGeneration]   Model: gemini-2.5-pro`)
       console.log(`[ThesisGeneration]   FileSearchStore: ${thesisData.fileSearchStoreId}`)
 
+      // On retry attempts, add extra emphasis on word count
+      const retryEmphasis = attempt > 1 ? (isGerman 
+        ? `
+
+═══════════════════════════════════════════════════════════════════════════════
+⚠️⚠️⚠️ KRITISCHER HINWEIS - VORHERIGER VERSUCH WAR ZU KURZ! ⚠️⚠️⚠️
+═══════════════════════════════════════════════════════════════════════════════
+
+**ACHTUNG: Der vorherige Generierungsversuch hat die Mindestlänge NICHT erreicht!**
+
+Du MUSST dieses Mal MINDESTENS ${targetWordCount} Wörter schreiben!
+
+**KONKRETE ANWEISUNGEN:**
+- Jedes Kapitel muss AUSFÜHRLICH sein (nicht nur 2-3 Absätze!)
+- Theoretische Grundlagen: DETAILLIERT erklären, nicht nur skizzieren
+- Hauptteil: Umfassende Analyse mit vielen Beispielen und Quellen
+- KEINE oberflächliche Behandlung - TIEFGANG ist erforderlich!
+- Lieber zu lang als zu kurz!
+
+**MINDESTLÄNGE PRO KAPITEL:**
+- Einleitung: mindestens ${Math.ceil(targetWordCount * 0.10)} Wörter
+- Jedes Hauptkapitel: mindestens ${Math.ceil(targetWordCount * 0.25)} Wörter
+- Fazit: mindestens ${Math.ceil(targetWordCount * 0.08)} Wörter
+
+DIES IST VERSUCH ${attempt}/${maxAttempts} - SCHREIBE GENUG TEXT!
+`
+        : `
+
+═══════════════════════════════════════════════════════════════════════════════
+⚠️⚠️⚠️ CRITICAL NOTICE - PREVIOUS ATTEMPT WAS TOO SHORT! ⚠️⚠️⚠️
+═══════════════════════════════════════════════════════════════════════════════
+
+**WARNING: The previous generation attempt did NOT meet the minimum length!**
+
+You MUST write AT LEAST ${targetWordCount} words this time!
+
+**SPECIFIC INSTRUCTIONS:**
+- Each chapter must be COMPREHENSIVE (not just 2-3 paragraphs!)
+- Theoretical foundations: DETAILED explanations, not just outlines
+- Main body: Extensive analysis with many examples and sources
+- NO superficial treatment - DEPTH is required!
+- Better too long than too short!
+
+**MINIMUM LENGTH PER CHAPTER:**
+- Introduction: at least ${Math.ceil(targetWordCount * 0.10)} words
+- Each main chapter: at least ${Math.ceil(targetWordCount * 0.25)} words
+- Conclusion: at least ${Math.ceil(targetWordCount * 0.08)} words
+
+THIS IS ATTEMPT ${attempt}/${maxAttempts} - WRITE ENOUGH TEXT!
+`) : ''
+
       // Calculate max output tokens based on target length
       // Gemini 2.5 Pro max is 1,000,000 tokens output
       // We set it to the maximum to ensure generation is NEVER truncated
@@ -2756,10 +2807,13 @@ DO NOT STOP until all chapters are complete. The thesis must be COMPLETE.`
 
       console.log(`[ThesisGeneration] Expected words: ${expectedWords}, Estimated tokens: ${estimatedTokens}, Max output tokens: ${maxOutputTokens}`)
 
+      // Add retry emphasis to prompt if this is a retry attempt
+      const fullPrompt = prompt + retryEmphasis
+
       const response = await retryApiCall(
         () => ai.models.generateContent({
           model: 'gemini-2.5-pro',
-          contents: prompt,
+          contents: fullPrompt,
           config: {
             maxOutputTokens: maxOutputTokens,
             tools: [{
@@ -2787,20 +2841,17 @@ DO NOT STOP until all chapters are complete. The thesis must be COMPLETE.`
         console.log(`[ThesisGeneration] Generated content: ${contentLength} characters, ~${wordCount} words`)
         console.log(`[ThesisGeneration] Expected word count: ~${expectedWordCount} words`)
 
-        if (wordCount < expectedWordCount) {
-          console.warn(`[ThesisGeneration] Content short by ~${expectedWordCount - wordCount} words. Starting extension process...`)
-          const extensionResult = await extendThesisContent({
-            thesisData,
-            thesisPlan: thesisPlan || '',
-            currentContent: content,
-            expectedWordCount,
-            outlineChapters,
-            isGerman,
-          })
-          content = extensionResult.content
-          contentLength = content.length
-          wordCount = extensionResult.wordCount
-          console.log(`[ThesisGeneration] ✓ Word count reached after extension: ~${wordCount}/${expectedWordCount} words`)
+        // REMOVED: Extension process - it creates "Ergänzungen" at the end instead of expanding chapters
+        // If word count is significantly below target, we REGENERATE the entire thesis with stronger emphasis
+        const wordRatio = wordCount / expectedWordCount
+        if (wordRatio < 0.85 && attempt < maxAttempts) {
+          console.warn(`[ThesisGeneration] ⚠️ Content only ${Math.round(wordRatio * 100)}% of target (${wordCount}/${expectedWordCount})`)
+          console.warn(`[ThesisGeneration] → Triggering FULL REGENERATION with stronger word count emphasis (attempt ${attempt + 1})`)
+          throw new Error(`Word count too low: ${wordCount}/${expectedWordCount} words (${Math.round(wordRatio * 100)}%). Need at least 85%.`)
+        } else if (wordRatio < 0.85) {
+          console.warn(`[ThesisGeneration] ⚠️ Final attempt still short: ${Math.round(wordRatio * 100)}% - accepting as-is`)
+        } else {
+          console.log(`[ThesisGeneration] ✓ Word count acceptable: ${Math.round(wordRatio * 100)}% of target`)
         }
 
         // Validate completeness - check structure (NOT bibliography - we build that from metadata)
