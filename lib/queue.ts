@@ -1,6 +1,9 @@
 /**
  * BullMQ Queue Configuration
  * Manages the thesis generation job queue
+ * 
+ * REDIS OPTIMIZATION: Uses lazy connection to reduce command overhead
+ * in serverless environments (Next.js API routes)
  */
 
 import { Queue } from 'bullmq'
@@ -10,38 +13,39 @@ import { env } from '@/lib/env'
 // Queue name constant
 export const THESIS_QUEUE_NAME = 'thesis-generation'
 
-// Create Redis connection
-// In serverless environments, this connection will be created per-request
-// In the worker (long-running process), it stays open
+// Create Redis connection with LAZY CONNECT
+// This prevents connection overhead on module import
+// Connection only happens when first command is sent
 const useTLS = env.REDIS_URL.startsWith('rediss://')
 
 const connection = new IORedis(env.REDIS_URL, {
     maxRetriesPerRequest: null,
-    enableReadyCheck: false,
+    enableReadyCheck: false, // Skip PING on connect - saves commands
+    lazyConnect: true, // CRITICAL: Don't connect until needed
     tls: useTLS ? {
         rejectUnauthorized: false, // Upstash uses self-signed certs
     } : undefined,
     retryStrategy: (times) => {
-        const delay = Math.min(times * 50, 2000)
+        // Faster backoff for serverless - don't wait too long
+        const delay = Math.min(times * 100, 1000)
         return delay
     },
+    // Disconnect quickly after idle - serverless functions are short-lived
+    disconnectTimeout: 2000,
 })
 
 // Export the queue instance for producers (Next.js API routes)
 export const thesisQueue = new Queue(THESIS_QUEUE_NAME, {
     connection,
     defaultJobOptions: {
-        attempts: 3,
+        attempts: 2, // Reduced from 3 - saves retry overhead
         backoff: {
-            type: 'exponential',
-            delay: 2000,
+            type: 'fixed', // Changed from exponential - simpler, fewer state updates
+            delay: 5000,
         },
-        removeOnComplete: {
-            count: 100, // Keep last 100 completed jobs
-            age: 24 * 3600, // Keep for 24 hours
-        },
+        removeOnComplete: true, // Immediately remove completed jobs - saves storage/commands
         removeOnFail: {
-            count: 500, // Keep last 500 failed jobs for debugging
+            count: 50, // Reduced from 500 - we don't need that many failed jobs
         },
     },
 })

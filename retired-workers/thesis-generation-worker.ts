@@ -4688,11 +4688,14 @@ const worker = new Worker(
   },
   {
     connection: workerConnection,
-    concurrency: 3, // Process up to 3 jobs concurrently
-    limiter: {
-      max: 10, // Max 10 jobs
-      duration: 60000, // per 60 seconds
-    },
+    concurrency: 1, // Reduced from 3 - thesis generation is heavy, run one at a time
+    // REDIS OPTIMIZATION: Reduce polling frequency when idle
+    // Default is 5000ms, we use 30000ms (30 seconds) to save commands
+    drainDelay: 30000, // Wait 30 seconds between drain checks when queue is empty
+    lockDuration: 600000, // 10 minutes lock (thesis generation takes long)
+    lockRenewTime: 300000, // Renew lock every 5 minutes
+    stalledInterval: 600000, // Check for stalled jobs every 10 minutes (not default 30s)
+    // Remove limiter - not needed with concurrency 1
   }
 )
 
