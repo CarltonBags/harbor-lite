@@ -220,8 +220,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (chunkResults.length === 0) {
+      // Provide more helpful error message
+      console.error('All ZeroGPT chunks failed. Possible causes: invalid API key, rate limit, or API down.')
+      console.error(`RAPIDAPI_KEY present: ${!!RAPIDAPI_KEY}`)
+      console.error(`RAPIDAPI_KEY prefix: ${RAPIDAPI_KEY?.substring(0, 10)}...`)
+      
       return NextResponse.json(
-        { error: 'Failed to check any chunks with ZeroGPT API' },
+        { 
+          error: 'Failed to check any chunks with ZeroGPT API',
+          details: 'Check server logs for details. Common causes: invalid RAPIDAPI_KEY, rate limit exceeded, or API service down.',
+          apiKeyPresent: !!RAPIDAPI_KEY,
+        },
         { status: 500 }
       )
     }

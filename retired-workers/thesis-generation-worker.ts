@@ -2724,7 +2724,7 @@ DO NOT STOP until all chapters are complete. The thesis must be COMPLETE.`
   // Retry with SAME config (FileSearchStore + Gemini Pro) - 3 total attempts
   let content = ''
   let lastError: Error | unknown = null
-  const maxAttempts = 3
+  const maxAttempts = 4 // Increased from 3 to give more chances to hit word count
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -2732,55 +2732,96 @@ DO NOT STOP until all chapters are complete. The thesis must be COMPLETE.`
       console.log(`[ThesisGeneration]   Model: gemini-2.5-pro`)
       console.log(`[ThesisGeneration]   FileSearchStore: ${thesisData.fileSearchStoreId}`)
 
-      // On retry attempts, add extra emphasis on word count
+      // On retry attempts, add extra emphasis on word count (gets more emphatic with each retry)
+      const urgencyLevel = attempt >= 3 ? 'LETZTE CHANCE' : 'WICHTIG'
       const retryEmphasis = attempt > 1 ? (isGerman 
         ? `
 
 ═══════════════════════════════════════════════════════════════════════════════
-⚠️⚠️⚠️ KRITISCHER HINWEIS - VORHERIGER VERSUCH WAR ZU KURZ! ⚠️⚠️⚠️
+🚨🚨🚨 ${urgencyLevel}: VORHERIGER VERSUCH WAR ZU KURZ (${attempt - 1}x FEHLGESCHLAGEN)! 🚨🚨🚨
 ═══════════════════════════════════════════════════════════════════════════════
 
-**ACHTUNG: Der vorherige Generierungsversuch hat die Mindestlänge NICHT erreicht!**
+**ABSOLUT KRITISCH:** Du hast ${attempt - 1}x zu wenig Text geschrieben!
 
-Du MUSST dieses Mal MINDESTENS ${targetWordCount} Wörter schreiben!
+**ZIEL: EXAKT ${targetWordCount} WÖRTER (NICHT WENIGER!)**
 
-**KONKRETE ANWEISUNGEN:**
-- Jedes Kapitel muss AUSFÜHRLICH sein (nicht nur 2-3 Absätze!)
-- Theoretische Grundlagen: DETAILLIERT erklären, nicht nur skizzieren
-- Hauptteil: Umfassende Analyse mit vielen Beispielen und Quellen
-- KEINE oberflächliche Behandlung - TIEFGANG ist erforderlich!
-- Lieber zu lang als zu kurz!
+${attempt >= 3 ? `
+**🔴 DIES IST VERSUCH ${attempt} VON ${maxAttempts} - LETZTER VERSUCH! 🔴**
+Wenn du wieder zu wenig schreibst, wird die Arbeit mit zu wenig Inhalt abgeliefert!
+` : ''}
 
-**MINDESTLÄNGE PRO KAPITEL:**
-- Einleitung: mindestens ${Math.ceil(targetWordCount * 0.10)} Wörter
-- Jedes Hauptkapitel: mindestens ${Math.ceil(targetWordCount * 0.25)} Wörter
-- Fazit: mindestens ${Math.ceil(targetWordCount * 0.08)} Wörter
+**SO ERREICHST DU DIE WORTANZAHL:**
 
-DIES IST VERSUCH ${attempt}/${maxAttempts} - SCHREIBE GENUG TEXT!
+1. **EINLEITUNG** (mind. ${Math.ceil(targetWordCount * 0.12)} Wörter):
+   - Problemstellung AUSFÜHRLICH darstellen
+   - Forschungsfrage DETAILLIERT herleiten
+   - Relevanz des Themas UMFASSEND begründen
+   - Aufbau der Arbeit VOLLSTÄNDIG beschreiben
+
+2. **THEORETISCHE GRUNDLAGEN** (mind. ${Math.ceil(targetWordCount * 0.25)} Wörter):
+   - JEDE Definition AUSFÜHRLICH erklären
+   - MEHRERE Theorien/Modelle diskutieren
+   - Forschungsstand UMFASSEND darstellen
+   - Kritische Würdigung der Literatur
+
+3. **HAUPTTEIL** (mind. ${Math.ceil(targetWordCount * 0.40)} Wörter):
+   - JEDEN Aspekt DETAILLIERT analysieren
+   - PRO Argument: mehrere Quellen + eigene Einordnung
+   - Beispiele, Fallstudien, Anwendungen
+   - Zwischenfazits zwischen Unterkapiteln
+
+4. **FAZIT** (mind. ${Math.ceil(targetWordCount * 0.10)} Wörter):
+   - ALLE wichtigen Ergebnisse zusammenfassen
+   - Forschungsfrage EXPLIZIT beantworten
+   - Limitationen nennen
+   - Ausblick auf weitere Forschung
+
+**VERBOTEN:**
+❌ Kurze, oberflächliche Absätze
+❌ Nur 2-3 Sätze pro Unterkapitel
+❌ Aufzählungen statt Fließtext
+❌ Weniger als ${targetWordCount} Wörter abliefern!
 `
         : `
 
 ═══════════════════════════════════════════════════════════════════════════════
-⚠️⚠️⚠️ CRITICAL NOTICE - PREVIOUS ATTEMPT WAS TOO SHORT! ⚠️⚠️⚠️
+🚨🚨🚨 ${attempt >= 3 ? 'FINAL ATTEMPT' : 'CRITICAL'}: PREVIOUS ATTEMPT WAS TOO SHORT! 🚨🚨🚨
 ═══════════════════════════════════════════════════════════════════════════════
 
-**WARNING: The previous generation attempt did NOT meet the minimum length!**
+**CRITICAL:** You have written too little ${attempt - 1} time(s)!
 
-You MUST write AT LEAST ${targetWordCount} words this time!
+**TARGET: EXACTLY ${targetWordCount} WORDS (NOT LESS!)**
 
-**SPECIFIC INSTRUCTIONS:**
-- Each chapter must be COMPREHENSIVE (not just 2-3 paragraphs!)
-- Theoretical foundations: DETAILED explanations, not just outlines
-- Main body: Extensive analysis with many examples and sources
-- NO superficial treatment - DEPTH is required!
-- Better too long than too short!
+${attempt >= 3 ? `
+**🔴 THIS IS ATTEMPT ${attempt} OF ${maxAttempts} - FINAL ATTEMPT! 🔴**
+If you write too little again, the thesis will be delivered incomplete!
+` : ''}
 
-**MINIMUM LENGTH PER CHAPTER:**
-- Introduction: at least ${Math.ceil(targetWordCount * 0.10)} words
-- Each main chapter: at least ${Math.ceil(targetWordCount * 0.25)} words
-- Conclusion: at least ${Math.ceil(targetWordCount * 0.08)} words
+**HOW TO REACH THE WORD COUNT:**
 
-THIS IS ATTEMPT ${attempt}/${maxAttempts} - WRITE ENOUGH TEXT!
+1. **INTRODUCTION** (min. ${Math.ceil(targetWordCount * 0.12)} words):
+   - Problem statement IN DETAIL
+   - Research question FULLY derived
+   - Relevance COMPREHENSIVELY justified
+   - Structure COMPLETELY described
+
+2. **THEORETICAL FRAMEWORK** (min. ${Math.ceil(targetWordCount * 0.25)} words):
+   - EVERY definition THOROUGHLY explained
+   - MULTIPLE theories/models discussed
+   - Research state COMPREHENSIVELY presented
+   - Critical analysis of literature
+
+3. **MAIN BODY** (min. ${Math.ceil(targetWordCount * 0.40)} words):
+   - EVERY aspect analyzed IN DEPTH
+   - PER argument: multiple sources + own interpretation
+   - Examples, case studies, applications
+   - Interim conclusions between subsections
+
+4. **CONCLUSION** (min. ${Math.ceil(targetWordCount * 0.10)} words):
+   - ALL key findings summarized
+   - Research question EXPLICITLY answered
+   - Limitations stated
+   - Outlook on future research
 `) : ''
 
       // Calculate max output tokens based on target length
@@ -2844,14 +2885,16 @@ THIS IS ATTEMPT ${attempt}/${maxAttempts} - WRITE ENOUGH TEXT!
         // REMOVED: Extension process - it creates "Ergänzungen" at the end instead of expanding chapters
         // If word count is significantly below target, we REGENERATE the entire thesis with stronger emphasis
         const wordRatio = wordCount / expectedWordCount
-        if (wordRatio < 0.85 && attempt < maxAttempts) {
+        const MIN_ACCEPTABLE_RATIO = 0.95 // Require 95% of target (was 85%)
+        
+        if (wordRatio < MIN_ACCEPTABLE_RATIO && attempt < maxAttempts) {
           console.warn(`[ThesisGeneration] ⚠️ Content only ${Math.round(wordRatio * 100)}% of target (${wordCount}/${expectedWordCount})`)
-          console.warn(`[ThesisGeneration] → Triggering FULL REGENERATION with stronger word count emphasis (attempt ${attempt + 1})`)
-          throw new Error(`Word count too low: ${wordCount}/${expectedWordCount} words (${Math.round(wordRatio * 100)}%). Need at least 85%.`)
-        } else if (wordRatio < 0.85) {
-          console.warn(`[ThesisGeneration] ⚠️ Final attempt still short: ${Math.round(wordRatio * 100)}% - accepting as-is`)
+          console.warn(`[ThesisGeneration] → Triggering FULL REGENERATION with stronger word count emphasis (attempt ${attempt + 1}/${maxAttempts})`)
+          throw new Error(`Word count too low: ${wordCount}/${expectedWordCount} words (${Math.round(wordRatio * 100)}%). Need at least 95%.`)
+        } else if (wordRatio < MIN_ACCEPTABLE_RATIO) {
+          console.warn(`[ThesisGeneration] ⚠️ Final attempt still short: ${Math.round(wordRatio * 100)}% - accepting as best effort`)
         } else {
-          console.log(`[ThesisGeneration] ✓ Word count acceptable: ${Math.round(wordRatio * 100)}% of target`)
+          console.log(`[ThesisGeneration] ✓ Word count acceptable: ${Math.round(wordRatio * 100)}% of target (≥95%)`)
         }
 
         // Validate completeness - check structure (NOT bibliography - we build that from metadata)
