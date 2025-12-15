@@ -145,89 +145,168 @@ export async function POST(request: NextRequest) {
       const chunk = chunks[i]
       console.log(`Checking chunk ${i + 1}/${chunks.length} (${chunk.length} chars)...`)
 
-      try {
-        console.log(`Making API request to ZeroGPT...`)
-        const response = await fetch('https://zerogpt.p.rapidapi.com/api/v1/detectText', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'X-RapidAPI-Key': RAPIDAPI_KEY!,
-            'X-RapidAPI-Host': 'zerogpt.p.rapidapi.com',
-          },
-          body: JSON.stringify({
-            input_text: chunk,
-          }),
-        })
+      // Retry logic for 502 errors (upstream service down)
+      const MAX_RETRIES = 3
+      let lastError: any = null
+      let response: Response | null = null
 
-        console.log(`ZeroGPT response status: ${response.status}`)
+      for (let retry = 0; retry <= MAX_RETRIES; retry++) {
+        try {
+          if (retry > 0) {
+            const backoffDelay = Math.min(1000 * Math.pow(2, retry - 1), 10000) // 1s, 2s, 4s max
+            console.log(`Retrying chunk ${i + 1} (attempt ${retry + 1}/${MAX_RETRIES + 1}) after ${backoffDelay}ms...`)
+            await new Promise(resolve => setTimeout(resolve, backoffDelay))
+          }
 
-        if (!response.ok) {
-          let errorData: any = {}
-          let errorText = ''
-          try {
-            const contentType = response.headers.get('content-type')
-            if (contentType && contentType.includes('application/json')) {
-              errorData = await response.json()
-              errorText = JSON.stringify(errorData, null, 2)
-            } else {
-              errorText = await response.text()
+          console.log(`Making API request to ZeroGPT... (attempt ${retry + 1})`)
+          
+          // Add timeout to prevent hanging (30 seconds)
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000)
+          })
+          
+          const fetchPromise = fetch('https://zerogpt.p.rapidapi.com/api/v1/detectText', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'X-RapidAPI-Key': RAPIDAPI_KEY!,
+              'X-RapidAPI-Host': 'zerogpt.p.rapidapi.com',
+            },
+            body: JSON.stringify({
+              input_text: chunk,
+            }),
+          })
+          
+          response = await Promise.race([fetchPromise, timeoutPromise]) as Response
+
+          console.log(`ZeroGPT response status: ${response.status}`)
+
+          // 502 Bad Gateway - upstream service down, retry
+          if (response.status === 502) {
+            lastError = {
+              status: 502,
+              statusText: response.statusText,
+              errorText: 'Bad Gateway - ZeroGPT service temporarily unavailable',
             }
-          } catch (e) {
-            errorText = 'Could not read error response'
+            console.warn(`ZeroGPT 502 error for chunk ${i + 1}, attempt ${retry + 1}/${MAX_RETRIES + 1}`)
+            
+            if (retry < MAX_RETRIES) {
+              continue // Retry
+            } else {
+              // Max retries reached
+              chunkErrors.push({
+                index: i + 1,
+                ...lastError,
+                retries: MAX_RETRIES + 1,
+              })
+              break
+            }
+          }
+
+          if (!response.ok) {
+            let errorData: any = {}
+            let errorText = ''
+            try {
+              const contentType = response.headers.get('content-type')
+              if (contentType && contentType.includes('application/json')) {
+                errorData = await response.json()
+                errorText = JSON.stringify(errorData, null, 2)
+              } else {
+                errorText = await response.text()
+              }
+            } catch (e) {
+              errorText = 'Could not read error response'
+            }
+            
+            console.error(`ZeroGPT API error for chunk ${i + 1}:`, {
+              status: response.status,
+              statusText: response.statusText,
+              errorText,
+              errorData,
+              chunkLength: chunk.length,
+            })
+
+            chunkErrors.push({
+              index: i + 1,
+              status: response.status,
+              statusText: response.statusText,
+              errorText,
+            })
+            
+            // For non-502 errors, don't retry
+            break
+          }
+
+          // Success - break out of retry loop
+          lastError = null
+          break
+
+        } catch (error: any) {
+          // Network errors, timeouts, etc.
+          const isTimeout = error.message?.includes('timeout') || error.message?.includes('Timeout')
+          lastError = {
+            errorText: error.message || 'Network error',
+            isTimeout,
           }
           
-          console.error(`ZeroGPT API error for chunk ${i + 1}:`, {
-            status: response.status,
-            statusText: response.statusText,
-            errorText,
-            errorData,
-            chunkLength: chunk.length,
-          })
-
-          chunkErrors.push({
-            index: i + 1,
-            status: response.status,
-            statusText: response.statusText,
-            errorText,
-          })
-          
-          // Continue with other chunks even if one fails
-          continue
+          if (retry < MAX_RETRIES && isTimeout) {
+            console.warn(`ZeroGPT timeout for chunk ${i + 1}, retrying...`)
+            continue
+          } else {
+            console.error(`ZeroGPT request failed for chunk ${i + 1}:`, error)
+            chunkErrors.push({
+              index: i + 1,
+              ...lastError,
+              retries: retry + 1,
+            })
+            break
+          }
         }
+      }
 
-        let data: any
-        try {
-          data = await response.json()
-          console.log(`ZeroGPT response data:`, JSON.stringify(data).substring(0, 200))
-        } catch (e) {
-          console.error(`Failed to parse ZeroGPT response for chunk ${i + 1}:`, e)
-          continue
-        }
+      // If we still have an error after retries, skip this chunk
+      if (lastError || !response || !response.ok) {
+        continue
+      }
 
-        // Check for error in response body (not just HTTP status)
-        if (data.error) {
-          console.error(`ZeroGPT API returned error for chunk ${i + 1}:`, data.error)
-          chunkErrors.push({
-            index: i + 1,
-            errorText: typeof data.error === 'string' ? data.error : JSON.stringify(data.error),
-          })
-          continue
-        }
+      // Parse successful response
+      let data: any
+      try {
+        data = await response.json()
+        console.log(`ZeroGPT response data:`, JSON.stringify(data).substring(0, 200))
+      } catch (e) {
+        console.error(`Failed to parse ZeroGPT response for chunk ${i + 1}:`, e)
+        chunkErrors.push({
+          index: i + 1,
+          errorText: 'Failed to parse response JSON',
+        })
+        continue
+      }
 
-        if (data.success && data.data) {
-          console.log(`Chunk ${i + 1} result: ${data.data.is_human_written}% human`)
-          chunkResults.push({
-            isHumanWritten: data.data.is_human_written || 0,
-            isGptGenerated: data.data.is_gpt_generated || 0,
-            wordsCount: data.data.words_count || 0,
-            feedbackMessage: data.data.feedback_message || '',
-          })
-        } else {
-          console.error(`Unexpected response format for chunk ${i + 1}:`, data)
-        }
-      } catch (error) {
-        console.error(`Error checking chunk ${i + 1}:`, error)
-        // Continue with other chunks
+      // Check for error in response body (not just HTTP status)
+      if (data.error) {
+        console.error(`ZeroGPT API returned error for chunk ${i + 1}:`, data.error)
+        chunkErrors.push({
+          index: i + 1,
+          errorText: typeof data.error === 'string' ? data.error : JSON.stringify(data.error),
+        })
+        continue
+      }
+
+      if (data.success && data.data) {
+        console.log(`Chunk ${i + 1} result: ${data.data.is_human_written}% human`)
+        chunkResults.push({
+          isHumanWritten: data.data.is_human_written || 0,
+          isGptGenerated: data.data.is_gpt_generated || 0,
+          wordsCount: data.data.words_count || 0,
+          feedbackMessage: data.data.feedback_message || '',
+        })
+      } else {
+        console.error(`Unexpected response format for chunk ${i + 1}:`, data)
+        chunkErrors.push({
+          index: i + 1,
+          errorText: 'Unexpected response format',
+        })
       }
     }
 
@@ -239,13 +318,29 @@ export async function POST(request: NextRequest) {
         console.error('Chunk errors:', chunkErrors)
       }
 
+      // Check if all errors are 502 (service down)
+      const all502 = chunkErrors.length > 0 && chunkErrors.every(e => e.status === 502)
+      const has502 = chunkErrors.some(e => e.status === 502)
+
       // Provide more helpful error message
+      let errorMessage = 'Failed to check any chunks with ZeroGPT API'
+      let details = 'Check server logs for details. Common causes: invalid RAPIDAPI_KEY, rate limit exceeded, or API service down.'
+      
+      if (all502) {
+        errorMessage = 'ZeroGPT service is temporarily unavailable (502 Bad Gateway)'
+        details = 'The ZeroGPT API service appears to be down. We retried 3 times per chunk but the service did not respond. Please try again in a few minutes.'
+      } else if (has502) {
+        errorMessage = 'ZeroGPT service experiencing issues (some 502 errors)'
+        details = 'Some requests failed with 502 Bad Gateway, indicating the ZeroGPT service may be overloaded or temporarily down. Please try again later.'
+      }
+
       return NextResponse.json(
         { 
-          error: 'Failed to check any chunks with ZeroGPT API',
-          details: 'Check server logs for details. Common causes: invalid RAPIDAPI_KEY, rate limit exceeded, or API service down.',
+          error: errorMessage,
+          details,
           apiKeyPresent: !!RAPIDAPI_KEY,
           chunkErrors,
+          has502Errors: has502,
         },
         { status: 500 }
       )
