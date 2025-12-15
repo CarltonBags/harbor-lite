@@ -28,7 +28,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABAS
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const WORKER_API_KEY = process.env.THESIS_WORKER_API_KEY
 const OPENALEX_EMAIL = process.env.OPENALEX_EMAIL || 'moontoolsinc@proton.me'
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY // Optional: for generating embeddings
+const OPENAI_API_KEY = process.env.OPENAI_KEY // Optional: for generating embeddings
 const OPENAI_EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-ada-002' // Default to ada-002 (1536 dims)
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY // Optional: for ZeroGPT API
 
