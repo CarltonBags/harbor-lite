@@ -139,6 +139,7 @@ export async function POST(request: NextRequest) {
       wordsCount: number
       feedbackMessage?: string
     }> = []
+    const chunkErrors: Array<{ index: number; status?: number; statusText?: string; errorText?: string }> = []
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i]
@@ -182,6 +183,13 @@ export async function POST(request: NextRequest) {
             errorData,
             chunkLength: chunk.length,
           })
+
+          chunkErrors.push({
+            index: i + 1,
+            status: response.status,
+            statusText: response.statusText,
+            errorText,
+          })
           
           // Continue with other chunks even if one fails
           continue
@@ -199,6 +207,10 @@ export async function POST(request: NextRequest) {
         // Check for error in response body (not just HTTP status)
         if (data.error) {
           console.error(`ZeroGPT API returned error for chunk ${i + 1}:`, data.error)
+          chunkErrors.push({
+            index: i + 1,
+            errorText: typeof data.error === 'string' ? data.error : JSON.stringify(data.error),
+          })
           continue
         }
 
@@ -220,16 +232,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (chunkResults.length === 0) {
-      // Provide more helpful error message
       console.error('All ZeroGPT chunks failed. Possible causes: invalid API key, rate limit, or API down.')
       console.error(`RAPIDAPI_KEY present: ${!!RAPIDAPI_KEY}`)
       console.error(`RAPIDAPI_KEY prefix: ${RAPIDAPI_KEY?.substring(0, 10)}...`)
-      
+      if (chunkErrors.length) {
+        console.error('Chunk errors:', chunkErrors)
+      }
+
+      // Provide more helpful error message
       return NextResponse.json(
         { 
           error: 'Failed to check any chunks with ZeroGPT API',
           details: 'Check server logs for details. Common causes: invalid RAPIDAPI_KEY, rate limit exceeded, or API service down.',
           apiKeyPresent: !!RAPIDAPI_KEY,
+          chunkErrors,
         },
         { status: 500 }
       )
