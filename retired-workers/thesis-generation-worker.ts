@@ -2157,6 +2157,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   // DISABLED: Per-chapter generation - it overshoots word counts and doesn't use sources properly
   // Using single-call generation with FileSearchStore RAG instead
   console.log('[ThesisGeneration] Using single-call generation with FileSearchStore RAG')
+  console.log('[ThesisGeneration] FileSearchStore provides exact page numbers for citations - use them!')
 
   // Build comprehensive source list for the prompt - THIS IS CRITICAL
   // The AI MUST know exactly which sources it can cite AND valid page ranges
@@ -2170,9 +2171,9 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     const pages = s.pages || (pageStart && pageEnd ? `${pageStart}-${pageEnd}` : 'keine Angabe')
     const journal = s.journal || ''
     
-    // Show valid page range clearly
+    // Show valid page range - but emphasize EXACT page numbers are required
     const pageRangeInfo = pageStart && pageEnd 
-      ? `Seiten: ${pages} (GÜLTIGER BEREICH: S. ${pageStart} bis S. ${pageEnd} - NUR diese Seitenzahlen verwenden!)`
+      ? `Seiten: ${pages} (Dokument umfasst S. ${pageStart}-${pageEnd} - verwende die EXAKTE Seitenzahl, auf der der zitierte Inhalt steht!)`
       : `Seiten: ${pages} (keine Seitenzahlen verfügbar - verwende "S. [keine Angabe]" oder lasse Seitenzahl weg)`
     
     return `[${i + 1}] ${authors} (${year}): "${s.title}"${journal ? `. In: ${journal}` : ''}. ${pageRangeInfo}`
@@ -2296,14 +2297,18 @@ ${availableSourcesList}
   ✗ Jegliche Frageform im Text (außer in direkten Zitaten)
   ✓ Stattdessen: Direkte Aussagen und Feststellungen verwenden
 
-**SEITENZAHLEN - KRITISCH KORREKT:**
-- JEDE Zitation muss eine Seitenzahl enthalten (S. XX oder S. XX-YY)
-- Verwende NUR Seitenzahlen, die im GÜLTIGEN BEREICH der Quelle liegen
-- Beispiel: Wenn Quelle "Seiten: 2-4" hat, darfst du NUR S. 2, S. 3, oder S. 4 verwenden
-- NIEMALS Seitenzahlen erfinden, die außerhalb des angegebenen Bereichs liegen!
-- Wenn Quelle "Seiten: 2-4" hat, ist S. 289 FALSCH und VERBOTEN!
-- Wenn keine Seitenzahl verfügbar ist, verwende "S. [keine Angabe]" oder lasse die Seitenzahl weg
-- Prüfe IMMER: Liegt die verwendete Seitenzahl zwischen pageStart und pageEnd der Quelle?
+**SEITENZAHLEN - ABSOLUT EXAKT ERFORDERLICH:**
+- JEDE Zitation muss die EXAKTE Seitenzahl enthalten, auf der der zitierte Inhalt tatsächlich steht
+- Die Seitenzahl muss STIMMEN - nicht nur im Toleranzbereich liegen!
+- **KRITISCH:** Verwende die Seitenzahl, die im FileSearchStore-Retrieval-Ergebnis angezeigt wird
+- Der FileSearchStore zeigt dir beim Retrieval die EXAKTE Seitenzahl, auf der der zitierte Text steht
+- Die Seitenzahl muss die TATSÄCHLICHE Seite sein, auf der der zitierte Text/Inhalt im Dokument steht
+- NIEMALS Seitenzahlen erfinden, schätzen oder zufällig wählen!
+- NIEMALS eine Seitenzahl verwenden, nur weil sie im gültigen Bereich liegt - sie muss EXAKT sein!
+- Beispiel FALSCH: Quelle hat Seiten 2-4, du zitierst S. 3, obwohl der Inhalt auf S. 2 steht → FALSCH!
+- Beispiel RICHTIG: Quelle hat Seiten 2-4, FileSearchStore zeigt Inhalt auf S. 2 → verwende S. 2!
+- Wenn der FileSearchStore keine Seitenzahl liefert, verwende "S. [keine Angabe]" oder lasse die Seitenzahl weg
+- Prüfe IMMER: Ist die verwendete Seitenzahl die EXAKTE Seite, die der FileSearchStore für diesen Inhalt anzeigt?
 
 ${thesisData.citationStyle === 'deutsche-zitierweise' ? `**Deutsche Zitierweise (Fußnoten):**
 - Im Text: Verwende "^N" direkt nach dem zitierten Inhalt
