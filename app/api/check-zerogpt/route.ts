@@ -64,73 +64,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ZeroGPT API has a limit of ~50k characters per request
-    // Split text into chunks if it's too long
-    const MAX_TEXT_LENGTH = 45000 // Use 45k to leave buffer
-    const chunks: string[] = []
-    
-    if (plainText.length > MAX_TEXT_LENGTH) {
-      console.log(`Text too long (${plainText.length} chars), splitting into chunks...`)
-      
-      // Split text intelligently: paragraphs -> sentences -> words
-      let currentChunk = ''
-      
-      // First, try splitting by paragraphs (double newlines)
-      const paragraphs = plainText.split(/\n\n+/)
-      
-      for (const paragraph of paragraphs) {
-        // If adding this paragraph would exceed limit
-        if ((currentChunk + '\n\n' + paragraph).length > MAX_TEXT_LENGTH) {
-          // If current chunk has content, save it
-          if (currentChunk.trim()) {
-            chunks.push(currentChunk.trim())
-            currentChunk = ''
-          }
-          
-          // If paragraph itself is too long, split by sentences
-          if (paragraph.length > MAX_TEXT_LENGTH) {
-            const sentences = paragraph.split(/([.!?]\s+)/)
-            for (const sentence of sentences) {
-              if ((currentChunk + sentence).length <= MAX_TEXT_LENGTH) {
-                currentChunk += sentence
-              } else {
-                if (currentChunk.trim()) {
-                  chunks.push(currentChunk.trim())
-                }
-                // If sentence is still too long, split by words
-                if (sentence.length > MAX_TEXT_LENGTH) {
-                  const words = sentence.split(/\s+/)
-                  let wordChunk = ''
-                  for (const word of words) {
-                    if ((wordChunk + ' ' + word).length <= MAX_TEXT_LENGTH) {
-                      wordChunk += (wordChunk ? ' ' : '') + word
-                    } else {
-                      if (wordChunk.trim()) chunks.push(wordChunk.trim())
-                      wordChunk = word
-                    }
-                  }
-                  currentChunk = wordChunk
-                } else {
-                  currentChunk = sentence
-                }
-              }
-            }
-          } else {
-            currentChunk = paragraph
-          }
-        } else {
-          currentChunk += (currentChunk ? '\n\n' : '') + paragraph
-        }
-      }
-      
-      if (currentChunk.trim()) {
-        chunks.push(currentChunk.trim())
-      }
-      
-      console.log(`Split into ${chunks.length} chunks (sizes: ${chunks.map(c => c.length).join(', ')})`)
-    } else {
-      chunks.push(plainText)
-    }
+    // With full subscription, no need to chunk - send full text
+    const chunks: string[] = [plainText]
+    console.log(`Checking full text (${plainText.length} characters) with ZeroGPT API`)
 
     // Check each chunk and combine results
     const chunkResults: Array<{
@@ -352,7 +288,7 @@ export async function POST(request: NextRequest) {
     const weightedGpt = chunkResults.reduce((sum, r) => sum + (r.isGptGenerated * r.wordsCount), 0) / totalWords
 
     // Combine feedback messages if available
-    const feedbackMessages = chunkResults
+      const feedbackMessages = chunkResults
       .map(r => r.feedbackMessage)
       .filter(msg => msg && msg.trim())
       .filter((msg, index, arr) => arr.indexOf(msg) === index) // Remove duplicates
@@ -360,14 +296,12 @@ export async function POST(request: NextRequest) {
     const result = {
       isHumanWritten: Math.round(weightedHuman),
       isGptGenerated: Math.round(weightedGpt),
-      feedbackMessage: chunks.length > 1 
-        ? `Text wurde in ${chunks.length} Teile aufgeteilt und geprüft.${feedbackMessages.length > 0 ? ' ' + feedbackMessages[0] : ''}`
-        : (chunkResults[0]?.feedbackMessage || ''),
+      feedbackMessage: chunkResults[0]?.feedbackMessage || '',
       wordsCount: totalWords,
       checkedAt: new Date().toISOString(),
     }
 
-    console.log(`ZeroGPT check completed: ${chunks.length} chunk(s), ${result.isHumanWritten}% human, ${result.isGptGenerated}% AI`)
+    console.log(`ZeroGPT check completed: ${result.isHumanWritten}% human, ${result.isGptGenerated}% AI`)
 
     // Update thesis metadata with ZeroGPT result
     const existingMetadata = (thesis.metadata as any) || {}

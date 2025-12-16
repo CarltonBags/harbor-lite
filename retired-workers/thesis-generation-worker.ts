@@ -3042,12 +3042,8 @@ async function checkWithGPTZero(content: string): Promise<{
     .replace(/\n{3,}/g, '\n\n') // Normalize multiple newlines
     .trim()
 
-  // Truncate if too long (GPTZero limit)
-  const MAX_TEXT_LENGTH = 50000
-  if (plainText.length > MAX_TEXT_LENGTH) {
-    console.warn(`[GPTZero] Text too long (${plainText.length} chars), truncating to ${MAX_TEXT_LENGTH}`)
-    plainText = plainText.substring(0, MAX_TEXT_LENGTH)
-  }
+  // With full subscription, no truncation needed - send full text
+  console.log(`[GPTZero] Checking full text (${plainText.length} characters)`)
 
   try {
     const response = await retryApiCall(
