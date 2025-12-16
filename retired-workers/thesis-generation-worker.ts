@@ -2325,7 +2325,17 @@ ${availableSourcesList}
   ✗ "Was ist X? Ein wichtiger Aspekt..." (selbstreflexive Fragen)
   ✗ Jegliche Frageform, Fragezeichen oder suggestive Fragekonstruktionen im Text
   ✗ Selbst in rhetorischer Form - ABSOLUT VERBOTEN!
+- ✗ ABSOLUT VERBOTEN: FRAGE-ANTWORT-MUSTER (KRITISCH - UNLESBAR!)
+  ✗ "Die Grenze zwischen X und Y? In der öffentlichen Wahrnehmung..."
+  ✗ "Korruption und Lobbyismus: zwei verschiedene Arten. Lobbyismus hingegen? Unverzichtbar..."
+  ✗ "Aber diese beiden Phänomene zu trennen? Schwierig."
+  ✗ "Das Kernproblem? Es ist ungemein schwer..."
+  ✗ "Korruption? In der wirtschaftswissenschaftlichen Literatur versteht man darunter..."
+  ✗ JEDE Konstruktion mit Fragezeichen gefolgt von einer Antwort ist VERBOTEN!
+  ✗ Dieses Muster macht den Text unlesbar und ist unwissenschaftlich!
   ✓ IMMER direkte Aussagen und Feststellungen verwenden
+  ✓ Statt "Die Grenze zwischen X und Y? In der öffentlichen Wahrnehmung..." → "Die Grenze zwischen X und Y verwischt in der öffentlichen Wahrnehmung..."
+  ✓ Statt "Korruption? In der wirtschaftswissenschaftlichen Literatur..." → "In der wirtschaftswissenschaftlichen Literatur versteht man unter Korruption..."
   ✓ Statt "Was ist Forschung? Ein wichtiger Aspekt..." → "Die Forschung stellt einen wichtigen Aspekt dar."
 
 **SEITENZAHLEN - ABSOLUT EXAKT ERFORDERLICH:**
@@ -2377,9 +2387,20 @@ SCHREIBSTIL
   ✗ "the research? a very important part..." (Fragezeichen nach Aussage)
   ✗ Jegliche Frageform, Fragezeichen oder suggestive Fragekonstruktionen
   ✗ Selbstreflexive Fragen wie "Was ist X? Ein wichtiger Aspekt..."
+- ABSOLUT VERBOTEN: FRAGE-ANTWORT-MUSTER (KRITISCH - UNLESBAR!)
+  ✗ "Die Grenze zwischen X und Y? In der öffentlichen Wahrnehmung..."
+  ✗ "Korruption und Lobbyismus: zwei verschiedene Arten. Lobbyismus hingegen? Unverzichtbar..."
+  ✗ "Aber diese beiden Phänomene zu trennen? Schwierig."
+  ✗ "Das Kernproblem? Es ist ungemein schwer..."
+  ✗ "Korruption? In der wirtschaftswissenschaftlichen Literatur versteht man darunter..."
+  ✗ JEDE Konstruktion mit Fragezeichen gefolgt von einer Antwort ist VERBOTEN!
+  ✗ Dieses Muster macht den Text unlesbar und ist unwissenschaftlich!
   ✓ IMMER direkte Aussagen und Feststellungen verwenden
-  ✓ "Die Digitalisierung verändert die Arbeitswelt grundlegend."
-  ✓ "Die Forschung stellt einen wichtigen Aspekt dar."
+  ✓ "Die Grenze zwischen X und Y verwischt in der öffentlichen Wahrnehmung..."
+  ✓ "Korruption und Lobbyismus sind zwei verschiedene Arten. Lobbyismus ist hingegen unverzichtbar..."
+  ✓ "Die Trennung dieser beiden Phänomene ist schwierig."
+  ✓ "Das Kernproblem besteht darin, dass es ungemein schwer ist..."
+  ✓ "In der wirtschaftswissenschaftlichen Literatur versteht man unter Korruption..."
 - KEINE emotionalen oder wertenden Adjektive!
   ✗ "wird heiß diskutiert", "brennend aktuell", "erschreckend", "beeindruckend"
   ✗ "dramatisch", "revolutionär", "bahnbrechend", "erstaunlich"
@@ -2685,7 +2706,16 @@ The text must sound like written by a human author from the start and must not b
 - FORBIDDEN: "What is X? An important aspect..." (self-reflexive questions)
 - FORBIDDEN: Any question form, question marks, or suggestive question constructions in the text
 - FORBIDDEN: Even in rhetorical form - ABSOLUTELY FORBIDDEN!
+- ABSOLUTELY FORBIDDEN: QUESTION-ANSWER PATTERN (CRITICAL - UNREADABLE!)
+- FORBIDDEN: "The boundary between X and Y? In public perception..."
+- FORBIDDEN: "Corruption and lobbying: two different types. Lobbying, however? Indispensable..."
+- FORBIDDEN: "But separating these two phenomena? Difficult."
+- FORBIDDEN: "The core problem? It is extremely difficult..."
+- FORBIDDEN: "Corruption? In the economic literature, it is understood as..."
+- FORBIDDEN: ANY construction with a question mark followed by an answer - makes text unreadable!
 - Instead: ALWAYS use direct statements and assertions
+- Example: Instead of "The boundary between X and Y? In public perception..." → "The boundary between X and Y blurs in public perception..."
+- Example: Instead of "Corruption? In the economic literature..." → "In the economic literature, corruption is understood as..."
 - Example: Instead of "What does digitalization mean for the workplace?" → "Digitalization fundamentally changes the workplace."
 - Example: Instead of "What is research? An important aspect..." → "Research represents an important aspect."
 - Do not include personal opinions, marketing language, or filler sentences.
@@ -3663,7 +3693,16 @@ M. **ABSOLUT VERBOTEN - JEGLICHE FRAGEN (KRITISCH):**
    - VERBOTEN: "Was ist X? Ein wichtiger Aspekt..." (selbstreflexive Fragen)
    - VERBOTEN: Jegliche Frageform, Fragezeichen oder suggestive Fragekonstruktionen im Text
    - VERBOTEN: Selbst in rhetorischer Form - ABSOLUT VERBOTEN!
+   - ABSOLUT VERBOTEN: FRAGE-ANTWORT-MUSTER (KRITISCH - UNLESBAR!)
+   - VERBOTEN: "Die Grenze zwischen X und Y? In der öffentlichen Wahrnehmung..."
+   - VERBOTEN: "Korruption und Lobbyismus: zwei verschiedene Arten. Lobbyismus hingegen? Unverzichtbar..."
+   - VERBOTEN: "Aber diese beiden Phänomene zu trennen? Schwierig."
+   - VERBOTEN: "Das Kernproblem? Es ist ungemein schwer..."
+   - VERBOTEN: "Korruption? In der wirtschaftswissenschaftlichen Literatur versteht man darunter..."
+   - VERBOTEN: JEDE Konstruktion mit Fragezeichen gefolgt von einer Antwort - macht Text unlesbar!
    - Stattdessen: IMMER direkte Aussagen und Feststellungen verwenden
+   - Beispiel: Statt "Die Grenze zwischen X und Y? In der öffentlichen Wahrnehmung..." → "Die Grenze zwischen X und Y verwischt in der öffentlichen Wahrnehmung..."
+   - Beispiel: Statt "Korruption? In der wirtschaftswissenschaftlichen Literatur..." → "In der wirtschaftswissenschaftlichen Literatur versteht man unter Korruption..."
    - Beispiel: Statt "Was bedeutet Digitalisierung für die Arbeitswelt?" → "Die Digitalisierung verändert die Arbeitswelt grundlegend."
    - Beispiel: Statt "Was ist Forschung? Ein wichtiger Aspekt..." → "Die Forschung stellt einen wichtigen Aspekt dar."
 
@@ -3793,6 +3832,7 @@ K. **Lexical Diversity (VERY IMPORTANT):**
 L. **Unpredictable Structures (CRITICAL):**
    - Start some paragraphs with main clause, others with subordinate clause.
    - ABSOLUTELY FORBIDDEN: Rhetorical questions, suggestive questions, or any question forms - NEVER use them!
+   - ABSOLUTELY FORBIDDEN: QUESTION-ANSWER PATTERN - NEVER use constructions like "X? Y." or "X? In the literature..." - makes text unreadable!
    - Sometimes build in parenthetical insertions (in em-dashes or parentheses).
    - Vary between deductive and inductive argumentation.
    - Avoid perfectly symmetrical paragraph lengths.
