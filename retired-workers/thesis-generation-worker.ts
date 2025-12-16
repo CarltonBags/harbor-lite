@@ -650,7 +650,11 @@ Bewerte jede Quelle auf einer Skala von 0-100 basierend auf ihrer Relevanz für 
 - Passung zu den Kapiteln der Gliederung
 - Wissenschaftliche Qualität (basierend auf verfügbaren Informationen)
 
-**WICHTIG:** Quellen mit einem Relevanz-Score unter 40 sollten ausgeschlossen werden, da sie nicht relevant genug sind.
+**KRITISCH - STRENGE FILTERUNG:**
+- Quellen mit einem Relevanz-Score unter 50 werden KOMPLETT AUSGESCHLOSSEN
+- Nur Quellen, die einen KLAREN BEZUG zum Fachbereich und zur Forschungsfrage haben, sind akzeptabel
+- Eliminiere ALLE "Filler"-Quellen, die keinen echten Zusammenhang zum Thema haben
+- Sei SEHR STRENG bei der Bewertung - lieber weniger, aber hochrelevante Quellen
 
 **Format:**
 Antworte NUR mit einem JSON-Array im folgenden Format:
@@ -751,7 +755,7 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
   const avgScore = sorted.reduce((sum, s) => sum + (s.relevanceScore || 0), 0) / sorted.length
 
   console.log(`[Ranking] Ranking complete:`)
-  console.log(`[Ranking]   Total sources: ${sorted.length}`)
+  console.log(`[Ranking]   Total sources before filtering: ${sorted.length}`)
   console.log(`[Ranking]   Ranked sources: ${rankedSources.length}`)
   console.log(`[Ranking]   Unranked sources (default score 30): ${unrankedSources.length}`)
   console.log(`[Ranking]   High relevance (>=70): ${highRelevance}`)
@@ -759,7 +763,20 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
   console.log(`[Ranking]   Low relevance (<40): ${lowRelevance}`)
   console.log(`[Ranking]   Top score: ${topScore}, Average score: ${avgScore.toFixed(1)}`)
 
-  return sorted
+  // FILTER OUT UNRELATED SOURCES - Eliminate filler sources with no connection to the field
+  // Minimum relevance score of 50 to ensure sources are actually related to the thesis topic
+  const MIN_RELEVANCE_SCORE = 50
+  const filtered = sorted.filter((s: Source) => (s.relevanceScore || 0) >= MIN_RELEVANCE_SCORE)
+  const removed = sorted.length - filtered.length
+
+  console.log(`[Ranking]   Filtered out ${removed} unrelated sources (relevance < ${MIN_RELEVANCE_SCORE})`)
+  console.log(`[Ranking]   Remaining relevant sources: ${filtered.length}`)
+
+  if (removed > 0) {
+    console.log(`[Ranking]   Removed sources had scores: ${sorted.slice(filtered.length).map((s: Source) => s.relevanceScore || 0).join(', ')}`)
+  }
+
+  return filtered
 }
 
 /**
@@ -790,7 +807,7 @@ function selectTopSourcesWithChapterGuarantee(rankedSources: Source[], maxSource
 
   for (const [chapter, sources] of sourcesByChapter.entries()) {
     const chapterSources = sources
-      .filter(s => s.relevanceScore && s.relevanceScore >= 40) // Only consider relevant sources
+      .filter(s => s.relevanceScore && s.relevanceScore >= 50) // Only consider relevant sources (minimum 50 to eliminate fillers)
       .slice(0, minPerChapter)
 
     for (const source of chapterSources) {
@@ -810,7 +827,7 @@ function selectTopSourcesWithChapterGuarantee(rankedSources: Source[], maxSource
     const topSources = rankedSources
       .filter(s => {
         const key = s.doi || s.title || ''
-        return !usedSources.has(key) && s.relevanceScore && s.relevanceScore >= 40
+        return !usedSources.has(key) && s.relevanceScore && s.relevanceScore >= 50 // Minimum 50 to eliminate filler sources
       })
       .slice(0, remainingSlots)
 
@@ -2241,6 +2258,13 @@ ${availableSourcesList}
 - ✗ "Unsere Ergebnisse zeigen..." → Es gibt KEINE eigenen Ergebnisse!
 - ✗ "Die Datenerhebung ergab..." → Es gab KEINE Datenerhebung!
 - ✗ Jegliche Behauptung eigener empirischer Forschung
+- ✗ RHETORISCHE FRAGEN - NIEMALS verwenden!
+  ✗ "Aber ist das wirklich so?"
+  ✗ "Welche Auswirkungen hat dies?"
+  ✗ "Wie lässt sich dies erklären?"
+  ✗ "Was bedeutet das für...?"
+  ✗ Jegliche Frageform im Text (außer in direkten Zitaten)
+  ✓ Stattdessen: Direkte Aussagen und Feststellungen verwenden
 
 **SEITENZAHLEN:** JEDE Zitation muss eine Seitenzahl enthalten (S. XX oder S. XX-YY).
 Verwende die Seitenzahlen aus der obigen Quellenliste.
@@ -3539,10 +3563,16 @@ K. **Lexikalische Diversität (SEHR WICHTIG):**
 
 L. **Unvorhersehbare Strukturen (KRITISCH):**
    - Beginne manche Absätze mit Hauptsatz, andere mit Nebensatz.
-   - Verwende gelegentlich rhetorische Fragen (sparsam, akademisch angemessen).
    - Baue manchmal Einschübe ein (in Gedankenstrichen oder Klammern).
    - Variiere zwischen deduktiver und induktiver Argumentation.
    - Vermeide perfekt symmetrische Absatzlängen.
+
+M. **ABSOLUT VERBOTEN - RHETORISCHE FRAGEN (KRITISCH):**
+   - NIEMALS rhetorische oder suggestive Fragen verwenden!
+   - VERBOTEN: "Aber ist das wirklich so?", "Welche Auswirkungen hat dies?", "Wie lässt sich dies erklären?", "Was bedeutet das für...?"
+   - VERBOTEN: Jegliche Frageform im Text (außer in direkten Zitaten)
+   - Stattdessen: IMMER direkte Aussagen und Feststellungen verwenden
+   - Beispiel: Statt "Was bedeutet Digitalisierung für die Arbeitswelt?" → "Die Digitalisierung verändert die Arbeitswelt grundlegend."
 
 M. **VERBOTENE WÖRTER UND FORMULIERUNGEN (ABSOLUT KRITISCH):**
    - ABSOLUT VERBOTEN: Unprofessionelle Wörter wie "freilich", "gewiss", "sicherlich" (in umgangssprachlicher Verwendung), "natürlich" (als Füllwort), "selbstverständlich", "ohne Frage", "zweifellos".
