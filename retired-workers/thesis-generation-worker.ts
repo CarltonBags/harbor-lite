@@ -23,6 +23,7 @@ app.use(express.json())
 // Environment variables
 const PORT = process.env.PORT || 3001
 const GEMINI_KEY = process.env.GEMINI_KEY
+const GRAMMARLY_ACCESS_TOKEN = process.env.GRAMMARLY_ACCESS_TOKEN
 // Support both NEXT_PUBLIC_SUPABASE_URL (for compatibility) and SUPABASE_URL
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -3267,6 +3268,161 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
 }
 
 /**
+ * Check content for plagiarism using Grammarly API
+ * Returns plagiarism result or null if API unavailable
+ */
+async function checkPlagiarismWithGrammarly(content: string, thesisId: string): Promise<{
+  originality: number
+  originalityPercentage: number
+  plagiarismPercentage: number
+  scoreRequestId: string
+  checkedAt: string
+} | null> {
+  if (!GRAMMARLY_ACCESS_TOKEN) {
+    console.warn('[PlagiarismCheck] GRAMMARLY_ACCESS_TOKEN not set')
+    return null
+  }
+
+  console.log('[PlagiarismCheck] Starting Grammarly plagiarism check...')
+
+  try {
+    // Extract plain text from markdown
+    let plainText = content
+      .replace(/^#+\s+/gm, '') // Remove headings
+      .replace(/\*\*(.+?)\*\*/g, '$1') // Remove bold
+      .replace(/\*(.+?)\*/g, '$1') // Remove italic
+      .replace(/\[(.+?)\]\(.+?\)/g, '$1') // Remove links
+      .replace(/`(.+?)`/g, '$1') // Remove code
+      .replace(/\^\d+/g, '') // Remove footnote markers
+      .replace(/\n{3,}/g, '\n\n') // Normalize multiple newlines
+      .trim()
+
+    // Check constraints
+    const MAX_TEXT_LENGTH = 100000 // 100k characters
+    const MAX_FILE_SIZE = 4 * 1024 * 1024 // 4 MB
+
+    if (plainText.length > MAX_TEXT_LENGTH) {
+      console.warn(`[PlagiarismCheck] Text too long (${plainText.length} chars), truncating to ${MAX_TEXT_LENGTH}`)
+      plainText = plainText.substring(0, MAX_TEXT_LENGTH)
+    }
+
+    const textBuffer = Buffer.from(plainText, 'utf-8')
+    if (textBuffer.length > MAX_FILE_SIZE) {
+      console.warn(`[PlagiarismCheck] Text too large (${textBuffer.length} bytes), skipping check`)
+      return null
+    }
+
+    // Step 1: Create score request
+    const scoreRequest = {
+      filename: `thesis-${thesisId}.txt`,
+    }
+
+    const createResponse = await fetch('https://api.grammarly.com/ecosystem/api/v1/plagiarism', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GRAMMARLY_ACCESS_TOKEN}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'user-agent': 'StudyFucker Worker',
+      },
+      body: JSON.stringify(scoreRequest),
+    })
+
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text()
+      console.error('[PlagiarismCheck] Failed to create score request:', {
+        status: createResponse.status,
+        errorText,
+      })
+      return null
+    }
+
+    const scoreRequestData = await createResponse.json() as { score_request_id: string; file_upload_url: string }
+    console.log(`[PlagiarismCheck] Score request created: ${scoreRequestData.score_request_id}`)
+
+    // Step 2: Upload file
+    const uploadResponse = await fetch(scoreRequestData.file_upload_url, {
+      method: 'PUT',
+      body: textBuffer,
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    })
+
+    if (!uploadResponse.ok) {
+      console.error('[PlagiarismCheck] Failed to upload document')
+      return null
+    }
+
+    console.log('[PlagiarismCheck] Document uploaded, polling for results...')
+
+    // Step 3: Poll for results (with exponential backoff)
+    const MAX_POLL_ATTEMPTS = 20
+    const INITIAL_POLL_DELAY = 2000
+    let pollAttempt = 0
+    let statusResponse: any = null
+
+    while (pollAttempt < MAX_POLL_ATTEMPTS) {
+      const pollDelay = Math.min(INITIAL_POLL_DELAY * Math.pow(2, pollAttempt), 10000)
+      
+      if (pollAttempt > 0) {
+        await new Promise(resolve => setTimeout(resolve, pollDelay))
+      }
+
+      const statusResponse_fetch = await fetch(
+        `https://api.grammarly.com/ecosystem/api/v1/plagiarism/${scoreRequestData.score_request_id}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${GRAMMARLY_ACCESS_TOKEN}`,
+            'Accept': 'application/json',
+            'user-agent': 'StudyFucker Worker',
+          },
+        }
+      )
+
+      if (!statusResponse_fetch.ok) {
+        pollAttempt++
+        continue
+      }
+
+      statusResponse = await statusResponse_fetch.json()
+      
+      if (statusResponse.status === 'COMPLETED') {
+        break
+      } else if (statusResponse.status === 'FAILED') {
+        console.error('[PlagiarismCheck] Check failed:', statusResponse)
+        return null
+      }
+
+      pollAttempt++
+    }
+
+    if (!statusResponse || statusResponse.status !== 'COMPLETED' || !statusResponse.score) {
+      console.warn('[PlagiarismCheck] Check did not complete or no score available')
+      return null
+    }
+
+    const originalityScore = statusResponse.score.originality
+    const plagiarismPercentage = Math.round((1 - originalityScore) * 100)
+    const originalityPercentage = Math.round(originalityScore * 100)
+
+    console.log(`[PlagiarismCheck] Completed: ${originalityPercentage}% original, ${plagiarismPercentage}% potentially plagiarized`)
+
+    return {
+      originality: originalityScore,
+      originalityPercentage,
+      plagiarismPercentage,
+      scoreRequestId: scoreRequestData.score_request_id,
+      checkedAt: new Date().toISOString(),
+    }
+  } catch (error) {
+    console.error('[PlagiarismCheck] Error:', error)
+    return null
+  }
+}
+
+/**
  * Humanize thesis content to avoid AI detection while preserving all factual information
  * Uses Gemini to rewrite the text in a more human-like style
  */
@@ -4367,9 +4523,27 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       }
     }
 
-    // Step 7.6: ZeroGPT Detection Check - Now done in Step 7.4
+    // Step 7.6: Plagiarism Check with Grammarly
+    console.log('\n[PROCESS] ========== Step 7.6: Plagiarism Check (Grammarly) ==========')
+    let plagiarismResult: any = null
+    try {
+      if (GRAMMARLY_ACCESS_TOKEN) {
+        plagiarismResult = await checkPlagiarismWithGrammarly(thesisContent, thesisId)
+        if (plagiarismResult) {
+          console.log(`[PROCESS] Plagiarism check completed: ${plagiarismResult.originalityPercentage}% original`)
+        }
+      } else {
+        console.warn('[PROCESS] GRAMMARLY_ACCESS_TOKEN not set - skipping plagiarism check')
+      }
+    } catch (error) {
+      console.error('[PROCESS] ERROR in plagiarism check:', error)
+      console.warn('[PROCESS] Continuing without plagiarism check result')
+      // Continue - plagiarism check is not critical for completion
+    }
+
+    // Step 7.7: ZeroGPT Detection Check - Now done in Step 7.4
     // ZeroGPT check result is available from Step 7.4
-    console.log('\n[PROCESS] ========== Step 7.6: ZeroGPT Detection Check ==========')
+    console.log('\n[PROCESS] ========== Step 7.7: ZeroGPT Detection Check ==========')
     console.log('[PROCESS] ZeroGPT check completed in Step 7.4 - result will be saved to metadata')
 
     // Process footnotes for German citation style
@@ -4424,6 +4598,12 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         if (zeroGptResult) {
           updateData.metadata.zeroGptResult = zeroGptResult
           console.log('[PROCESS] Saving ZeroGPT result to metadata:', zeroGptResult)
+        }
+
+        // Add plagiarism result if available
+        if (plagiarismResult) {
+          updateData.metadata.plagiarismResult = plagiarismResult
+          console.log('[PROCESS] Saving plagiarism result to metadata:', plagiarismResult)
         }
 
         const result = await supabase
