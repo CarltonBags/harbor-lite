@@ -1045,65 +1045,76 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     }
     console.log(`[DocUpload] Document validation passed: valid ${fileType.type.toUpperCase()} format, size OK`)
 
-    // Page numbers priority:
-    // 1. API-provided page numbers (journal pages like 239-253) - MOST ACCURATE for citations
-    // 2. PDF extraction via Gemini - good fallback but gives PDF internal pages
-    // 3. Estimation from file size - last resort
+    // Page numbers: We need BOTH journal pages (for citations) AND PDF pages (for FileSearchStore mapping)
+    // FileSearchStore returns PDF-internal page numbers, but citations need journal page numbers
+    // So we store BOTH and calculate the mapping
     
-    let pageStart: string | null = null
-    let pageEnd: string | null = null
+    let journalPageStart: string | null = null
+    let journalPageEnd: string | null = null
+    let pdfPageStart: string | null = null
+    let pdfPageEnd: string | null = null
     
-    // FIRST: Check if source already has page numbers from API (OpenAlex/Semantic Scholar)
+    // FIRST: Get journal page numbers from API (OpenAlex/Semantic Scholar)
     // These are the JOURNAL page numbers which are correct for citations (e.g., 239-253)
     if (source.pageStart && source.pageEnd) {
-      pageStart = String(source.pageStart)
-      pageEnd = String(source.pageEnd)
-      console.log(`[DocUpload] Using API-provided page numbers: ${pageStart}-${pageEnd} (journal pages)`)
+      journalPageStart = String(source.pageStart)
+      journalPageEnd = String(source.pageEnd)
+      console.log(`[DocUpload] API-provided journal pages: ${journalPageStart}-${journalPageEnd}`)
     } else if (source.pages) {
       // Parse pages string like "239-253"
       const pagesMatch = source.pages.match(/(\d+)\s*[-–]\s*(\d+)/)
       if (pagesMatch) {
-        pageStart = pagesMatch[1]
-        pageEnd = pagesMatch[2]
-        console.log(`[DocUpload] Parsed API page range: ${pageStart}-${pageEnd}`)
+        journalPageStart = pagesMatch[1]
+        journalPageEnd = pagesMatch[2]
+        console.log(`[DocUpload] Parsed API journal page range: ${journalPageStart}-${journalPageEnd}`)
       }
     }
     
-    // SECOND: If no API pages, try PDF extraction
-    if (!pageStart || !pageEnd) {
-      console.log(`[DocUpload] No API page numbers, extracting from PDF...`)
+    // SECOND: ALWAYS extract PDF page count (needed for FileSearchStore mapping)
+    // Even if we have journal pages, we need PDF pages to map FileSearchStore results
+    if (fileType.type === 'pdf') {
+      console.log(`[DocUpload] Extracting PDF page count for FileSearchStore mapping...`)
       const pageExtractStart = Date.now()
-      
-      if (fileType.type === 'pdf') {
-        try {
-          const pageNumbers = await extractPageNumbers(docBuffer)
-          if (pageNumbers.pageStart && pageNumbers.pageEnd) {
-            const extractedStart = parseInt(pageNumbers.pageStart, 10)
-            const extractedEnd = parseInt(pageNumbers.pageEnd, 10)
-            
-            // VALIDATION: Ensure page numbers make sense
-            // If extracted pageEnd is unreasonably high (>1000), it's likely wrong
-            // If extracted pageEnd is less than extractedStart, it's wrong
-            if (extractedEnd > 1000) {
-              console.warn(`[DocUpload] WARNING: Extracted pageEnd (${extractedEnd}) seems too high, likely incorrect. Using file size estimation instead.`)
-            } else if (extractedEnd < extractedStart) {
-              console.warn(`[DocUpload] WARNING: Extracted pageEnd (${extractedEnd}) < pageStart (${extractedStart}), invalid. Using file size estimation instead.`)
-            } else {
-              pageStart = pageNumbers.pageStart
-              pageEnd = pageNumbers.pageEnd
-              const pageExtractDuration = Date.now() - pageExtractStart
-              console.log(`[DocUpload] PDF extraction: pages ${pageStart}-${pageEnd} (${pageExtractDuration}ms)`)
-              console.log(`[DocUpload] NOTE: These are PDF physical page counts, not journal pages`)
-            }
+      try {
+        const pageNumbers = await extractPageNumbers(docBuffer)
+        if (pageNumbers.pageStart && pageNumbers.pageEnd) {
+          const extractedStart = parseInt(pageNumbers.pageStart, 10)
+          const extractedEnd = parseInt(pageNumbers.pageEnd, 10)
+          
+          // VALIDATION: Ensure page numbers make sense
+          if (extractedEnd > 1000) {
+            console.warn(`[DocUpload] WARNING: Extracted PDF pageEnd (${extractedEnd}) seems too high, likely incorrect.`)
+          } else if (extractedEnd < extractedStart) {
+            console.warn(`[DocUpload] WARNING: Extracted PDF pageEnd (${extractedEnd}) < pageStart (${extractedStart}), invalid.`)
+          } else {
+            pdfPageStart = pageNumbers.pageStart
+            pdfPageEnd = pageNumbers.pageEnd
+            const pageExtractDuration = Date.now() - pageExtractStart
+            console.log(`[DocUpload] PDF extraction: ${pdfPageStart}-${pdfPageEnd} pages (${pageExtractDuration}ms)`)
           }
-        } catch (error) {
-          console.warn(`[DocUpload] WARNING: Page extraction failed:`, error)
         }
+      } catch (error) {
+        console.warn(`[DocUpload] WARNING: PDF page extraction failed:`, error)
       }
     }
     
-    // THIRD: Fallback to file size estimation
-    if (!pageStart || !pageEnd) {
+    // THIRD: Determine which page numbers to use for metadata
+    // Priority: Journal pages (if available) > PDF pages > Estimation
+    let pageStart: string | null = null
+    let pageEnd: string | null = null
+    
+    if (journalPageStart && journalPageEnd) {
+      // Use journal pages for citations
+      pageStart = journalPageStart
+      pageEnd = journalPageEnd
+      console.log(`[DocUpload] Using journal pages for citations: ${pageStart}-${pageEnd}`)
+    } else if (pdfPageStart && pdfPageEnd) {
+      // Fallback to PDF pages if no journal pages
+      pageStart = pdfPageStart
+      pageEnd = pdfPageEnd
+      console.log(`[DocUpload] Using PDF pages (no journal pages available): ${pageStart}-${pageEnd}`)
+    } else {
+      // Last resort: file size estimation
       const estimatedPages = Math.max(1, Math.ceil(fileSizeKB / (fileType.type === 'pdf' ? 50 : 75)))
       pageStart = "1"
       pageEnd = estimatedPages.toString()
@@ -1131,7 +1142,8 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     if (source.journal) {
       customMetadata.push({ key: 'journal', stringValue: source.journal.substring(0, 256) })
     }
-    // Add page numbers if extracted
+    // Add page numbers to metadata
+    // Store journal pages (for citations) and PDF pages (for FileSearchStore mapping)
     if (pageStart) {
       customMetadata.push({ key: 'pageStart', stringValue: pageStart.substring(0, 256) })
     }
@@ -1140,6 +1152,21 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     }
     if (pageStart && pageEnd) {
       customMetadata.push({ key: 'pages', stringValue: `${pageStart}-${pageEnd}`.substring(0, 256) })
+    }
+    
+    // Store PDF page count separately for mapping FileSearchStore results
+    if (pdfPageStart && pdfPageEnd) {
+      customMetadata.push({ key: 'pdfPageStart', stringValue: pdfPageStart.substring(0, 256) })
+      customMetadata.push({ key: 'pdfPageEnd', stringValue: pdfPageEnd.substring(0, 256) })
+      console.log(`[DocUpload] Stored PDF pages for mapping: ${pdfPageStart}-${pdfPageEnd}`)
+    }
+    
+    // Store journal pages separately if different from PDF pages
+    if (journalPageStart && journalPageEnd && (journalPageStart !== pdfPageStart || journalPageEnd !== pdfPageEnd)) {
+      customMetadata.push({ key: 'journalPageStart', stringValue: journalPageStart.substring(0, 256) })
+      customMetadata.push({ key: 'journalPageEnd', stringValue: journalPageEnd.substring(0, 256) })
+      console.log(`[DocUpload] Stored journal pages separately: ${journalPageStart}-${journalPageEnd}`)
+      console.log(`[DocUpload] Page mapping: PDF ${pdfPageStart}-${pdfPageEnd} → Journal ${journalPageStart}-${journalPageEnd}`)
     }
     // Add chapter information for relevance tracking
     if (source.chapterNumber) {
@@ -2174,7 +2201,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     // Show valid page range - but emphasize EXACT page numbers are required
     const pageRangeInfo = pageStart && pageEnd 
       ? `Seiten: ${pages} (Dokument umfasst S. ${pageStart}-${pageEnd} - verwende die EXAKTE Seitenzahl, auf der der zitierte Inhalt steht!)`
-      : `Seiten: ${pages} (keine Seitenzahlen verfügbar - verwende "S. [keine Angabe]" oder lasse Seitenzahl weg)`
+      : `Seiten: ${pages} (keine Seitenzahlen verfügbar - lasse die Seitenzahl KOMPLETT weg, schreibe NICHT "S. [keine Angabe]")`
     
     return `[${i + 1}] ${authors} (${year}): "${s.title}"${journal ? `. In: ${journal}` : ''}. ${pageRangeInfo}`
   }).join('\n')
@@ -2289,13 +2316,17 @@ ${availableSourcesList}
 - ✗ "Unsere Ergebnisse zeigen..." → Es gibt KEINE eigenen Ergebnisse!
 - ✗ "Die Datenerhebung ergab..." → Es gab KEINE Datenerhebung!
 - ✗ Jegliche Behauptung eigener empirischer Forschung
-- ✗ RHETORISCHE FRAGEN - NIEMALS verwenden!
+- ✗ ABSOLUT KEINE FRAGEN - WEDER RHETORISCHE NOCH SUGGESTIVE - NIEMALS VERWENDEN!
   ✗ "Aber ist das wirklich so?"
   ✗ "Welche Auswirkungen hat dies?"
   ✗ "Wie lässt sich dies erklären?"
   ✗ "Was bedeutet das für...?"
-  ✗ Jegliche Frageform im Text (außer in direkten Zitaten)
-  ✓ Stattdessen: Direkte Aussagen und Feststellungen verwenden
+  ✗ "the research? a very important part..." (Fragezeichen nach Aussage)
+  ✗ "Was ist X? Ein wichtiger Aspekt..." (selbstreflexive Fragen)
+  ✗ Jegliche Frageform, Fragezeichen oder suggestive Fragekonstruktionen im Text
+  ✗ Selbst in rhetorischer Form - ABSOLUT VERBOTEN!
+  ✓ IMMER direkte Aussagen und Feststellungen verwenden
+  ✓ Statt "Was ist Forschung? Ein wichtiger Aspekt..." → "Die Forschung stellt einen wichtigen Aspekt dar."
 
 **SEITENZAHLEN - ABSOLUT EXAKT ERFORDERLICH:**
 - JEDE Zitation muss die EXAKTE Seitenzahl enthalten, auf der der zitierte Inhalt tatsächlich steht
@@ -2307,7 +2338,7 @@ ${availableSourcesList}
 - NIEMALS eine Seitenzahl verwenden, nur weil sie im gültigen Bereich liegt - sie muss EXAKT sein!
 - Beispiel FALSCH: Quelle hat Seiten 2-4, du zitierst S. 3, obwohl der Inhalt auf S. 2 steht → FALSCH!
 - Beispiel RICHTIG: Quelle hat Seiten 2-4, FileSearchStore zeigt Inhalt auf S. 2 → verwende S. 2!
-- Wenn der FileSearchStore keine Seitenzahl liefert, verwende "S. [keine Angabe]" oder lasse die Seitenzahl weg
+- Wenn der FileSearchStore keine Seitenzahl liefert, lasse die Seitenzahl KOMPLETT weg - schreibe NICHT "S. [keine Angabe]" oder ähnliches!
 - Prüfe IMMER: Ist die verwendete Seitenzahl die EXAKTE Seite, die der FileSearchStore für diesen Inhalt anzeigt?
 
 ${thesisData.citationStyle === 'deutsche-zitierweise' ? `**Deutsche Zitierweise (Fußnoten):**
@@ -2339,13 +2370,16 @@ SCHREIBSTIL
 - Ergebnisse den Autoren zuschreiben: "Müller (2021) zeigt..." statt "Es ist bewiesen..."
 
 **🚫 VERBOTEN - Unwissenschaftliche Stilmittel:**
-- NIEMALS ein Kapitel mit einer Frage beginnen!
+- ABSOLUT KEINE FRAGEN IM TEXT - WEDER RHETORISCHE NOCH SUGGESTIVE!
   ✗ "Was bedeutet Digitalisierung für die Arbeitswelt?"
-  ✓ "Die Digitalisierung verändert die Arbeitswelt grundlegend."
-- KEINE rhetorischen oder suggestiven Fragen im Text!
   ✗ "Aber ist das wirklich so?"
   ✗ "Welche Auswirkungen hat dies?"
-  ✓ Direkte Aussagen und Feststellungen verwenden
+  ✗ "the research? a very important part..." (Fragezeichen nach Aussage)
+  ✗ Jegliche Frageform, Fragezeichen oder suggestive Fragekonstruktionen
+  ✗ Selbstreflexive Fragen wie "Was ist X? Ein wichtiger Aspekt..."
+  ✓ IMMER direkte Aussagen und Feststellungen verwenden
+  ✓ "Die Digitalisierung verändert die Arbeitswelt grundlegend."
+  ✓ "Die Forschung stellt einen wichtigen Aspekt dar."
 - KEINE emotionalen oder wertenden Adjektive!
   ✗ "wird heiß diskutiert", "brennend aktuell", "erschreckend", "beeindruckend"
   ✗ "dramatisch", "revolutionär", "bahnbrechend", "erstaunlich"
@@ -2360,6 +2394,11 @@ SCHREIBSTIL
   ✗ "Wir werden im nächsten Abschnitt..."
   ✓ "Im nächsten Abschnitt wird..."
 - KEINE unprofessionellen Wörter: "freilich", "sicherlich", "natürlich" (als Füllwort)
+- ABSOLUT KEINE UMGANGSSPRACHE!
+  ✗ "denk mal an...", "schau dir an...", "guck mal...", "hör mal..."
+  ✗ "klar", "logisch", "natürlich" (umgangssprachlich), "eigentlich" (als Füllwort)
+  ✗ Alle umgangssprachlichen Formulierungen sind VERBOTEN
+  ✓ Verwende ausschließlich wissenschaftliche, formale Sprache
 - Verwende Passiv oder unpersönliche Konstruktionen
 
 **Natürlicher Stil (Anti-AI-Detection):**
@@ -2564,7 +2603,8 @@ ${JSON.stringify(thesisData.outline, null, 2)}
   * MLA: (Author XX) or (Author XX-YY)
   * Deutsche Zitierweise: In footnotes: Author, Title, Year, S. XX
 - If the page number is not explicitly given in the RAG context, use the page numbers from the source metadata or estimate based on context (e.g., if the context comes from "Chapter 3", use a plausible page number).
-- NEVER cite without a page number - page numbers are MANDATORY.
+- If page number is NOT available, leave it out COMPLETELY - do NOT write "p. [no page]" or "S. [keine Angabe]" or similar!
+- NEVER cite without a page number - page numbers are MANDATORY. If unavailable, omit the page reference entirely.
 
 - If certain aspects are not fully covered in the sources, formulate this scientifically neutrally (e.g., "This aspect requires further investigation" or "Further research would be desirable"), but NEVER as criticism of your own source selection or as a hint about "insufficient sources".
 
@@ -2637,6 +2677,17 @@ The text must sound like written by a human author from the start and must not b
 - When writing about findings from sources, attribute them to the authors rather than stating them as absolute facts. For example, write "Müller (2021) found that..." instead of "The number of x is growing..." when discussing research findings.
 - Write with an objective, critical academic mindset throughout the text.
 - Use precise, factual language while remaining nuanced and avoiding absolute statements about research findings.
+
+**9. ABSOLUTELY FORBIDDEN - QUESTIONS (CRITICAL):**
+- ABSOLUTELY NO QUESTIONS - NEITHER RHETORICAL NOR SUGGESTIVE - NEVER USE THEM!
+- FORBIDDEN: "But is this really the case?", "What are the implications of this?", "How can this be explained?", "What does this mean for...?"
+- FORBIDDEN: "the research? a very important part..." (question mark after statement)
+- FORBIDDEN: "What is X? An important aspect..." (self-reflexive questions)
+- FORBIDDEN: Any question form, question marks, or suggestive question constructions in the text
+- FORBIDDEN: Even in rhetorical form - ABSOLUTELY FORBIDDEN!
+- Instead: ALWAYS use direct statements and assertions
+- Example: Instead of "What does digitalization mean for the workplace?" → "Digitalization fundamentally changes the workplace."
+- Example: Instead of "What is research? An important aspect..." → "Research represents an important aspect."
 - Do not include personal opinions, marketing language, or filler sentences.
 - Maintain clear structure and logical flow throughout.
 - Provide clean definitions, methodological clarity, and critical reflection where appropriate.
@@ -3570,8 +3621,9 @@ G. **Natürliche Variation (KRITISCH):**
    - Verwende manchmal direkte Sprache, manchmal umschreibende Formulierungen.
    - Variiere zwischen aktiver und passiver Sprache (aber nicht zu viel Passiv).
    - Erhalte vollständige Kohärenz - niemals Slang, Fehler oder unprofessionellen Ton.
-   - Verwende gelegentlich umgangssprachliche, aber akademisch akzeptable Formulierungen.
-   - Variiere die Formalisierungsebene leicht.
+   - ABSOLUT VERBOTEN: Umgangssprache wie "denk mal", "schau dir an", "guck mal", "hör mal", "klar", "logisch" (umgangssprachlich), "eigentlich" (als Füllwort)
+   - Verwende AUSSCHLIESSLICH wissenschaftliche, formale Sprache - keine umgangssprachlichen Formulierungen!
+   - Variiere die Formalisierungsebene leicht, aber IMMER innerhalb des wissenschaftlichen Registers.
 
 H. **Vermeide KI-typische Phrasen (ABSOLUT KRITISCH):**
    - NICHT: "Es ist wichtig zu beachten, dass...", "Es sollte erwähnt werden, dass...", "Es ist bemerkenswert, dass...", "Es ist interessant zu beobachten, dass...", "Es ist erwähnenswert, dass...".
@@ -3604,15 +3656,24 @@ L. **Unvorhersehbare Strukturen (KRITISCH):**
    - Variiere zwischen deduktiver und induktiver Argumentation.
    - Vermeide perfekt symmetrische Absatzlängen.
 
-M. **ABSOLUT VERBOTEN - RHETORISCHE FRAGEN (KRITISCH):**
-   - NIEMALS rhetorische oder suggestive Fragen verwenden!
+M. **ABSOLUT VERBOTEN - JEGLICHE FRAGEN (KRITISCH):**
+   - ABSOLUT KEINE FRAGEN - WEDER RHETORISCHE NOCH SUGGESTIVE - NIEMALS VERWENDEN!
    - VERBOTEN: "Aber ist das wirklich so?", "Welche Auswirkungen hat dies?", "Wie lässt sich dies erklären?", "Was bedeutet das für...?"
-   - VERBOTEN: Jegliche Frageform im Text (außer in direkten Zitaten)
+   - VERBOTEN: "the research? a very important part..." (Fragezeichen nach Aussage)
+   - VERBOTEN: "Was ist X? Ein wichtiger Aspekt..." (selbstreflexive Fragen)
+   - VERBOTEN: Jegliche Frageform, Fragezeichen oder suggestive Fragekonstruktionen im Text
+   - VERBOTEN: Selbst in rhetorischer Form - ABSOLUT VERBOTEN!
    - Stattdessen: IMMER direkte Aussagen und Feststellungen verwenden
    - Beispiel: Statt "Was bedeutet Digitalisierung für die Arbeitswelt?" → "Die Digitalisierung verändert die Arbeitswelt grundlegend."
+   - Beispiel: Statt "Was ist Forschung? Ein wichtiger Aspekt..." → "Die Forschung stellt einen wichtigen Aspekt dar."
 
 M. **VERBOTENE WÖRTER UND FORMULIERUNGEN (ABSOLUT KRITISCH):**
    - ABSOLUT VERBOTEN: Unprofessionelle Wörter wie "freilich", "gewiss", "sicherlich" (in umgangssprachlicher Verwendung), "natürlich" (als Füllwort), "selbstverständlich", "ohne Frage", "zweifellos".
+   - ABSOLUT VERBOTEN: UMGANGSSPRACHE - alle umgangssprachlichen Formulierungen sind strengstens verboten!
+     ✗ "denk mal an...", "schau dir an...", "guck mal...", "hör mal..."
+     ✗ "klar", "logisch" (umgangssprachlich), "eigentlich" (als Füllwort), "halt", "eben", "ja" (als Füllwort)
+     ✗ Alle umgangssprachlichen Phrasen und Wendungen
+     ✓ Verwende AUSSCHLIESSLICH wissenschaftliche, formale Sprache
    - ABSOLUT VERBOTEN: Persönliche Pronomen wie "wir", "ich", "uns", "unser" - verwende stattdessen passive oder unpersönliche Konstruktionen.
      FALSCH: "Wir werden im nächsten Abschnitt darauf eingehen..."
      RICHTIG: "Im nächsten Abschnitt wird darauf eingegangen..."
@@ -3701,8 +3762,8 @@ G. **Natural Variation (CRITICAL):**
    - Sometimes use direct language, sometimes paraphrasing.
    - Vary between active and passive voice (but not too much passive).
    - Maintain full coherence - never create slang, errors, or unprofessional tone.
-   - Occasionally use colloquial but academically acceptable formulations.
-   - Vary the level of formality slightly.
+   - ABSOLUTELY FORBIDDEN: Colloquial language, informal phrases, or casual expressions - use ONLY formal, academic language!
+   - Vary the level of formality slightly, but ALWAYS within the academic register.
 
 H. **Avoid AI-typical Phrases (ABSOLUTELY CRITICAL):**
    - DO NOT: "It is important to note that...", "It should be mentioned that...", "It is noteworthy that...", "It is interesting to observe that...", "It is worth mentioning that...".
@@ -3731,7 +3792,7 @@ K. **Lexical Diversity (VERY IMPORTANT):**
 
 L. **Unpredictable Structures (CRITICAL):**
    - Start some paragraphs with main clause, others with subordinate clause.
-   - Occasionally use rhetorical questions (sparingly, academically appropriate).
+   - ABSOLUTELY FORBIDDEN: Rhetorical questions, suggestive questions, or any question forms - NEVER use them!
    - Sometimes build in parenthetical insertions (in em-dashes or parentheses).
    - Vary between deductive and inductive argumentation.
    - Avoid perfectly symmetrical paragraph lengths.
