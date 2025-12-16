@@ -1870,6 +1870,9 @@ async function extendThesisContent({
     const extensionPrompt = isGerman
       ? `Du erweiterst eine wissenschaftliche Arbeit mit dem Thema "${thesisData.title}" (${thesisData.field}).
 
+⚠️⚠️⚠️ ABSOLUT KRITISCH - ERSTE REGEL ⚠️⚠️⚠️
+🚫 ABSOLUT VERBOTEN: FRAGE-ANTWORT-MUSTER! NIEMALS "X? Y." verwenden! IMMER direkte Aussagen!
+
 Aktueller Umfang: ${wordCount} Wörter.
 Zielumfang: mindestens ${expectedWordCount} Wörter.
 Fehlende Wörter: mindestens ${remainingWords}.
@@ -1903,6 +1906,9 @@ ${extensionInstruction}
 - Verwende Quellen aus dem FileSearchStore mit korrekten Zitationen
 - Gib ausschließlich den neuen Zusatztext zurück (keine Kommentare)`
       : `You are extending an academic thesis titled "${thesisData.title}" (${thesisData.field}).
+
+⚠️⚠️⚠️ ABSOLUTELY CRITICAL - FIRST RULE ⚠️⚠️⚠️
+🚫 ABSOLUTELY FORBIDDEN: QUESTION-ANSWER PATTERN! NEVER use "X? Y."! ALWAYS use direct statements!
 
 Current length: ${wordCount} words.
 Target length: at least ${expectedWordCount} words.
@@ -2008,8 +2014,14 @@ async function generateChapterContent({
 
   const buildChapterPrompt = (remainingWords: number) => {
     const baseInstructions = isGerman
-      ? `Du schreibst das Kapitel "${chapterLabel}" einer akademischen Arbeit mit dem Thema "${thesisData.title}".`
-      : `You are writing the chapter "${chapterLabel}" of an academic thesis titled "${thesisData.title}".`
+      ? `Du schreibst das Kapitel "${chapterLabel}" einer akademischen Arbeit mit dem Thema "${thesisData.title}".
+
+⚠️⚠️⚠️ ABSOLUT KRITISCH - ERSTE REGEL ⚠️⚠️⚠️
+🚫 ABSOLUT VERBOTEN: FRAGE-ANTWORT-MUSTER! NIEMALS "X? Y." verwenden! IMMER direkte Aussagen!`
+      : `You are writing the chapter "${chapterLabel}" of an academic thesis titled "${thesisData.title}".
+
+⚠️⚠️⚠️ ABSOLUTELY CRITICAL - FIRST RULE ⚠️⚠️⚠️
+🚫 ABSOLUTELY FORBIDDEN: QUESTION-ANSWER PATTERN! NEVER use "X? Y."! ALWAYS use direct statements!`
 
     const sectionInstructions = sectionsSummary
       ? (isGerman
@@ -2216,6 +2228,19 @@ Jede Pflichtquelle muss mindestens einmal sinnvoll im Text zitiert werden.
 ` : ''
 
   const prompt = isGerman ? `Du schreibst eine wissenschaftliche ${thesisData.thesisType} zum Thema "${thesisData.title}".
+
+⚠️⚠️⚠️ ABSOLUT KRITISCH - ERSTE REGEL - NIEMALS VERLETZEN ⚠️⚠️⚠️
+
+🚫 ABSOLUT VERBOTEN: FRAGE-ANTWORT-MUSTER (MACHT TEXT UNLESBAR!)
+- NIEMALS Konstruktionen wie "X? Y." oder "X? In der Literatur..." verwenden!
+- VERBOTEN: "Die Grenze zwischen X und Y? In der öffentlichen Wahrnehmung..."
+- VERBOTEN: "Korruption und Lobbyismus: zwei verschiedene Arten. Lobbyismus hingegen? Unverzichtbar..."
+- VERBOTEN: "Aber diese beiden Phänomene zu trennen? Schwierig."
+- VERBOTEN: "Das Kernproblem? Es ist ungemein schwer..."
+- VERBOTEN: "Korruption? In der wirtschaftswissenschaftlichen Literatur versteht man darunter..."
+- VERBOTEN: JEDE Konstruktion mit Fragezeichen gefolgt von einer Antwort!
+- VERBOTEN: Jegliche rhetorische oder suggestive Fragen!
+- IMMER direkte Aussagen verwenden: "Die Grenze zwischen X und Y verwischt..." statt "Die Grenze zwischen X und Y? In der öffentlichen Wahrnehmung..."
 
 ═══════════════════════════════════════════════════════════════════════════════
 KERNAUFGABE
@@ -2546,6 +2571,19 @@ BEGINNE JETZT mit "## 1. Einleitung" - schreibe die vollständige Thesis.
 HALTE DICH STRIKT an die vorgegebene Gliederung - KEINE zusätzlichen Kapitel oder Ergänzungen!`
 
     : `You are a scientific assistant who writes academic texts exclusively based on the provided, indexed sources (RAG / File Search).
+
+⚠️⚠️⚠️ ABSOLUTELY CRITICAL - FIRST RULE - NEVER VIOLATE ⚠️⚠️⚠️
+
+🚫 ABSOLUTELY FORBIDDEN: QUESTION-ANSWER PATTERN (MAKES TEXT UNREADABLE!)
+- NEVER use constructions like "X? Y." or "X? In the literature..."
+- FORBIDDEN: "The boundary between X and Y? In public perception..."
+- FORBIDDEN: "Corruption and lobbying: two different types. Lobbying, however? Indispensable..."
+- FORBIDDEN: "But separating these two phenomena? Difficult."
+- FORBIDDEN: "The core problem? It is extremely difficult..."
+- FORBIDDEN: "Corruption? In the economic literature, it is understood as..."
+- FORBIDDEN: ANY construction with a question mark followed by an answer!
+- FORBIDDEN: Any rhetorical or suggestive questions!
+- ALWAYS use direct statements: "The boundary between X and Y blurs..." instead of "The boundary between X and Y? In public perception..."
 
 **IMPORTANT - Research and Source Context:**
 - You have researched and selected the sources YOURSELF - you are both author and researcher of this thesis.
@@ -3597,6 +3635,11 @@ async function humanizeThesisContent(content: string, thesisData: ThesisData): P
   const prompt = isGerman
     ? `Du bist ein akademischer Text-Humanisierer. Deine Aufgabe ist es, den bereitgestellten Text so umzuschreiben, dass er nicht als KI-generiert von Tools wie ZeroGPT, GPTZero, Turnitin AI Detection, Hive oder ähnlichen Klassifikatoren erkannt werden kann.
 
+⚠️⚠️⚠️ ABSOLUT KRITISCH - ERSTE REGEL ⚠️⚠️⚠️
+🚫 ABSOLUT VERBOTEN: FRAGE-ANTWORT-MUSTER! NIEMALS "X? Y." verwenden! IMMER direkte Aussagen!
+- Wenn du im Text Frage-Antwort-Muster findest, MUSST du sie in direkte Aussagen umwandeln!
+- Beispiel: "Die Grenze zwischen X und Y? In der öffentlichen Wahrnehmung..." → "Die Grenze zwischen X und Y verwischt in der öffentlichen Wahrnehmung..."
+
 Folge diesen Regeln strikt:
 
 1. NIEMALS ändern, hinzufügen oder entfernen von Fakten, Argumenten, Behauptungen, Zitaten, Theorien, Namen, Zahlen, Daten, Tabellen oder Referenzen.
@@ -3746,6 +3789,11 @@ OUTPUT-REGELN:
 Dein Ziel ist es, Text zu produzieren, der wie von einem kompetenten menschlichen akademischen Autor geschrieben klingt, während alle Informationsinhalte erhalten bleiben.`
 
     : `You are an academic text humanizer. Your job is to rewrite the provided text so that it cannot be detected as AI-generated by tools such as ZeroGPT, GPTZero, Turnitin AI detection, Hive, or similar classifiers.
+
+⚠️⚠️⚠️ ABSOLUTELY CRITICAL - FIRST RULE ⚠️⚠️⚠️
+🚫 ABSOLUTELY FORBIDDEN: QUESTION-ANSWER PATTERN! NEVER use "X? Y."! ALWAYS use direct statements!
+- If you find question-answer patterns in the text, you MUST convert them to direct statements!
+- Example: "The boundary between X and Y? In public perception..." → "The boundary between X and Y blurs in public perception..."
 
 Follow these rules strictly:
 
