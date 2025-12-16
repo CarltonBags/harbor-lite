@@ -874,17 +874,27 @@ async function extractPageNumbers(pdfBuffer: Buffer): Promise<{ pageStart: strin
     await new Promise(resolve => setTimeout(resolve, 1000))
 
     // Use Gemini 2.5 Flash to extract page numbers
-    const prompt = `Analyze this PDF document and extract the total number of pages. Look for:
-1. The first page number (usually 1, but could be different if there's a cover page)
-2. The last page number (total number of pages)
+    // CRITICAL: Extract the ACTUAL page count of the document, not internal PDF page numbers
+    const prompt = `Analyze this PDF document and extract the ACTUAL number of pages in the document.
+
+IMPORTANT:
+- Count the TOTAL number of pages in the PDF file itself
+- This is the physical page count (e.g., if PDF has 3 pages, return pageEnd: "3")
+- Do NOT use journal page numbers or article page numbers
+- Do NOT use page numbers from headers/footers that might be wrong
+- Simply count: page 1, page 2, page 3, etc. until the last page
+
+Look for:
+1. The first page number (usually 1)
+2. The last page number (total physical pages in the PDF)
 
 Respond ONLY with a JSON object in this format:
 {
   "pageStart": "1",
-  "pageEnd": "25"
+  "pageEnd": "3"
 }
 
-If you cannot determine the page numbers, return:
+If you cannot determine the page numbers accurately, return:
 {
   "pageStart": null,
   "pageEnd": null
@@ -1068,11 +1078,23 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
         try {
           const pageNumbers = await extractPageNumbers(docBuffer)
           if (pageNumbers.pageStart && pageNumbers.pageEnd) {
-            pageStart = pageNumbers.pageStart
-            pageEnd = pageNumbers.pageEnd
-            const pageExtractDuration = Date.now() - pageExtractStart
-            console.log(`[DocUpload] PDF extraction: pages ${pageStart}-${pageEnd} (${pageExtractDuration}ms)`)
-            console.log(`[DocUpload] NOTE: These are PDF-internal pages, not journal pages`)
+            const extractedStart = parseInt(pageNumbers.pageStart, 10)
+            const extractedEnd = parseInt(pageNumbers.pageEnd, 10)
+            
+            // VALIDATION: Ensure page numbers make sense
+            // If extracted pageEnd is unreasonably high (>1000), it's likely wrong
+            // If extracted pageEnd is less than extractedStart, it's wrong
+            if (extractedEnd > 1000) {
+              console.warn(`[DocUpload] WARNING: Extracted pageEnd (${extractedEnd}) seems too high, likely incorrect. Using file size estimation instead.`)
+            } else if (extractedEnd < extractedStart) {
+              console.warn(`[DocUpload] WARNING: Extracted pageEnd (${extractedEnd}) < pageStart (${extractedStart}), invalid. Using file size estimation instead.`)
+            } else {
+              pageStart = pageNumbers.pageStart
+              pageEnd = pageNumbers.pageEnd
+              const pageExtractDuration = Date.now() - pageExtractStart
+              console.log(`[DocUpload] PDF extraction: pages ${pageStart}-${pageEnd} (${pageExtractDuration}ms)`)
+              console.log(`[DocUpload] NOTE: These are PDF physical page counts, not journal pages`)
+            }
           }
         } catch (error) {
           console.warn(`[DocUpload] WARNING: Page extraction failed:`, error)
@@ -2137,15 +2159,23 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   console.log('[ThesisGeneration] Using single-call generation with FileSearchStore RAG')
 
   // Build comprehensive source list for the prompt - THIS IS CRITICAL
-  // The AI MUST know exactly which sources it can cite
+  // The AI MUST know exactly which sources it can cite AND valid page ranges
   const availableSourcesList = rankedSources.map((s, i) => {
     const authors = s.authors && s.authors.length > 0 
       ? s.authors.slice(0, 3).join(', ') + (s.authors.length > 3 ? ' et al.' : '')
       : 'Unbekannt'
     const year = s.year || 'o.J.'
-    const pages = s.pages || (s.pageStart && s.pageEnd ? `${s.pageStart}-${s.pageEnd}` : 'keine Angabe')
+    const pageStart = s.pageStart ? String(s.pageStart) : null
+    const pageEnd = s.pageEnd ? String(s.pageEnd) : null
+    const pages = s.pages || (pageStart && pageEnd ? `${pageStart}-${pageEnd}` : 'keine Angabe')
     const journal = s.journal || ''
-    return `[${i + 1}] ${authors} (${year}): "${s.title}"${journal ? `. In: ${journal}` : ''}. Seiten: ${pages}`
+    
+    // Show valid page range clearly
+    const pageRangeInfo = pageStart && pageEnd 
+      ? `Seiten: ${pages} (GÜLTIGER BEREICH: S. ${pageStart} bis S. ${pageEnd} - NUR diese Seitenzahlen verwenden!)`
+      : `Seiten: ${pages} (keine Seitenzahlen verfügbar - verwende "S. [keine Angabe]" oder lasse Seitenzahl weg)`
+    
+    return `[${i + 1}] ${authors} (${year}): "${s.title}"${journal ? `. In: ${journal}` : ''}. ${pageRangeInfo}`
   }).join('\n')
 
   const mandatorySources = rankedSources.filter(s => s.mandatory)
@@ -2266,8 +2296,14 @@ ${availableSourcesList}
   ✗ Jegliche Frageform im Text (außer in direkten Zitaten)
   ✓ Stattdessen: Direkte Aussagen und Feststellungen verwenden
 
-**SEITENZAHLEN:** JEDE Zitation muss eine Seitenzahl enthalten (S. XX oder S. XX-YY).
-Verwende die Seitenzahlen aus der obigen Quellenliste.
+**SEITENZAHLEN - KRITISCH KORREKT:**
+- JEDE Zitation muss eine Seitenzahl enthalten (S. XX oder S. XX-YY)
+- Verwende NUR Seitenzahlen, die im GÜLTIGEN BEREICH der Quelle liegen
+- Beispiel: Wenn Quelle "Seiten: 2-4" hat, darfst du NUR S. 2, S. 3, oder S. 4 verwenden
+- NIEMALS Seitenzahlen erfinden, die außerhalb des angegebenen Bereichs liegen!
+- Wenn Quelle "Seiten: 2-4" hat, ist S. 289 FALSCH und VERBOTEN!
+- Wenn keine Seitenzahl verfügbar ist, verwende "S. [keine Angabe]" oder lasse die Seitenzahl weg
+- Prüfe IMMER: Liegt die verwendete Seitenzahl zwischen pageStart und pageEnd der Quelle?
 
 ${thesisData.citationStyle === 'deutsche-zitierweise' ? `**Deutsche Zitierweise (Fußnoten):**
 - Im Text: Verwende "^N" direkt nach dem zitierten Inhalt
