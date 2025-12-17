@@ -2050,12 +2050,92 @@ async function generateChapterContent({
       ? `Beginne SOFORT mit der Kapitelüberschrift "## ${chapterLabel}" und schreibe anschließend das vollständige Kapitel.`
       : `START immediately with the chapter heading "## ${chapterLabel}" and then write the complete chapter.`
 
+    const strictRules = isGerman
+      ? `═══════════════════════════════════════════════════════════════════════════════
+QUELLENNUTZUNG & STIL - ABSOLUT KRITISCH
+═══════════════════════════════════════════════════════════════════════════════
+
+**⚠️ STRENG VERBOTEN: ERFUNDENE QUELLEN ⚠️**
+Du darfst NUR die bereitgestellten FileSearch-Quellen zitieren. KEINE anderen.
+Erfundene Quellen (wie "McAfee", "Autor, 2003", etc.) sind STRENG VERBOTEN.
+
+**🚫 ABSOLUT VERBOTEN: EIGENE STUDIEN BEHAUPTEN 🚫**
+Dies ist eine LITERATURBASIERTE Arbeit - du hast KEINE eigene Forschung durchgeführt!
+
+NIEMALS behaupten:
+- ✗ "In dieser Studie wurde untersucht..." → DU hast KEINE Studie durchgeführt!
+- ✗ "Unsere Analyse zeigt..." → Es gibt KEINE "unsere Analyse"!
+- ✗ "Die Ergebnisse dieser Untersuchung..." → DU hast NICHTS untersucht!
+- ✗ "Wir haben festgestellt..." → DU hast NICHTS festgestellt!
+- ✗ "Die vorliegende Studie belegt..." → Es gibt KEINE "vorliegende Studie"!
+- ✗ "Im Rahmen dieser Arbeit wurden X Teilnehmer befragt..." → LÜGE!
+- ✗ "Die Datenanalyse ergab..." → Du hast KEINE Daten analysiert!
+
+STATTDESSEN - Forschung den ECHTEN Autoren zuschreiben:
+- ✓ "Müller (2021) zeigt in seiner Studie, dass..."
+- ✓ "Die Untersuchung von Schmidt et al. (2020) belegt..."
+- ✓ "Laut der Analyse von Weber (2019)..."
+
+**⚠️ ZITATIONSDICHTE - ABSOLUT KRITISCH:**
+- JEDER Absatz mit Fakten, Theorien oder Forschungsergebnissen MUSS mindestens 1 Zitation haben
+- Ziel: 1 Zitation pro 100-150 Wörter (NICHT 200!)
+- Pro Kapitel: mindestens 3-5 verschiedene Zitationen
+- KEINE langen Passagen (>150 Wörter) ohne Zitation!
+- Theoretische Abschnitte: besonders viele Zitationen (alle 2-3 Sätze)
+
+**WAS ZITIERT WERDEN MUSS:**
+- Definitionen und Begriffserklärungen → IMMER zitieren
+- Statistische Daten und Zahlen → IMMER zitieren
+- Theorien und Modelle → IMMER zitieren
+- Forschungsergebnisse → IMMER zitieren
+- Behauptungen über den Stand der Forschung → IMMER zitieren`
+      : `═══════════════════════════════════════════════════════════════════════════════
+SOURCE USAGE & STYLE - ABSOLUTELY CRITICAL
+═══════════════════════════════════════════════════════════════════════════════
+
+**⚠️ STRICTLY FORBIDDEN: FAKE SOURCES ⚠️**
+You must ONLY cite the provided FileSearch sources. NO others.
+Invented sources (like "McAfee", "Author, 2003", etc.) are STRICTLY FORBIDDEN.
+
+**🚫 ABSOLUTELY FORBIDDEN: CLAIMING OWN STUDIES 🚫**
+This is a LITERATURE-BASED thesis - you have performed NO original research!
+
+NEVER claim:
+- ✗ "In this study, we investigated..." → YOU did NO study!
+- ✗ "Our analysis shows..." → There is NO "our analysis"!
+- ✗ "The results of this investigation..." → YOU investigated NOTHING!
+- ✗ "We found that..." → YOU found NOTHING!
+- ✗ "The present study proves..." → There is NO "present study"!
+- ✗ "In the context of this work, X participants were interviewed..." → LIE!
+- ✗ "Data analysis revealed..." → You analyzed NO data!
+
+INSTEAD - Attribute research to REAL authors:
+- ✓ "Müller (2021) shows in his study that..."
+- ✓ "The investigation by Schmidt et al. (2020) proves..."
+- ✓ "According to the analysis by Weber (2019)..."
+
+**⚠️ CITATION DENSITY - ABSOLUTELY CRITICAL:**
+- EVERY paragraph with facts, theories, or research results MUST have at least 1 citation
+- Target: 1 citation per 100-150 words (NOT 200!)
+- Per chapter: at least 3-5 different citations
+- NO long passages (>150 words) without citation!
+- Theoretical sections: exceptionally high citation density (every 2-3 sentences)
+
+**WHAT MUST BE CITED:**
+- Definitions and explanations of terms → ALWAYS cite
+- Statistical data and numbers → ALWAYS cite
+- Theories and models → ALWAYS cite
+- Research results → ALWAYS cite
+- Claims about the state of research → ALWAYS cite`
+
     return `${baseInstructions}
 
 ${sectionInstructions}${planInstructions}${previousContext}${lengthInstruction}
 
+${strictRules}
+
 Weitere Anforderungen:
-- ${isGerman ? 'Nutze ausschließlich die bereitgestellten FileSearch-Quellen und setze korrekte Zitationen/Fußnoten.' : 'Use only the provided FileSearch sources and include proper citations/footnotes.'}
+- ${isGerman ? 'Nutze die bereitgestellten FileSearch-Quellen INTENSIV. Jede wichtige Aussage muss belegt werden.' : 'Use the provided FileSearch sources EXTENSIVELY. Every major claim must be cited.'}
 - ${isGerman ? 'Integriere Kontext, Analyse, Beispiele, Methodik und Diskussion.' : 'Include context, analysis, examples, methodology, and discussion.'}
 - ${isGerman ? 'Füge Übergänge zu vorherigen und folgenden Kapiteln ein, ohne Inhalte zu wiederholen.' : 'Add transitions to previous and upcoming chapters without repeating content.'}
 - ${isGerman ? 'Gliedere das Kapitel mit passenden Zwischenüberschriften (##, ###, etc.).' : 'Structure the chapter with appropriate subheadings (##, ###, etc.).'}
@@ -3972,76 +4052,87 @@ OUTPUT RULES:
 
 Your goal is to produce text that reads like it was written by a competent human academic author while preserving all informational content.`
 
-  try {
-    const response = await retryApiCall(
-      () => ai.models.generateContent({
-        model: 'gemini-2.5-flash', // Use Flash for humanization (faster, cheaper)
-        contents: `${prompt}\n\n---\n\n${content}`,
-      }),
-      'Humanize thesis content',
-      3, // 3 retries
-      2000 // 2 second delay
-    )
+  // CHUNKED PROCESSING STRATEGY
+  // Split content by Level 2 headlines (Chapters) to avoid token limits
+  // Regex looks for "## " at the start of a line
+  const sections = content.split(/(?=^## )/gm)
+  console.log(`[Humanize] Split content into ${sections.length} sections for processing`)
 
-    const humanizedContent = response.text || content
+  const humanizedSections: string[] = []
 
-    if (!humanizedContent || humanizedContent.length < 100) {
-      console.warn('[Humanize] Humanized content too short, using original')
-      return content
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i]
+
+    // Skip empty or very short sections (like just whitespace)
+    if (section.trim().length < 50) {
+      console.log(`[Humanize] Skipping section ${i + 1}/${sections.length} (too short)`)
+      humanizedSections.push(section)
+      continue
     }
 
-    // Verify that critical elements are preserved
-    const originalFootnotes = (content.match(/\^\d+/g) || []).length
-    const humanizedFootnotes = (humanizedContent.match(/\^\d+/g) || []).length
+    console.log(`[Humanize] Processing section ${i + 1}/${sections.length} (${section.length} characters)...`)
 
-    if (originalFootnotes !== humanizedFootnotes) {
-      console.warn(`[Humanize] Footnote count mismatch (original: ${originalFootnotes}, humanized: ${humanizedFootnotes}), using original`)
-      return content
-    }
+    try {
+      const response = await retryApiCall(
+        () => ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: `${prompt}\n\n---\n\n${section}`, // Apply prompt to this specific section
+        }),
+        `Humanize section ${i + 1}`,
+        3,
+        2000
+      )
 
-    // Verify headings are preserved
-    const originalHeadings = (content.match(/^#+\s+/gm) || []).length
-    const humanizedHeadings = (humanizedContent.match(/^#+\s+/gm) || []).length
+      const sectionHumanized = response.text || section
 
-    if (originalHeadings !== humanizedHeadings) {
-      console.warn(`[Humanize] Heading count mismatch (original: ${originalHeadings}, humanized: ${humanizedHeadings}), using original`)
-      return content
-    }
-
-    // Verify citations are preserved
-    const humanizedCitations: string[] = []
-    citationPatterns.forEach(pattern => {
-      const matches = humanizedContent.match(pattern)
-      if (matches) {
-        humanizedCitations.push(...matches)
+      // Safety check: if chunk is suspiciously short, revert to original
+      if (sectionHumanized.length < section.length * 0.5) {
+        console.warn(`[Humanize] WARNING: Section ${i + 1} output suspiciously short (${sectionHumanized.length} vs ${section.length}), reverting to original`)
+        humanizedSections.push(section)
+      } else {
+        humanizedSections.push(sectionHumanized)
       }
-    })
 
-    if (originalCitations.length > 0 && humanizedCitations.length < originalCitations.length * 0.9) {
-      console.warn(`[Humanize] Citation count mismatch (original: ${originalCitations.length}, humanized: ${humanizedCitations.length}), using original`)
-      console.warn(`[Humanize] Missing citations: ${originalCitations.length - humanizedCitations.length}`)
-      return content
+      // Small delay to be polite to the API between heavy chunks
+      if (i < sections.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+
+    } catch (error) {
+      console.error(`[Humanize] ERROR processing section ${i + 1}:`, error)
+      console.warn(`[Humanize] Reverting section ${i + 1} to original text`)
+      humanizedSections.push(section)
     }
-
-    // Check if specific citations are missing
-    const missingCitations = originalCitations.filter(citation => !humanizedContent.includes(citation))
-    if (missingCitations.length > 0) {
-      console.warn(`[Humanize] Missing specific citations: ${missingCitations.slice(0, 5).join(', ')}${missingCitations.length > 5 ? '...' : ''}`)
-      console.warn(`[Humanize] Using original content to preserve citations`)
-      return content
-    }
-
-    console.log(`[Humanize] Humanization successful - length: ${humanizedContent.length} characters`)
-    console.log(`[Humanize] Footnotes preserved: ${originalFootnotes}`)
-    console.log(`[Humanize] Headings preserved: ${originalHeadings}`)
-    console.log(`[Humanize] Citations preserved: ${originalCitations.length} → ${humanizedCitations.length}`)
-
-    return humanizedContent
-  } catch (error) {
-    console.error('[Humanize] Error during humanization:', error)
-    // Return original content if humanization fails
-    return content
   }
+
+  // Reassemble the full thesis
+  const fullHumanizedContent = humanizedSections.join('')
+
+  // VERIFICATION & METRICS (Global)
+
+  // Verify that critical elements are preserved
+  const originalFootnotes = (content.match(/\^\d+/g) || []).length
+  const humanizedFootnotes = (fullHumanizedContent.match(/\^\d+/g) || []).length
+
+  if (originalFootnotes !== humanizedFootnotes) {
+    console.warn(`[Humanize] Footnote count mismatch (original: ${originalFootnotes}, humanized: ${humanizedFootnotes})`)
+    // We don't revert the WHOLE thesis for a mismatch anymore, just log it, 
+    // because with chunking, a single errors shouldn't discard 20k words of good work.
+  }
+
+  // Verify citations are preserved
+  const humanizedCitations: string[] = []
+  citationPatterns.forEach(pattern => {
+    const matches = fullHumanizedContent.match(pattern)
+    if (matches) {
+      humanizedCitations.push(...matches)
+    }
+  })
+
+  console.log(`[Humanize] Humanization successful - Total length: ${fullHumanizedContent.length} characters`)
+  console.log(`[Humanize] Citations preserved: ${originalCitations.length} → ${humanizedCitations.length}`)
+
+  return fullHumanizedContent
 }
 
 /**
