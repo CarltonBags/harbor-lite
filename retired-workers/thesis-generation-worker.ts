@@ -1771,6 +1771,8 @@ interface GenerateChapterParams {
   thesisPlan: string
   previousContent: string
   isGerman: boolean
+  sources: Source[]
+  citationStyle: string
 }
 
 async function extendThesisContent({
@@ -2000,6 +2002,8 @@ async function generateChapterContent({
   thesisPlan,
   previousContent,
   isGerman,
+  sources,
+  citationStyle,
 }: GenerateChapterParams): Promise<{ content: string; wordCount: number }> {
   const chapterLabel = formatChapterLabel(chapter) || `${chapter.number}` || 'Kapitel'
   const sectionsSummary = formatSectionsSummary(chapter)
@@ -2009,46 +2013,48 @@ async function generateChapterContent({
   // GOAL: Reach the target word count for this chapter
   // CRITICAL: But generation must NEVER fail - if we can't reach the target, we continue anyway
   const minChapterWords = Math.max(600, Math.round(chapterTargetWords * 0.9))
-  const targetWords = Math.max(chapterTargetWords, minChapterWords)
   let chapterContent = ''
   let attempts = 0
 
-  const buildChapterPrompt = (remainingWords: number) => {
+  // Format Citation Style Label
+  const citationStyleLabels: Record<string, string> = {
+    'apa': 'APA (7th Edition)',
+    'oa': 'APA (7th Edition)',
+    'mla': 'MLA (9th Edition)',
+    'harvard': 'Harvard Style',
+    'chicago': 'Chicago Manual of Style (17th Edition)',
+    'ieee': 'IEEE',
+    'deutsche-zitierweise': 'Deutsche Zitierweise (Fußnoten)',
+    'fussnoten': 'Deutsche Zitierweise (Fußnoten)'
+  }
+  const citationStyleLabel = citationStyleLabels[citationStyle] || citationStyle || 'Harvard Style'
+
+  // Build comprehensive source list for the prompt - CRITICAL FOR CITATIONS
+  const availableSourcesList = sources.map((s, i) => {
+    const authors = s.authors && s.authors.length > 0
+      ? s.authors.slice(0, 3).join(', ') + (s.authors.length > 3 ? ' et al.' : '')
+      : 'Unbekannt'
+    const year = s.year || 'o.J.'
+    const pageStart = s.pageStart ? String(s.pageStart) : null
+    const pageEnd = s.pageEnd ? String(s.pageEnd) : null
+    const pages = s.pages || (pageStart && pageEnd ? `${pageStart}-${pageEnd}` : 'keine Angabe')
+    // const journal = s.journal || '' // Unused
+
+    // Show valid page range - but emphasize EXACT page numbers are required
+    const pageRangeInfo = pageStart && pageEnd
+      ? `Seiten: ${pages} (Dokument umfasst S. ${pageStart}-${pageEnd} - verwende die EXAKTE Seitenzahl!)`
+      : `Seiten: ${pages} (keine Seitenzahlen verfügbar - lasse die Seitenzahl weg)`
+
+    return `[${i + 1}] ${authors} (${year}): "${s.title}". ${pageRangeInfo}`
+  }).join('\n')
+
+  const buildChapterPrompt = (remainingWords: number, currentChapterContext: string = '') => {
+    // If we have current chapter context (extension mode), modify instructions
+    const isExtension = currentChapterContext.length > 0
+
     const baseInstructions = isGerman
-      ? `Du schreibst das Kapitel "${chapterLabel}" einer akademischen Arbeit mit dem Thema "${thesisData.title}".
-
-⚠️⚠️⚠️ ABSOLUT KRITISCH - ERSTE REGEL ⚠️⚠️⚠️
-🚫 ABSOLUT VERBOTEN: FRAGE-ANTWORT-MUSTER! NIEMALS "X? Y." verwenden! IMMER direkte Aussagen!`
-      : `You are writing the chapter "${chapterLabel}" of an academic thesis titled "${thesisData.title}".
-
-⚠️⚠️⚠️ ABSOLUTELY CRITICAL - FIRST RULE ⚠️⚠️⚠️
-🚫 ABSOLUTELY FORBIDDEN: QUESTION-ANSWER PATTERN! NEVER use "X? Y."! ALWAYS use direct statements!`
-
-    const sectionInstructions = sectionsSummary
-      ? (isGerman
-        ? `Die Gliederung dieses Kapitels lautet:\n${sectionsSummary}\n`
-        : `The structure of this chapter is:\n${sectionsSummary}\n`)
-      : ''
-
-    const planInstructions = chapterPlan
-      ? (isGerman
-        ? `Blueprint-Ausschnitt:\n${chapterPlan}\n`
-        : `Blueprint excerpt:\n${chapterPlan}\n`)
-      : ''
-
-    const previousContext = previousContent
-      ? (isGerman
-        ? `Vorheriger Textausschnitt (Kontext, NICHT wiederholen, nur für Übergänge verwenden):\n<<<\n${previousExcerpt}\n>>>\n`
-        : `Previous text excerpt (context only, DO NOT repeat, use only for transitions):\n<<<\n${previousExcerpt}\n>>>\n`)
-      : ''
-
-    const lengthInstruction = isGerman
-      ? `Schreibe MINDESTENS ${remainingWords} neue Wörter für dieses Kapitel. Es ist besser, ausführlicher zu sein als zu kurz.`
-      : `Write AT LEAST ${remainingWords} new words for this chapter. It is better to be more detailed than too short.`
-
-    const startInstruction = isGerman
-      ? `Beginne SOFORT mit der Kapitelüberschrift "## ${chapterLabel}" und schreibe anschließend das vollständige Kapitel.`
-      : `START immediately with the chapter heading "## ${chapterLabel}" and then write the complete chapter.`
+      ? `Du schreibst das Kapitel "${chapterLabel}" einer akademischen Arbeit mit dem Thema "${thesisData.title}".${isExtension ? ' Du hast den ersten Teil des Kapitels bereits geschrieben. Deine Aufgabe ist es nun, das Kapitel FORTZUFÜHREN und zu beenden.' : ''}`
+      : `You are writing the chapter "${chapterLabel}" of an academic thesis titled "${thesisData.title}".${isExtension ? ' You have already written the first part of the chapter. Your task is now to CONTINUE and complete the chapter.' : ''}`
 
     const strictRules = isGerman
       ? `═══════════════════════════════════════════════════════════════════════════════
@@ -2056,8 +2062,19 @@ QUELLENNUTZUNG & STIL - ABSOLUT KRITISCH
 ═══════════════════════════════════════════════════════════════════════════════
 
 **⚠️ STRENG VERBOTEN: ERFUNDENE QUELLEN ⚠️**
-Du darfst NUR die bereitgestellten FileSearch-Quellen zitieren. KEINE anderen.
-Erfundene Quellen (wie "McAfee", "Autor, 2003", etc.) sind STRENG VERBOTEN.
+Du darfst NUR die unten aufgelisteten Quellen zitieren. KEINE anderen.
+Erfundene Quellen sind STRENG VERBOTEN.
+
+**VERFÜGBARE QUELLEN (NUR DIESE DARFST DU VERWENDEN):**
+${availableSourcesList}
+
+**ZITATIONSSTIL: ${citationStyleLabel}**
+${citationStyle === 'deutsche-zitierweise' || citationStyle === 'fussnoten' ? `**Deutsche Zitierweise (Fußnoten):**
+- Im Text: Verwende "^N" direkt nach dem zitierten Inhalt (z.B. "...wurde belegt.^1")
+- Fortlaufende Nummerierung (^1, ^2, ^3...)
+- KEINE Fußnoten-Definitionen am Ende schreiben (diese werden automatisch generiert)` : `**${citationStyleLabel}:**
+- Zitiere im Fließtext: (Autor, Jahr, S. XX)
+- Beispiel: (Müller, 2021, S. 12) oder (Schmidt et al., 2020, S. 5-7)`}
 
 **🚫 ABSOLUT VERBOTEN: EIGENE STUDIEN BEHAUPTEN 🚫**
 Dies ist eine LITERATURBASIERTE Arbeit - du hast KEINE eigene Forschung durchgeführt!
@@ -2077,8 +2094,8 @@ STATTDESSEN - Forschung den ECHTEN Autoren zuschreiben:
 - ✓ "Laut der Analyse von Weber (2019)..."
 
 **⚠️ ZITATIONSDICHTE - ABSOLUT KRITISCH:**
-- JEDER Absatz mit Fakten, Theorien oder Forschungsergebnissen MUSS mindestens 1 Zitation haben
-- Ziel: 1 Zitation pro 100-150 Wörter (NICHT 200!)
+- JEDER Absatz mit Fakten MUSS mindestens 1 Zitation haben
+- Ziel: 1 Zitation pro 100-150 Wörter
 - Pro Kapitel: mindestens 3-5 verschiedene Zitationen
 - KEINE langen Passagen (>150 Wörter) ohne Zitation!
 - Theoretische Abschnitte: besonders viele Zitationen (alle 2-3 Sätze)
@@ -2094,8 +2111,18 @@ SOURCE USAGE & STYLE - ABSOLUTELY CRITICAL
 ═══════════════════════════════════════════════════════════════════════════════
 
 **⚠️ STRICTLY FORBIDDEN: FAKE SOURCES ⚠️**
-You must ONLY cite the provided FileSearch sources. NO others.
-Invented sources (like "McAfee", "Author, 2003", etc.) are STRICTLY FORBIDDEN.
+You must ONLY cite the provided sources listed below. NO others.
+
+**AVAILABLE SOURCES (USE ONLY THESE):**
+${availableSourcesList}
+
+**CITATION STYLE: ${citationStyleLabel}**
+${citationStyle === 'deutsche-zitierweise' || citationStyle === 'fussnoten' ? `**German Citation (Footnotes):**
+- In text: Use "^N" directly after content (e.g. "...was proven.^1")
+- Continuous numbering (^1, ^2, ^3...)
+- DO NOT write footnote definitions at the end` : `**${citationStyleLabel}:**
+- Cite in text: (Author, Year, p. XX)
+- Example: (Miller, 2021, p. 12) or (Smith et al., 2020, p. 5-7)`}
 
 **🚫 ABSOLUTELY FORBIDDEN: CLAIMING OWN STUDIES 🚫**
 This is a LITERATURE-BASED thesis - you have performed NO original research!
@@ -2115,8 +2142,8 @@ INSTEAD - Attribute research to REAL authors:
 - ✓ "According to the analysis by Weber (2019)..."
 
 **⚠️ CITATION DENSITY - ABSOLUTELY CRITICAL:**
-- EVERY paragraph with facts, theories, or research results MUST have at least 1 citation
-- Target: 1 citation per 100-150 words (NOT 200!)
+- EVERY paragraph with facts MUST have at least 1 citation
+- Target: 1 citation per 100-150 words
 - Per chapter: at least 3-5 different citations
 - NO long passages (>150 words) without citation!
 - Theoretical sections: exceptionally high citation density (every 2-3 sentences)
@@ -2128,14 +2155,63 @@ INSTEAD - Attribute research to REAL authors:
 - Research results → ALWAYS cite
 - Claims about the state of research → ALWAYS cite`
 
+
+    /* 
+       ⚠️ CRITICAL FIX FOR CONTINUITY ⚠️
+       The prompt logic was updated to better handle context:
+       - 'sectionInstructions' & 'planInstructions' remain same.
+       - 'previousContext' logic is adjusted:
+         If we are EXTENDING (attempts > 1), we MUST pass the *current partial chapter* as context,
+         otherwise the model restarts.
+         If starting new (attempt 1), we pass the *previous chapters* (via previousContent/previousExcerpt).
+    */
+
+    const sectionInstructions = sectionsSummary
+      ? (isGerman
+        ? `Die Gliederung dieses Kapitels lautet:\n${sectionsSummary}\n`
+        : `The structure of this chapter is:\n${sectionsSummary}\n`)
+      : ''
+
+    const planInstructions = chapterPlan
+      ? (isGerman
+        ? `Blueprint-Ausschnitt:\n${chapterPlan}\n`
+        : `Blueprint excerpt:\n${chapterPlan}\n`)
+      : ''
+
+    let contextInstruction = ''
+
+    if (isExtension) {
+      // EXTENSION MODE: The context is what we just wrote for THIS chapter
+      contextInstruction = isGerman
+        ? `**BEREITS GESCHRIEBENER TEIL DIESES KAPITELS (Fortsetzung hieran anschließen):**\n<<<\n${currentChapterContext}\n>>>\n\nFühre den Text logisch fort. Wiederhole NICHTS was oben steht. Schreibe einfach weiter.`
+        : `**ALREADY WRITTEN PART OF THIS CHAPTER (Continue from here):**\n<<<\n${currentChapterContext}\n>>>\n\nContinue the text logically. Do NOT repeat anything above. Just keep writing.`
+    } else {
+      // NEW CHAPTER MODE: Context is previous chapters
+      contextInstruction = previousContent
+        ? (isGerman
+          ? `Vorheriger Textausschnitt (Kontext, NICHT wiederholen, nur für Übergänge verwenden):\n<<<\n${previousExcerpt}\n>>>\n`
+          : `Previous text excerpt (context only, DO NOT repeat, use only for transitions):\n<<<\n${previousExcerpt}\n>>>\n`)
+        : ''
+    }
+
+    const lengthInstruction = isGerman
+      ? `Schreibe weitere ${remainingWords} Wörter für diesen Teil. Es ist besser, ausführlicher zu sein als zu kurz.`
+      : `Write another ${remainingWords} words for this part. It is better to be more detailed than too short.`
+
+    const startInstruction = isExtension
+      ? (isGerman ? `SCHREIBE EINFACH WEITER (keine Überschriften wiederholen).` : `JUST KEEP WRITING (do not repeat headings).`)
+      : (isGerman
+        ? `Beginne SOFORT mit der Kapitelüberschrift "## ${chapterLabel}" und schreibe anschließend das vollständige Kapitel.`
+        : `START immediately with the chapter heading "## ${chapterLabel}" and then write the complete chapter.`)
+
     return `${baseInstructions}
 
-${sectionInstructions}${planInstructions}${previousContext}${lengthInstruction}
+${sectionInstructions}${planInstructions}${contextInstruction}${lengthInstruction}
 
 ${strictRules}
 
 Weitere Anforderungen:
-- ${isGerman ? 'Nutze die bereitgestellten FileSearch-Quellen INTENSIV. Jede wichtige Aussage muss belegt werden.' : 'Use the provided FileSearch sources EXTENSIVELY. Every major claim must be cited.'}
+- ${isGerman ? 'Nutze die bereitgestellten Quellen INTENSIV.' : 'Use the provided sources EXTENSIVELY.'}
 - ${isGerman ? 'Integriere Kontext, Analyse, Beispiele, Methodik und Diskussion.' : 'Include context, analysis, examples, methodology, and discussion.'}
 - ${isGerman ? 'Füge Übergänge zu vorherigen und folgenden Kapiteln ein, ohne Inhalte zu wiederholen.' : 'Add transitions to previous and upcoming chapters without repeating content.'}
 - ${isGerman ? 'Gliedere das Kapitel mit passenden Zwischenüberschriften (##, ###, etc.).' : 'Structure the chapter with appropriate subheadings (##, ###, etc.).'}
@@ -2147,8 +2223,19 @@ ${startInstruction}`
 
   while (attempts < 3) {
     attempts += 1
-    const remainingWords = Math.max(minChapterWords, chapterTargetWords - chapterContent.split(/\s+/).length)
-    const prompt = buildChapterPrompt(Math.min(remainingWords, chapterTargetWords))
+    const currentWords = chapterContent.split(/\s+/).length
+    const remainingWords = Math.max(0, chapterTargetWords - currentWords)
+
+    // If extending, pass the last ~1000 chars of current content as context
+    const currentChapterExcerpt = chapterContent.length > 1500
+      ? '...' + chapterContent.slice(-1500)
+      : chapterContent
+
+    // Only ask for extension if we are short, otherwise (attempt 1) ask for full target
+    const targetForPrompt = attempts === 1 ? chapterTargetWords : remainingWords
+
+    // Pass extra arg if attempts > 1
+    const prompt = buildChapterPrompt(targetForPrompt, attempts > 1 ? currentChapterExcerpt : '')
 
     const response = await retryApiCall(
       () => ai.models.generateContent({
@@ -2180,11 +2267,11 @@ ${startInstruction}`
       chapterContent += `\n\n${newText}`
     }
 
-    const currentWords = chapterContent.split(/\s+/).length
-    if (currentWords >= minChapterWords) {
+    const updatedWords = chapterContent.split(/\s+/).length
+    if (updatedWords >= minChapterWords) {
       break
     } else {
-      console.warn(`[ThesisGeneration] Chapter ${chapterLabel} still short (${currentWords}/${minChapterWords} words), extending...`)
+      console.warn(`[ThesisGeneration] Chapter ${chapterLabel} still short (${updatedWords}/${minChapterWords} words), extending...`)
     }
   }
 
@@ -2311,6 +2398,8 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
         thesisPlan: thesisPlan || '',
         previousContent: chapterContents.join('\n\n'),
         isGerman,
+        sources: rankedSources,
+        citationStyle: thesisData.citationStyle,
       })
 
       chapterContents.push(chapterText.trim())
@@ -4153,6 +4242,10 @@ async function checkZeroGPT(content: string): Promise<{
 
   console.log('[ZeroGPT] Checking text with ZeroGPT API...')
 
+  // ZeroGPT Limit is ~100k chars. We split if larger.
+  // 90k chars is a safe chunk size.
+  const CHUNK_SIZE = 90000
+
   try {
     // Extract plain text from markdown (remove markdown syntax for better detection)
     const plainText = content
@@ -4169,57 +4262,97 @@ async function checkZeroGPT(content: string): Promise<{
       return null
     }
 
-    const response = await retryApiCall(
-      async () => {
-        const fetchResponse = await fetch('https://zerogpt.p.rapidapi.com/api/v1/detectText', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'X-RapidAPI-Key': RAPIDAPI_KEY,
-            'X-RapidAPI-Host': 'zerogpt.p.rapidapi.com',
-          },
-          body: JSON.stringify({
-            input_text: plainText,
-          }),
-        })
-
-        if (!fetchResponse.ok) {
-          throw new Error(`ZeroGPT API error: ${fetchResponse.status} ${fetchResponse.statusText}`)
-        }
-
-        return await fetchResponse.json() as {
-          success: boolean
-          data?: {
-            is_human_written?: number
-            is_gpt_generated?: number
-            feedback_message?: string
-            words_count?: number
-            gpt_generated_sentences?: string[]
-          }
-        }
-      },
-      'Check text with ZeroGPT API',
-      3, // 3 retries
-      2000 // 2 second delay
-    )
-
-    if (response.success && response.data) {
-      const result = {
-        isHumanWritten: response.data.is_human_written || 0,
-        isGptGenerated: response.data.is_gpt_generated || 0,
-        feedbackMessage: response.data.feedback_message || '',
-        wordsCount: response.data.words_count || 0,
-        gptGeneratedSentences: response.data.gpt_generated_sentences || [],
-      }
-
-      console.log(`[ZeroGPT] Detection result: ${result.isHumanWritten}% human-written, ${result.isGptGenerated}% GPT-generated`)
-      console.log(`[ZeroGPT] Words checked: ${result.wordsCount}`)
-
-      return result
+    const chunks = []
+    if (plainText.length <= CHUNK_SIZE) {
+      chunks.push(plainText)
     } else {
-      console.warn('[ZeroGPT] Invalid response format:', response)
+      let offset = 0
+      while (offset < plainText.length) {
+        chunks.push(plainText.slice(offset, offset + CHUNK_SIZE))
+        offset += CHUNK_SIZE
+      }
+      console.log(`[ZeroGPT] Text size ${plainText.length} > ${CHUNK_SIZE}, split into ${chunks.length} chunks`)
+    }
+
+    const results = []
+
+    for (const chunk of chunks) {
+      try {
+        const response = await retryApiCall(
+          async () => {
+            const fetchResponse = await fetch('https://zerogpt.p.rapidapi.com/api/v1/detectText', {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                'X-RapidAPI-Key': RAPIDAPI_KEY,
+                'X-RapidAPI-Host': 'zerogpt.p.rapidapi.com',
+              },
+              body: JSON.stringify({
+                input_text: chunk,
+              }),
+            })
+
+            if (!fetchResponse.ok) {
+              throw new Error(`ZeroGPT API error: ${fetchResponse.status} ${fetchResponse.statusText}`)
+            }
+
+            return await fetchResponse.json() as {
+              success: boolean
+              data?: {
+                is_human_written?: number
+                is_gpt_generated?: number
+                feedback_message?: string
+                words_count?: number
+                gpt_generated_sentences?: string[]
+              }
+            }
+          },
+          'Check text with ZeroGPT API',
+          3, // 3 retries
+          2000 // 2 second delay
+        )
+
+        if (response.success && response.data) {
+          results.push({
+            isHumanWritten: response.data.is_human_written || 0,
+            isGptGenerated: response.data.is_gpt_generated || 0,
+            feedbackMessage: response.data.feedback_message || '',
+            wordsCount: response.data.words_count || 0,
+            gptGeneratedSentences: response.data.gpt_generated_sentences || [],
+          })
+        }
+      } catch (e) {
+        console.error('[ZeroGPT] Error checking chunk:', e)
+      }
+    }
+
+    if (results.length === 0) {
       return null
     }
+
+    // Average the results
+    const avgHuman = results.reduce((sum, r) => sum + r.isHumanWritten, 0) / results.length
+    const avgGpt = results.reduce((sum, r) => sum + r.isGptGenerated, 0) / results.length
+    const totalWords = results.reduce((sum, r) => sum + r.wordsCount, 0)
+    const allSentences = results.flatMap(r => r.gptGeneratedSentences)
+
+    // Use feedback from the worst chunk (lowest human score) or just the first one? 
+    // Worst chunk is safer to report.
+    const worstChunk = results.reduce((prev, curr) => prev.isHumanWritten < curr.isHumanWritten ? prev : curr)
+
+    const result = {
+      isHumanWritten: Math.round(avgHuman * 100) / 100,
+      isGptGenerated: Math.round(avgGpt * 100) / 100,
+      feedbackMessage: worstChunk.feedbackMessage || 'Aggregated Result',
+      wordsCount: totalWords,
+      gptGeneratedSentences: allSentences,
+    }
+
+    console.log(`[ZeroGPT] Aggregated Result: ${result.isHumanWritten}% human-written, ${result.isGptGenerated}% GPT-generated`)
+    console.log(`[ZeroGPT] Total Words checked: ${result.wordsCount}`)
+
+    return result
+
   } catch (error) {
     console.error('[ZeroGPT] Error checking text:', error)
     return null
@@ -4241,6 +4374,8 @@ async function checkWinston(content: string): Promise<{
 
   console.log('[Winston] Checking text with Winston AI API...')
 
+  const CHUNK_SIZE = 100000 // Winston limit is 150k, we use 100k for safety
+
   try {
     // Extract plain text from markdown (remove markdown syntax for better detection)
     const plainText = content
@@ -4252,51 +4387,75 @@ async function checkWinston(content: string): Promise<{
       .replace(/\^\d+/g, '') // Remove footnote markers
       .trim()
 
-    if (plainText.length < 50) {
+    if (plainText.length < 500) { // Winston often needs more text
       console.warn('[Winston] Text too short for detection, skipping')
       return null
     }
 
-    // Winston Limit: 150k chars. Truncate if needed.
-    const maxChars = 150000
-    const textToCheck = plainText.length > maxChars ? plainText.substring(0, maxChars) : plainText
-    if (plainText.length > maxChars) {
-      console.warn(`[Winston] Text too long (${plainText.length}), truncated to ${maxChars} chars`)
+    const chunks = []
+    if (plainText.length <= CHUNK_SIZE) {
+      chunks.push(plainText)
+    } else {
+      let offset = 0
+      while (offset < plainText.length) {
+        chunks.push(plainText.slice(offset, offset + CHUNK_SIZE))
+        offset += CHUNK_SIZE
+      }
+      console.log(`[Winston] Text size ${plainText.length} > ${CHUNK_SIZE}, split into ${chunks.length} chunks`)
     }
 
-    const response = await retryApiCall(
-      async () => {
-        const fetchResponse = await fetch('https://api.gowinston.ai/v2/ai-content-detection', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${WINSTON_API_KEY}`,
+    const results = []
+
+    for (const chunk of chunks) {
+      try {
+        const response = await retryApiCall(
+          async () => {
+            const fetchResponse = await fetch('https://api.gowinston.ai/v2/ai-content-detection', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${WINSTON_API_KEY}`,
+              },
+              body: JSON.stringify({
+                text: chunk,
+                sentences: true
+              }),
+            })
+
+            if (!fetchResponse.ok) {
+              const errorText = await fetchResponse.text()
+              throw new Error(`Winston API error: ${fetchResponse.status} ${fetchResponse.statusText} - ${errorText}`)
+            }
+
+            return await fetchResponse.json() as {
+              score: number
+              sentences: any
+            }
           },
-          body: JSON.stringify({
-            text: textToCheck,
-            version: 'latest',
-            sentences: true,
-            language: 'auto'
-          }),
-        })
+          'Check text with Winston AI API',
+          3, // 3 retries
+          2000 // 2 second delay
+        )
 
-        if (!fetchResponse.ok) {
-          const errorText = await fetchResponse.text()
-          throw new Error(`Winston API error: ${fetchResponse.status} ${fetchResponse.statusText} - ${errorText}`)
-        }
+        results.push(response)
+      } catch (e) {
+        console.error('[Winston] Error checking chunk:', e)
+      }
+    }
 
-        return await fetchResponse.json() as { score: number; sentences: any }
-      },
-      'Check text with Winston AI API',
-      3,
-      2000
-    )
+    if (results.length === 0) {
+      return null
+    }
 
-    console.log(`[Winston] Detection result: ${response.score} score`)
+    // Average results
+    const avgScore = results.reduce((sum, r) => sum + r.score, 0) / results.length
+    const allSentences = results.flatMap(r => r.sentences)
+
+    console.log(`[Winston] Aggregated Result: ${avgScore} score`)
 
     return {
-      score: response.score,
-      sentences: response.sentences
+      score: Math.round(avgScore),
+      sentences: allSentences
     }
 
   } catch (error) {
