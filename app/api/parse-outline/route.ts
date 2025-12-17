@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     // Upload file to Gemini Files API
     const buffer = await file.arrayBuffer()
     const blob = new Blob([buffer], { type: file.type || 'application/pdf' })
-    
+
     let uploadedFile
     try {
       uploadedFile = await ai.files.upload({
@@ -57,15 +57,15 @@ export async function POST(request: Request) {
     const lengthMin = formData.get('lengthMin') as string
     const lengthMax = formData.get('lengthMax') as string
     const lengthWords = formData.get('lengthWords') as string
-    
+
     let avgPages: number
     if (lengthUnit === 'pages' && lengthMin && lengthMax) {
       avgPages = Math.round((parseInt(lengthMin) + parseInt(lengthMax)) / 2)
     } else if (lengthUnit === 'words' && lengthWords) {
-      // Convert words to pages (words / 320) for display purposes
+      // Convert words to pages (words / 250) for display purposes
       const minWords = parseInt(lengthWords) || 0
       const maxWords = Math.round(minWords * 1.05) // 5% more
-      avgPages = Math.round((minWords + maxWords) / 2 / 320)
+      avgPages = Math.round((minWords + maxWords) / 2 / 250)
     } else {
       avgPages = 50 // Default assumption
     }
@@ -244,7 +244,7 @@ These elements are AUTOMATICALLY added by the system and must NOT appear in the 
       'deckblatt', 'titelseite', 'title page', 'cover page',
       'eidesstattliche erklärung', 'declaration', 'statutory declaration',
     ]
-    
+
     const filteredOutline = outline.filter((item: any) => {
       const title = (item.title || '').toLowerCase().trim()
       return !forbiddenTitles.some(forbidden => title.includes(forbidden))
@@ -259,14 +259,14 @@ These elements are AUTOMATICALLY added by the system and must NOT appear in the 
           number: subsection.number || `${sectionNumber}.${subIndex + 1}`,
           title: subsection.title || 'Unbenannter Unterabschnitt',
         })) : []
-        
+
         return {
           number: sectionNumber,
           title: section.title || 'Unbenannter Abschnitt',
           subsections,
         }
       }) : []
-      
+
       return {
         number: chapterNumber,
         title: item.title || item.chapter || 'Unbenanntes Kapitel',

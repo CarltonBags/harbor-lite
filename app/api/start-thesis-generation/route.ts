@@ -131,6 +131,29 @@ export async function POST(request: Request) {
         .eq('id', thesisId)
     }
 
+
+    const targetLength = thesis.target_length || 0
+    const lengthUnit = thesis.length_unit || 'pages' // Default to pages if not set
+
+    // Validate length limit (80 pages or 20,000 words)
+    // Note: Frontend uses 250 words/page (80 pages = 20,000 words).
+    if (lengthUnit === 'pages') {
+      if (targetLength > 21000) { // 20000 + buffer
+        return NextResponse.json(
+          { error: 'Thesis is too long. Maximum allowed is 80 pages.' },
+          { status: 400 } // buffer: 1000, 21000 total
+        )
+      }
+    } else {
+      // Words: limit is 20,000. Allow small buffer (e.g., 5% is added in frontend calc)
+      if (targetLength > 21000) {
+        return NextResponse.json(
+          { error: 'Thesis is too long. Maximum allowed is 20,000 words.' },
+          { status: 400 }
+        )
+      }
+    }
+
     const jobData: ThesisGenerationJob = {
       thesisId,
       thesisData: {

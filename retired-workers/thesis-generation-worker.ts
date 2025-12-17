@@ -239,7 +239,7 @@ ${JSON.stringify(thesisData.outline, null, 2)}
 
 **Aufgabe:**
 Erstelle für JEDES Kapitel (nicht für Unterabschnitte) genau 2 Suchanfragen auf Deutsch und 2 auf Englisch. Die Suchanfragen sollten:
-1. Spezifisch und präzise sein - verwende natürliche Sprache (z.B. "machine learning in healthcare" statt "machine learning AND healthcare")
+1. Spezifisch und präzise sein UND immer den Hauptkontext der Thesis ("${thesisData.title}" / "${thesisData.field}") beinhalten - vermeide generische Suchen wie nur "Methodik" oder "Einleitung".
 2. Fachbegriffe und relevante Konzepte enthalten
 3. Für wissenschaftliche Datenbanken (OpenAlex, Semantic Scholar) geeignet sein - Semantic Scholar akzeptiert natürliche Sprachsuchanfragen
 4. Verschiedene Aspekte des Kapitels abdecken
@@ -652,7 +652,7 @@ Bewerte jede Quelle auf einer Skala von 0-100 basierend auf ihrer Relevanz für 
 - Wissenschaftliche Qualität (basierend auf verfügbaren Informationen)
 
 **KRITISCH - STRENGE FILTERUNG:**
-- Quellen mit einem Relevanz-Score unter 50 werden KOMPLETT AUSGESCHLOSSEN
+- Quellen mit einem Relevanz-Score unter 60 MÜSSEN ausgeschlossen werden. Bestrafe Quellen aus fremden Fachgebieten (z.B. medizinische Studien für eine politikwissenschaftliche Arbeit) mit sehr niedrigen Scores (<20), selbst wenn sie das Keyword enthalten.
 - Nur Quellen, die einen KLAREN BEZUG zum Fachbereich und zur Forschungsfrage haben, sind akzeptabel
 - Eliminiere ALLE "Filler"-Quellen, die keinen echten Zusammenhang zum Thema haben
 - Sei SEHR STRENG bei der Bewertung - lieber weniger, aber hochrelevante Quellen
@@ -749,8 +749,8 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
   const sorted = allSourcesWithScores.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
 
   // Log statistics
-  const highRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) >= 70).length
-  const mediumRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) >= 40 && (s.relevanceScore || 0) < 70).length
+  const highRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) >= 80).length
+  const mediumRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) >= 60 && (s.relevanceScore || 0) < 80).length
   const lowRelevance = sorted.filter((s: Source) => (s.relevanceScore || 0) < 40).length
   const topScore = sorted[0]?.relevanceScore || 0
   const avgScore = sorted.reduce((sum, s) => sum + (s.relevanceScore || 0), 0) / sorted.length
@@ -759,14 +759,14 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
   console.log(`[Ranking]   Total sources before filtering: ${sorted.length}`)
   console.log(`[Ranking]   Ranked sources: ${rankedSources.length}`)
   console.log(`[Ranking]   Unranked sources (default score 30): ${unrankedSources.length}`)
-  console.log(`[Ranking]   High relevance (>=70): ${highRelevance}`)
-  console.log(`[Ranking]   Medium relevance (40-69): ${mediumRelevance}`)
+  console.log(`[Ranking]   High relevance (>=80): ${highRelevance}`)
+  console.log(`[Ranking]   Medium relevance (60-79): ${mediumRelevance}`)
   console.log(`[Ranking]   Low relevance (<40): ${lowRelevance}`)
   console.log(`[Ranking]   Top score: ${topScore}, Average score: ${avgScore.toFixed(1)}`)
 
   // FILTER OUT UNRELATED SOURCES - Eliminate filler sources with no connection to the field
   // Minimum relevance score of 50 to ensure sources are actually related to the thesis topic
-  const MIN_RELEVANCE_SCORE = 50
+  const MIN_RELEVANCE_SCORE = 60
   const filtered = sorted.filter((s: Source) => (s.relevanceScore || 0) >= MIN_RELEVANCE_SCORE)
   const removed = sorted.length - filtered.length
 
@@ -1866,7 +1866,7 @@ async function extendThesisContent({
 
     const extensionInstruction = isGerman
       ? `Die Thesis muss mindestens ${expectedWordCount} Wörter umfassen, aktuell sind es nur ${wordCount} Wörter. Ergänze JETZT mindestens ${extensionTargetWords} neue Wörter (gern mehr).`
-      : `The thesis must contain at least ${expectedWordCount} words, but it currently has only ${wordCount} words. Add AT LEAST ${extensionTargetWords} new words now (more is welcome).`
+      : `The thesis must contain at least ${expectedWordCount} words, but it currently has only ${wordCount} words. Add AT LEAST ${extensionTargetWords} new words now (more is welcome). It is better to write too much than too little.`
 
     const extensionPrompt = isGerman
       ? `Du erweiterst eine wissenschaftliche Arbeit mit dem Thema "${thesisData.title}" (${thesisData.field}).
@@ -1921,7 +1921,7 @@ ${outlineSummary || '- (no outline provided)'}
 ${planSnippet ? `Blueprint excerpt:\n${planSnippet}\n\n` : ''}Chapters to expand:
 ${missingChapterSummary}
 
-The current text ends with:
+The current text ends:
 <<<EXCERPT-START>>>
 ${recentExcerpt}
 <<<EXCERPT-END>>>
@@ -2043,8 +2043,8 @@ async function generateChapterContent({
       : ''
 
     const lengthInstruction = isGerman
-      ? `Schreibe MINDESTENS ${remainingWords} neue Wörter für dieses Kapitel (gern mehr).`
-      : `Write AT LEAST ${remainingWords} new words for this chapter (more is welcome).`
+      ? `Schreibe MINDESTENS ${remainingWords} neue Wörter für dieses Kapitel. Es ist besser, ausführlicher zu sein als zu kurz.`
+      : `Write AT LEAST ${remainingWords} new words for this chapter. It is better to be more detailed than too short.`
 
     const startInstruction = isGerman
       ? `Beginne SOFORT mit der Kapitelüberschrift "## ${chapterLabel}" und schreibe anschließend das vollständige Kapitel.`
@@ -2194,10 +2194,68 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
   const isGerman = thesisData.language === 'german'
 
-  // DISABLED: Per-chapter generation - it overshoots word counts and doesn't use sources properly
-  // Using single-call generation with FileSearchStore RAG instead
-  console.log('[ThesisGeneration] Using single-call generation with FileSearchStore RAG')
-  console.log('[ThesisGeneration] FileSearchStore provides exact page numbers for citations - use them!')
+  const useChapterGeneration = outlineChapters.length > 0
+
+  if (useChapterGeneration) {
+    console.log('[ThesisGeneration] Using per-chapter generation strategy')
+    const chapterContents: string[] = []
+    let totalWordCount = 0
+
+    // Helper function to check if a chapter should be skipped (e.g., Verzeichnisse, Bibliography)
+    const shouldSkipChapter = (chapter: OutlineChapterInfo): boolean => {
+      const title = (chapter.title || '').toLowerCase().trim()
+      const skipKeywords = [
+        'verzeichnisse', 'verzeichnis', 'literaturverzeichnis', 'bibliography', 'references',
+        'anhang', 'appendix', 'abbildungsverzeichnis', 'tabellenverzeichnis',
+        'abkürzungsverzeichnis', 'list of figures', 'list of tables', 'abbreviations'
+      ]
+      return skipKeywords.some(keyword => title.includes(keyword))
+    }
+
+    for (let i = 0; i < outlineChapters.length; i++) {
+      const chapter = outlineChapters[i]
+
+      // Skip non-content chapters (Verzeichnisse, Bibliography, etc.)
+      if (shouldSkipChapter(chapter)) {
+        console.log(`[ThesisGeneration] Skipping chapter ${chapter.number} "${chapter.title}" (non-content chapter)`)
+        continue
+      }
+
+      const chapterTarget = Math.max(800, Math.round(targetWordCount / outlineChapters.length))
+      console.log(`[ThesisGeneration] Generating chapter ${chapter.number} (${chapterTarget} words target)`)
+
+      const { content: chapterText, wordCount: chapterWordCount } = await generateChapterContent({
+        thesisData,
+        chapter,
+        chapterTargetWords: chapterTarget,
+        thesisPlan: thesisPlan || '',
+        previousContent: chapterContents.join('\n\n'),
+        isGerman,
+      })
+
+      chapterContents.push(chapterText.trim())
+      totalWordCount += chapterWordCount
+      console.log(`[ThesisGeneration] Chapter ${chapter.number} complete (~${chapterWordCount} words, total ${totalWordCount}/${expectedWordCount})`)
+    }
+
+    let combinedContent = chapterContents.join('\n\n\n')
+
+    if (totalWordCount < expectedWordCount) {
+      const extensionResult = await extendThesisContent({
+        thesisData,
+        thesisPlan: thesisPlan || '',
+        currentContent: combinedContent,
+        expectedWordCount,
+        outlineChapters,
+        isGerman,
+      })
+      combinedContent = extensionResult.content
+      totalWordCount = extensionResult.wordCount
+      console.log(`[ThesisGeneration] ✓ Word count reached after extension: ~${totalWordCount}/${expectedWordCount} words`)
+    }
+
+    return combinedContent
+  }
 
   // Build comprehensive source list for the prompt - THIS IS CRITICAL
   // The AI MUST know exactly which sources it can cite AND valid page ranges
@@ -2769,13 +2827,7 @@ The text must sound like written by a human author from the start and must not b
   CORRECT: "It should be noted that..." or "Note that..."
   WRONG: "We can observe that..."
   CORRECT: "It can be observed that..." or "Observation shows that..."
-- ABSOLUTELY FORBIDDEN: Direct address to the reader ("you", "one" in direct address).
-- Use instead: Passive constructions, impersonal formulations, nominalizations.
-- Examples of correct formulations:
-  - "The following section examines..." instead of "We will examine in the following section..."
-  - "It becomes apparent that..." instead of "We see that..."
-  - "The investigation revealed..." instead of "We found that..."
-  - "This concerns..." instead of "We are dealing with..."
+  WRONG: "This concerns..." instead of "We are dealing with..."
 
 **Structure:**
 - Use the provided outline.
@@ -2914,6 +2966,8 @@ DO NOT STOP until all chapters are complete. The thesis must be COMPLETE.`
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+
+
       console.log(`[ThesisGeneration] Attempt ${attempt}/${maxAttempts}: Full generation with FileSearchStore + Gemini Pro`)
       console.log(`[ThesisGeneration]   Model: gemini-2.5-pro`)
       console.log(`[ThesisGeneration]   FileSearchStore: ${thesisData.fileSearchStoreId}`)

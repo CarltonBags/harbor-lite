@@ -242,7 +242,7 @@ export default function NewThesisPage() {
 
           if (storedUnit === 'pages') {
             // If stored as pages, use pages
-            const pages = Math.round(targetLength / 320)
+            const pages = Math.round(targetLength / 250)
             lengthMin = String(Math.max(1, pages - 5))
             lengthMax = String(pages + 5)
             lengthUnit = 'pages'
@@ -367,8 +367,16 @@ export default function NewThesisPage() {
       // Check length based on unit
       if (formData.lengthUnit === 'pages') {
         if (!formData.lengthMin || !formData.lengthMax) return
+        if (parseInt(formData.lengthMax) > 80) {
+          alert('Die maximale Länge darf 80 Seiten nicht überschreiten.')
+          return
+        }
       } else {
         if (!formData.lengthWords) return
+        if (parseInt(formData.lengthWords) > 20000) {
+          alert('Die maximale Länge darf 20.000 Wörter nicht überschreiten.')
+          return
+        }
       }
       // Check field: either a predefined field or custom field if "Andere" is selected
       if (!formData.field || formData.field.trim() === '') return
@@ -401,11 +409,11 @@ export default function NewThesisPage() {
         let maxWords: number
 
         if (formData.lengthUnit === 'pages') {
-          // Pages: convert to words (pages * 320)
+          // Pages: convert to words (pages * 250)
           const minPages = parseInt(formData.lengthMin) || 0
           const maxPages = parseInt(formData.lengthMax) || 0
-          minWords = minPages * 320
-          maxWords = maxPages * 320
+          minWords = minPages * 250
+          maxWords = maxPages * 250
         } else {
           // Words: use provided value as minimum, max is 5% more
           const minWordsInput = parseInt(formData.lengthWords) || 0
@@ -511,11 +519,11 @@ export default function NewThesisPage() {
       let maxWords: number
 
       if (formData.lengthUnit === 'pages') {
-        // Pages: convert to words (pages * 320)
+        // Pages: convert to words (pages * 250)
         const minPages = parseInt(formData.lengthMin) || 0
         const maxPages = parseInt(formData.lengthMax) || 0
-        minWords = minPages * 320
-        maxWords = maxPages * 320
+        minWords = minPages * 250
+        maxWords = maxPages * 250
       } else {
         // Words: use provided value as minimum, max is 5% more
         const minWordsInput = parseInt(formData.lengthWords) || 0
@@ -593,11 +601,11 @@ export default function NewThesisPage() {
       let maxWords: number
 
       if (formData.lengthUnit === 'pages') {
-        // Pages: convert to words (pages * 320)
+        // Pages: convert to words (pages * 250)
         const minPages = parseInt(formData.lengthMin) || 0
         const maxPages = parseInt(formData.lengthMax) || 0
-        minWords = minPages * 320
-        maxWords = maxPages * 320
+        minWords = minPages * 250
+        maxWords = maxPages * 250
       } else {
         // Words: use provided value as minimum, max is 5% more
         const minWordsInput = parseInt(formData.lengthWords) || 0
@@ -621,7 +629,7 @@ export default function NewThesisPage() {
       // Set a default outline structure if generation fails
       // Use different structure based on thesis type
       const isSourceBasedThesis = formData.type === 'hausarbeit' || formData.type === 'seminararbeit'
-      
+
       if (isSourceBasedThesis) {
         // Source-based thesis: No methodology chapter
         setOutline([
@@ -1128,8 +1136,8 @@ export default function NewThesisPage() {
         if (formData.lengthUnit === 'pages') {
           const minPages = parseInt(formData.lengthMin) || 0
           const maxPages = parseInt(formData.lengthMax) || 0
-          minWords = minPages * 320
-          maxWords = maxPages * 320
+          minWords = minPages * 250
+          maxWords = maxPages * 250
         } else {
           const minWordsInput = parseInt(formData.lengthWords) || 0
           minWords = minWordsInput
@@ -1161,8 +1169,8 @@ export default function NewThesisPage() {
         if (formData.lengthUnit === 'pages') {
           const minPages = parseInt(formData.lengthMin) || 0
           const maxPages = parseInt(formData.lengthMax) || 0
-          minWords = minPages * 320
-          maxWords = maxPages * 320
+          minWords = minPages * 250
+          maxWords = maxPages * 250
         } else {
           const minWordsInput = parseInt(formData.lengthWords) || 0
           minWords = minWordsInput
@@ -1463,11 +1471,12 @@ export default function NewThesisPage() {
                           placeholder="z.B. 50"
                           min="1"
                           className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                          max="80"
                         />
                       </div>
                     </div>
                     <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      Hinweis: Seiten werden automatisch in Wörter umgerechnet (1 Seite = 320 Wörter)
+                      Hinweis: Seiten werden automatisch in Wörter umgerechnet (1 Seite = 250 Wörter). Maximum: 80 Seiten.
                     </p>
                   </>
                 ) : (
@@ -1483,10 +1492,11 @@ export default function NewThesisPage() {
                         placeholder="z.B. 10000"
                         min="1"
                         className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                        max="20000"
                       />
                     </div>
                     <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      Hinweis: Die Thesis kann bis zu 5% länger sein als die angegebene Mindestanzahl
+                      Hinweis: Die Thesis kann bis zu 5% länger sein als die angegebene Mindestanzahl. Maximum: 20.000 Wörter.
                     </p>
                   </>
                 )}

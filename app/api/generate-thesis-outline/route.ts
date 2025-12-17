@@ -37,12 +37,12 @@ export async function POST(request: Request) {
       'deutsche-zitierweise': 'Deutsche Zitierweise',
     }
 
-    const avgPages = Math.round((lengthMin + lengthMax) / 2 / 320)
+    const avgPages = Math.round((lengthMin + lengthMax) / 2 / 250)
     const lengthText = language === 'german'
-      ? `${lengthMin}-${lengthMax} Wörter (ca. ${Math.round(lengthMin/320)}-${Math.round(lengthMax/320)} Seiten)`
-      : `${lengthMin}-${lengthMax} words (approx. ${Math.round(lengthMin/320)}-${Math.round(lengthMax/320)} pages)`
+      ? `${lengthMin}-${lengthMax} Wörter (ca. ${Math.round(lengthMin / 250)}-${Math.round(lengthMax / 250)} Seiten)`
+      : `${lengthMin}-${lengthMax} words (approx. ${Math.round(lengthMin / 250)}-${Math.round(lengthMax / 250)} pages)`
     const langText = language === 'german' ? 'Deutsch' : 'English'
-    const langInstruction = language === 'german' 
+    const langInstruction = language === 'german'
       ? 'KRITISCH WICHTIG: Die gesamte Gliederung MUSS ausschließlich auf Deutsch sein. Alle Kapitel-Titel, Abschnitts-Titel und Unterabschnitts-Titel müssen auf Deutsch verfasst werden. KEINE englischen Begriffe verwenden, es sei denn, es handelt sich um Fachbegriffe, die üblicherweise auf Englisch verwendet werden. Die gesamte Kommunikation und alle Titel müssen auf Deutsch sein.'
       : 'CRITICALLY IMPORTANT: The entire outline MUST be exclusively in English. All chapter titles, section titles, and subsection titles must be written in English. DO NOT use German terms unless they are technical terms commonly used in German. All communication and all titles must be in English.'
 
@@ -315,7 +315,7 @@ These elements are AUTOMATICALLY added by the system and must NOT appear in the 
       'stichprobe', 'sample', 'befragung', 'interview', 'umfrage', 'survey', 'questionnaire',
       'experiment', 'experimentelles design', 'experimental design',
     ]
-    
+
     const filteredOutline = outline.filter((item: any) => {
       const title = (item.title || '').toLowerCase().trim()
       return !forbiddenTitles.some(forbidden => title.includes(forbidden))
@@ -330,14 +330,14 @@ These elements are AUTOMATICALLY added by the system and must NOT appear in the 
           number: subsection.number || `${sectionNumber}.${subIndex + 1}`,
           title: subsection.title || 'Unbenannter Unterabschnitt',
         })) : []
-        
+
         return {
           number: sectionNumber,
           title: section.title || 'Unbenannter Abschnitt',
           subsections,
         }
       }) : []
-      
+
       return {
         number: chapterNumber,
         title: item.title || item.chapter || 'Unbenanntes Kapitel',
