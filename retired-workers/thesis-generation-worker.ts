@@ -2239,6 +2239,11 @@ Weitere Anforderungen:
 - ${isGerman ? 'Nutze ein akademisches, menschliches Sprachmuster mit Variation in Satzlängen und Syntax.' : 'Use academic, human-like language with varied sentence lengths and syntax.'}
 - ${isGerman ? 'Keine Meta-Kommentare, nur Inhalt.' : 'No meta commentary, only content.'}
 - ${isGerman ? 'VERMEIDE ÜBERTRIEBENE ADJEKTIVE/ADVERBIEN (UNWISSENSCHAFTLICH): Nutze niemals Wörter wie "unglaublich", "extrem", "total", "absolut", "schockierend", "riesig". Bleibe neutral und sachlich.' : 'AVOID HYPERBOLIC ADJECTIVES/ADVERBS (UNSCIENTIFIC): Never use words like "incredibly", "extremely", "totally", "absolutely", "shocking", "massive". Remain neutral and objective.'}
+- ${isGerman ? 'KEINE UMGANGSSPRACHE (ABSOLUT VERBOTEN): Vermeide Füllwörter wie "halt", "eben", "eh", "quasi", "sozusagen", "mal". Schreibe im gehobenen Nominalstil.' : 'NO COLLOQUIAL LANGUAGE (ABSOLUTELY FORBIDDEN): Avoid filler words like "like", "basically", "so to speak", "kind of". Write in formal academic style.'}
+- ${isGerman ? 'KEINE PERSONALPRONOMEN (ABSOLUT VERBOTEN): Verwende NIEMALS "ich", "wir", "uns", "unser". Nutze stattdessen Passiv- oder "Man"-Konstruktionen (z.B. "Es wird untersucht" statt "Wir untersuchen").' : 'NO PERSONAL PRONOUNS (ABSOLUTELY FORBIDDEN): NEVER use "I", "we", "us", "our". Use passive or impersonal constructions instead (e.g., "It is analyzed" instead of "We analyze").'}
+- ${isGerman ? 'STRENG WISSENSCHAFTLICHER STIL: Nutze präzise Fachterminologie, komplexe Satzstrukturen (Hypotaxen) und vermeide persönliche Meinungen.' : 'STRICT SCIENTIFIC STYLE: Use precise terminology, complex sentence structures, and avoid personal opinions.'}
+- ${isGerman ? 'ABSOLUT UNEMOTIONAL: Der Text muss nüchtern, distanziert und analytisch sein. Keine Begeisterung, keine Dramatik, nur Fakten.' : 'ABSOLUTELY UNEMOTIONAL: The text must be cold, distant, and analytical. No excitement, no drama, only facts.'}
+- ${isGerman ? `FORSCHUNGSFRAGE UNANTASTBAR: Die Forschungsfrage ("${thesisData.researchQuestion}") darf NICHT verändert, umformuliert oder neu interpretiert werden. Sie steht absolut fest.` : `RESEARCH QUESTION IMMUTABLE: The research question ("${thesisData.researchQuestion}") must NOT be changed, rephrased, or reinterpreted. It is absolute.`}
 
 ${startInstruction}`
   }
@@ -4140,9 +4145,21 @@ M. **FORBIDDEN WORDS AND FORMULATIONS (ABSOLUTELY CRITICAL):**
      - WRONG: "A massive change..." -> CORRECT: "A substantial change..."
      - Keep the tone NEUTRAL, OBJECTIVE, and RESTRAINED.
 
+   - ABSOLUTELY UNEMOTIONAL (CRITICAL):
+     - The text must be cold, distant, and analytical.
+     - NO excitement, NO drama, NO storytelling.
+     - IF you find emotional phrasing, REWRITE it to be boring and factual.
+
+   - ABSOLUTELY FORBIDDEN: Colloquial Language / Filler Words (Umgangssprache):
+     - DO NOT use: "halt", "eben", "eh", "quasi", "sozusagen", "irgendwie", "mal", "schon".
+     - AVOID vaguely formulated sentences. Use precise Nominal Style.
+     - WRONG: "Das ist halt so..." -> CORRECT: "Dies stellt einen Sachverhalt dar, der..."
+
    - ABSOLUTELY FORBIDDEN: Personal pronouns like "we", "I", "us", "our" - use passive or impersonal constructions instead.
      WRONG: "We will address this in the next section..."
      CORRECT: "This will be addressed in the next section..." or "The next section addresses..."
+     WRONG: "Wir werden der Frage nachgehen..."
+     CORRECT: "Es ist der Frage nachzugehen..."
      WRONG: "We must note that..."
      CORRECT: "It should be noted that..." or "Note that..."
      WRONG: "We can observe that..."
