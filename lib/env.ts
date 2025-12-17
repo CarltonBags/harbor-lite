@@ -5,7 +5,8 @@
 
 export const env = {
   // OpenAI
-  OPENAI_KEY: process.env.OPENAI_KEY || '',
+  OPENAI_KEY: process.env.OPENAI_KEY || process.env.OPENAI_API_KEY || '',
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY || process.env.OPENAI_KEY || '',
 
   // Gemini
   GEMINI_KEY: process.env.GEMINI_KEY || '',

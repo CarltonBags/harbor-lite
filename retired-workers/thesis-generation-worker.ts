@@ -32,6 +32,7 @@ const OPENALEX_EMAIL = process.env.OPENALEX_EMAIL || 'moontoolsinc@proton.me'
 const OPENAI_API_KEY = process.env.OPENAI_KEY // Optional: for generating embeddings
 const OPENAI_EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-ada-002' // Default to ada-002 (1536 dims)
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY // Optional: for ZeroGPT API
+const WINSTON_API_KEY = process.env.WINSTON_API_KEY // Optional: for Winston AI API
 
 if (!GEMINI_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Missing required environment variables')
@@ -331,7 +332,7 @@ async function queryOpenAlex(query: string, language: 'german' | 'english'): Pro
       // Extract page numbers from biblio (journal page numbers like 239-253)
       const firstPage = work.biblio?.first_page || null
       const lastPage = work.biblio?.last_page || null
-      
+
       return {
         title: work.title || 'Untitled',
         authors: (work.authorships || []).map((a: any) => a.author?.display_name || '').filter(Boolean),
@@ -1048,12 +1049,12 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     // Page numbers: We need BOTH journal pages (for citations) AND PDF pages (for FileSearchStore mapping)
     // FileSearchStore returns PDF-internal page numbers, but citations need journal page numbers
     // So we store BOTH and calculate the mapping
-    
+
     let journalPageStart: string | null = null
     let journalPageEnd: string | null = null
     let pdfPageStart: string | null = null
     let pdfPageEnd: string | null = null
-    
+
     // FIRST: Get journal page numbers from API (OpenAlex/Semantic Scholar)
     // These are the JOURNAL page numbers which are correct for citations (e.g., 239-253)
     if (source.pageStart && source.pageEnd) {
@@ -1069,7 +1070,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
         console.log(`[DocUpload] Parsed API journal page range: ${journalPageStart}-${journalPageEnd}`)
       }
     }
-    
+
     // SECOND: ALWAYS extract PDF page count (needed for FileSearchStore mapping)
     // Even if we have journal pages, we need PDF pages to map FileSearchStore results
     if (fileType.type === 'pdf') {
@@ -1080,7 +1081,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
         if (pageNumbers.pageStart && pageNumbers.pageEnd) {
           const extractedStart = parseInt(pageNumbers.pageStart, 10)
           const extractedEnd = parseInt(pageNumbers.pageEnd, 10)
-          
+
           // VALIDATION: Ensure page numbers make sense
           if (extractedEnd > 1000) {
             console.warn(`[DocUpload] WARNING: Extracted PDF pageEnd (${extractedEnd}) seems too high, likely incorrect.`)
@@ -1097,12 +1098,12 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
         console.warn(`[DocUpload] WARNING: PDF page extraction failed:`, error)
       }
     }
-    
+
     // THIRD: Determine which page numbers to use for metadata
     // Priority: Journal pages (if available) > PDF pages > Estimation
     let pageStart: string | null = null
     let pageEnd: string | null = null
-    
+
     if (journalPageStart && journalPageEnd) {
       // Use journal pages for citations
       pageStart = journalPageStart
@@ -1153,14 +1154,14 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     if (pageStart && pageEnd) {
       customMetadata.push({ key: 'pages', stringValue: `${pageStart}-${pageEnd}`.substring(0, 256) })
     }
-    
+
     // Store PDF page count separately for mapping FileSearchStore results
     if (pdfPageStart && pdfPageEnd) {
       customMetadata.push({ key: 'pdfPageStart', stringValue: pdfPageStart.substring(0, 256) })
       customMetadata.push({ key: 'pdfPageEnd', stringValue: pdfPageEnd.substring(0, 256) })
       console.log(`[DocUpload] Stored PDF pages for mapping: ${pdfPageStart}-${pdfPageEnd}`)
     }
-    
+
     // Store journal pages separately if different from PDF pages
     if (journalPageStart && journalPageEnd && (journalPageStart !== pdfPageStart || journalPageEnd !== pdfPageEnd)) {
       customMetadata.push({ key: 'journalPageStart', stringValue: journalPageStart.substring(0, 256) })
@@ -1791,7 +1792,7 @@ async function extendThesisContent({
     /#{1,3}\s*(fazit|schluss|conclusion|summary)\s*(und|and)?\s*(ausblick)?/i,
   ]
   const hasFazit = fazitPatterns.some(pattern => pattern.test(updatedContent))
-  
+
   // Find the last chapter in the outline
   const lastChapter = outlineChapters[outlineChapters.length - 1]
   const lastChapterWritten = lastChapter && detectChapters(updatedContent, [lastChapter]).length > 0
@@ -1813,13 +1814,13 @@ async function extendThesisContent({
   for (let pass = 1; pass <= maxPasses && wordCount < expectedWordCount; pass++) {
     const remainingWords = expectedWordCount - wordCount
     const currentRatio = wordCount / expectedWordCount
-    
+
     // Stop if we've reached acceptable threshold
     if (currentRatio >= minAcceptableRatio) {
       console.log(`[ThesisGeneration] [Extension] ✓ Reached ${Math.round(currentRatio * 100)}% - acceptable threshold met`)
       break
     }
-    
+
     const roughTarget = Math.max(2000, Math.round(expectedWordCount * 0.15)) // Increased minimum target
     const extensionTargetWords = Math.min(
       remainingWords,
@@ -1827,7 +1828,7 @@ async function extendThesisContent({
     )
 
     const missingChapters = getMissingChapters(updatedContent, outlineChapters)
-    
+
     // Build appropriate expansion instruction based on what's missing
     let missingChapterSummary: string
     if (missingChapters.length > 0) {
@@ -2192,7 +2193,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   console.log(`[ThesisGeneration] Using top ${rankedSources.length} sources by relevance for RAG context`)
 
   const isGerman = thesisData.language === 'german'
-  
+
   // DISABLED: Per-chapter generation - it overshoots word counts and doesn't use sources properly
   // Using single-call generation with FileSearchStore RAG instead
   console.log('[ThesisGeneration] Using single-call generation with FileSearchStore RAG')
@@ -2201,7 +2202,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   // Build comprehensive source list for the prompt - THIS IS CRITICAL
   // The AI MUST know exactly which sources it can cite AND valid page ranges
   const availableSourcesList = rankedSources.map((s, i) => {
-    const authors = s.authors && s.authors.length > 0 
+    const authors = s.authors && s.authors.length > 0
       ? s.authors.slice(0, 3).join(', ') + (s.authors.length > 3 ? ' et al.' : '')
       : 'Unbekannt'
     const year = s.year || 'o.J.'
@@ -2209,12 +2210,12 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     const pageEnd = s.pageEnd ? String(s.pageEnd) : null
     const pages = s.pages || (pageStart && pageEnd ? `${pageStart}-${pageEnd}` : 'keine Angabe')
     const journal = s.journal || ''
-    
+
     // Show valid page range - but emphasize EXACT page numbers are required
-    const pageRangeInfo = pageStart && pageEnd 
+    const pageRangeInfo = pageStart && pageEnd
       ? `Seiten: ${pages} (Dokument umfasst S. ${pageStart}-${pageEnd} - verwende die EXAKTE Seitenzahl, auf der der zitierte Inhalt steht!)`
       : `Seiten: ${pages} (keine Seitenzahlen verfügbar - lasse die Seitenzahl KOMPLETT weg, schreibe NICHT "S. [keine Angabe]")`
-    
+
     return `[${i + 1}] ${authors} (${year}): "${s.title}"${journal ? `. In: ${journal}` : ''}. ${pageRangeInfo}`
   }).join('\n')
 
@@ -2310,7 +2311,7 @@ Du schreibst eine LITERATURARBEIT:
 - Du DISKUTIERST verschiedene Standpunkte aus der Literatur
 - Du führst KEINE eigene empirische Forschung durch!
 
-**VERFÜGBARE QUELLEN (NUR DIESE DARFST DU ZITIEREN):**
+**VERFÜGBARE QUELLEN (NUR DIESE DARFST DU VERWENDEN UND ZITIEREN):**
 ${availableSourcesList}
 
 **ZITATIONSREGELN - STRIKT EINHALTEN:**
@@ -2919,7 +2920,7 @@ DO NOT STOP until all chapters are complete. The thesis must be COMPLETE.`
 
       // On retry attempts, add extra emphasis on word count (gets more emphatic with each retry)
       const urgencyLevel = attempt >= 3 ? 'LETZTE CHANCE' : 'WICHTIG'
-      const retryEmphasis = attempt > 1 ? (isGerman 
+      const retryEmphasis = attempt > 1 ? (isGerman
         ? `
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -3071,7 +3072,7 @@ If you write too little again, the thesis will be delivered incomplete!
         // If word count is significantly below target, we REGENERATE the entire thesis with stronger emphasis
         const wordRatio = wordCount / expectedWordCount
         const MIN_ACCEPTABLE_RATIO = 0.95 // Require 95% of target (was 85%)
-        
+
         if (wordRatio < MIN_ACCEPTABLE_RATIO && attempt < maxAttempts) {
           console.warn(`[ThesisGeneration] ⚠️ Content only ${Math.round(wordRatio * 100)}% of target (${wordCount}/${expectedWordCount})`)
           console.warn(`[ThesisGeneration] → Triggering FULL REGENERATION with stronger word count emphasis (attempt ${attempt + 1}/${maxAttempts})`)
@@ -3387,7 +3388,7 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
     console.log(`[HumanCheck] Iteration ${iteration}/${MAX_ITERATIONS}`)
 
     const result = await checkWithGPTZero(currentContent)
-    
+
     // If GPTZero API failed or is unavailable, return content WITHOUT a fake score
     if (!result) {
       console.warn('[HumanCheck] GPTZero API unavailable, returning content without score')
@@ -3396,7 +3397,7 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
         zeroGptResult: null // NO FAKE SCORES - null means "not checked"
       }
     }
-    
+
     finalResult = result // Store the latest valid result
 
     if (result.isHumanWritten >= MIN_HUMAN_SCORE) {
@@ -3544,7 +3545,7 @@ async function checkPlagiarismWithGrammarly(content: string, thesisId: string): 
 
     while (pollAttempt < MAX_POLL_ATTEMPTS) {
       const pollDelay = Math.min(INITIAL_POLL_DELAY * Math.pow(2, pollAttempt), 10000)
-      
+
       if (pollAttempt > 0) {
         await new Promise(resolve => setTimeout(resolve, pollDelay))
       }
@@ -3567,7 +3568,7 @@ async function checkPlagiarismWithGrammarly(content: string, thesisId: string): 
       }
 
       statusResponse = await statusResponse_fetch.json()
-      
+
       if (statusResponse.status === 'COMPLETED') {
         break
       } else if (statusResponse.status === 'FAILED') {
@@ -4076,6 +4077,85 @@ async function checkZeroGPT(content: string): Promise<{
     }
   } catch (error) {
     console.error('[ZeroGPT] Error checking text:', error)
+    return null
+  }
+}
+
+/**
+ * Check text with Winston AI API to detect AI-generated content
+ * Returns detection score (0-100 human score)
+ */
+async function checkWinston(content: string): Promise<{
+  score: number
+  sentences: any
+} | null> {
+  if (!WINSTON_API_KEY) {
+    console.log('[Winston] WINSTON_API_KEY not set, skipping Winston check')
+    return null
+  }
+
+  console.log('[Winston] Checking text with Winston AI API...')
+
+  try {
+    // Extract plain text from markdown (remove markdown syntax for better detection)
+    const plainText = content
+      .replace(/^#+\s+/gm, '') // Remove heading markers
+      .replace(/\*\*(.+?)\*\*/g, '$1') // Remove bold
+      .replace(/\*(.+?)\*/g, '$1') // Remove italic
+      .replace(/\[(.+?)\]\(.+?\)/g, '$1') // Remove links
+      .replace(/`(.+?)`/g, '$1') // Remove code
+      .replace(/\^\d+/g, '') // Remove footnote markers
+      .trim()
+
+    if (plainText.length < 50) {
+      console.warn('[Winston] Text too short for detection, skipping')
+      return null
+    }
+
+    // Winston Limit: 150k chars. Truncate if needed.
+    const maxChars = 150000
+    const textToCheck = plainText.length > maxChars ? plainText.substring(0, maxChars) : plainText
+    if (plainText.length > maxChars) {
+      console.warn(`[Winston] Text too long (${plainText.length}), truncated to ${maxChars} chars`)
+    }
+
+    const response = await retryApiCall(
+      async () => {
+        const fetchResponse = await fetch('https://api.gowinston.ai/v2/ai-content-detection', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${WINSTON_API_KEY}`,
+          },
+          body: JSON.stringify({
+            text: textToCheck,
+            version: 'latest',
+            sentences: true,
+            language: 'auto'
+          }),
+        })
+
+        if (!fetchResponse.ok) {
+          const errorText = await fetchResponse.text()
+          throw new Error(`Winston API error: ${fetchResponse.status} ${fetchResponse.statusText} - ${errorText}`)
+        }
+
+        return await fetchResponse.json() as { score: number; sentences: any }
+      },
+      'Check text with Winston AI API',
+      3,
+      2000
+    )
+
+    console.log(`[Winston] Detection result: ${response.score} score`)
+
+    return {
+      score: response.score,
+      sentences: response.sentences
+    }
+
+  } catch (error) {
+    console.error('[Winston] Error checking text:', error)
     return null
   }
 }
@@ -4715,7 +4795,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     // SKIP if Step 7.4 already achieved a good score (>= 70%)
     const humanScoreThreshold = 70
     const alreadyHumanEnough = zeroGptResult && zeroGptResult.isHumanWritten >= humanScoreThreshold
-    
+
     if (alreadyHumanEnough) {
       console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
       console.log(`[PROCESS] ✓ SKIPPING humanization - content already scored ${zeroGptResult.isHumanWritten}% human (>= ${humanScoreThreshold}%)`)
@@ -4761,6 +4841,22 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     // ZeroGPT check result is available from Step 7.4
     console.log('\n[PROCESS] ========== Step 7.7: ZeroGPT Detection Check ==========')
     console.log('[PROCESS] ZeroGPT check completed in Step 7.4 - result will be saved to metadata')
+
+    // Step 7.8: Winston AI Detection Check
+    console.log('\n[PROCESS] ========== Step 7.8: Winston AI Detection Check ==========')
+    let winstonResult: any = null
+    try {
+      if (WINSTON_API_KEY) {
+        winstonResult = await checkWinston(thesisContent)
+        if (winstonResult) {
+          console.log(`[Winston] Detection result: ${winstonResult.score}/100 human score`)
+        }
+      } else {
+        console.log('[Winston] API key not set, skipping check')
+      }
+    } catch (error) {
+      console.error('[PROCESS] ERROR in Winston check:', error)
+    }
 
     // Process footnotes for German citation style
     let processedContent = thesisContent
@@ -4820,6 +4916,12 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         if (plagiarismResult) {
           updateData.metadata.plagiarismResult = plagiarismResult
           console.log('[PROCESS] Saving plagiarism result to metadata:', plagiarismResult)
+        }
+
+        // Add Winston result if available
+        if (winstonResult) {
+          updateData.metadata.winstonResult = winstonResult
+          console.log('[PROCESS] Saving Winston result to metadata:', winstonResult.score)
         }
 
         const result = await supabase

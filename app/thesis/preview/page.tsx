@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen, Download, Shield, Home } from 'lucide-react'
+import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen, Download, Shield, Home, RefreshCw } from 'lucide-react'
 import { createSupabaseClient } from '@/lib/supabase/client'
 import { getThesisById } from '@/lib/supabase/theses'
 import Link from 'next/link'
@@ -47,6 +47,13 @@ export default function ThesisPreviewPage() {
   const [showVersionsModal, setShowVersionsModal] = useState(false)
   const [showZeroGptModal, setShowZeroGptModal] = useState(false)
   const [isCheckingZeroGpt, setIsCheckingZeroGpt] = useState(false)
+  const [showWinstonModal, setShowWinstonModal] = useState(false)
+
+  const [isCheckingWinston, setIsCheckingWinston] = useState(false)
+
+  // Unified AI Check State
+  const [showAIModal, setShowAIModal] = useState(false)
+  const [isCheckingAI, setIsCheckingAI] = useState(false)
   const [showPlagiarismModal, setShowPlagiarismModal] = useState(false)
   const [isCheckingPlagiarism, setIsCheckingPlagiarism] = useState(false)
   const [highlightedPassages, setHighlightedPassages] = useState<Array<{ text: string; paragraphId: string }>>([])
@@ -242,6 +249,111 @@ export default function ThesisPreviewPage() {
     }
   }
 
+  const handleCheckWinston = async () => {
+    if (!thesisId) return
+
+    try {
+      setIsCheckingWinston(true)
+      const response = await fetch('/api/check-winston', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ thesisId }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        const errorMessage = error.error || 'Failed to check Winston AI'
+        const errorDetails = error.details ? `\n\nDetails: ${typeof error.details === 'string' ? error.details : JSON.stringify(error.details)}` : ''
+        throw new Error(errorMessage + errorDetails)
+      }
+
+      const data = await response.json()
+      console.log('Winston check completed:', data.result)
+
+      // Update thesis state directly
+      if (data.result && thesis) {
+        const updatedMetadata = {
+          ...(thesis.metadata || {}),
+          winstonResult: data.result,
+        }
+        setThesis({
+          ...thesis,
+          metadata: updatedMetadata,
+        })
+      } else {
+        await loadThesis()
+      }
+
+      if (!showWinstonModal) {
+        setShowWinstonModal(true)
+      }
+
+    } catch (error) {
+      console.error('Error checking Winston:', error)
+    } finally {
+      setIsCheckingWinston(false)
+    }
+  }
+
+  const handleAICheck = async () => {
+    if (!thesisId) return
+
+    setIsCheckingAI(true)
+    try {
+      // Run both checks in parallel
+      const [winstonResult, zeroGptResult] = await Promise.allSettled([
+        fetch('/api/check-winston', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ thesisId }),
+        }).then(res => res.ok ? res.json() : Promise.reject(res)),
+
+        fetch('/api/check-zerogpt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ thesisId }),
+        }).then(res => res.ok ? res.json() : Promise.reject(res))
+      ])
+
+      // Prepare metadata update
+      const newMetadata = { ...(thesis?.metadata || {}) }
+
+      // Process Winston Result
+      if (winstonResult.status === 'fulfilled' && winstonResult.value.result) {
+        newMetadata.winstonResult = winstonResult.value.result
+      } else if (winstonResult.status === 'rejected') {
+        console.error('Winston Check Failed:', winstonResult.reason)
+      }
+
+      // Process ZeroGPT Result
+      if (zeroGptResult.status === 'fulfilled' && zeroGptResult.value.result) {
+        newMetadata.zeroGptResult = zeroGptResult.value.result
+      } else if (zeroGptResult.status === 'rejected') {
+        console.error('ZeroGPT Check Failed:', zeroGptResult.reason)
+      }
+
+      // Update state if we have new data
+      if (thesis) {
+        setThesis({
+          ...thesis,
+          metadata: newMetadata
+        })
+      } else {
+        await loadThesis()
+      }
+
+      // Open the unified modal
+      setShowAIModal(true)
+
+    } catch (error) {
+      console.error('Error during AI check:', error)
+    } finally {
+      setIsCheckingAI(false)
+    }
+  }
+
   const handleCheckPlagiarism = async () => {
     if (!thesisId) return
 
@@ -412,6 +524,12 @@ export default function ThesisPreviewPage() {
   }
 
   const handleSendMessage = async () => {
+    // Security check: Text MUST be selected
+    if (!selectedText) {
+      alert('Bitte markieren Sie zuerst die Textstelle, die Sie bearbeiten möchten.')
+      return
+    }
+
     if (!chatInput.trim() || isProcessing || !thesisId) return
 
     const userMessage: ChatMessage = {
@@ -449,7 +567,8 @@ export default function ThesisPreviewPage() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to process edit request')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || errorData.error || 'Failed to process edit request')
       }
 
       const data = await response.json()
@@ -510,7 +629,7 @@ export default function ThesisPreviewPage() {
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Fehler beim Bearbeiten des Textes. Bitte versuche es erneut.',
+        content: error instanceof Error ? error.message : 'Fehler beim Bearbeiten des Textes. Bitte versuche es erneut.',
         timestamp: new Date(),
       }
       setChatMessages(prev => [...prev, errorMessage])
@@ -866,13 +985,14 @@ export default function ThesisPreviewPage() {
               <FileText className="w-3 h-3 mr-1" />
               Versionen ({thesisVersions.length})
             </button>
+
             <button
-              onClick={() => setShowZeroGptModal(true)}
-              className="inline-flex items-center px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors"
-              title="ZeroGPT AI-Erkennungsergebnis anzeigen"
+              onClick={() => setShowAIModal(true)}
+              className="inline-flex items-center px-2 py-1 text-xs bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
+              title="KI-Inhaltsanalyse anzeigen"
             >
               <Shield className="w-3 h-3 mr-1" />
-              ZeroGPT
+              GPT-Check
             </button>
             <button
               onClick={() => setShowPlagiarismModal(true)}
@@ -952,8 +1072,8 @@ export default function ThesisPreviewPage() {
               >
                 <div
                   className={`max-w-[80%] rounded-lg p-3 ${message.role === 'user'
-                      ? 'bg-black dark:bg-white text-white dark:text-black'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
+                    ? 'bg-black dark:bg-white text-white dark:text-black'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white'
                     }`}
                 >
                   {message.selectedText && (
@@ -1008,17 +1128,24 @@ export default function ThesisPreviewPage() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
-                    handleSendMessage()
+                    if (!selectedText) {
+                      alert('Bitte markieren Sie zuerst die Textstelle, die Sie bearbeiten möchten.')
+                      return
+                    }
+                    if (chatInput.trim()) {
+                      handleSendMessage()
+                    }
                   }
                 }}
-                placeholder={selectedText ? "Beschreibe die gewünschten Änderungen am markierten Text..." : "Markiere Text im Preview oder beschreibe allgemeine Änderungen..."}
-                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
-                rows={3}
+                placeholder={selectedText ? "Änderungswünsche für den markierten Text..." : "Bitte zuerst Text markieren..."}
+                className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 text-sm"
+                rows={1}
+                disabled={isProcessing}
               />
               <button
                 onClick={handleSendMessage}
-                disabled={!chatInput.trim() || isProcessing || !selectedText || !textAddedToChat}
-                className="px-4 py-2 bg-black dark:bg-white text-white dark:text-black rounded-lg hover:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                disabled={!chatInput.trim() || isProcessing || !selectedText}
+                className="p-2 bg-black dark:bg-white text-white dark:text-black rounded-full hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                 title={!selectedText ? "Bitte markiere zuerst Text im Preview" : !textAddedToChat ? "Bitte klicke auf 'Zu Chat hinzufügen'" : ""}
               >
                 <Send className="w-5 h-5" />
@@ -1255,23 +1382,23 @@ export default function ThesisPreviewPage() {
                             }
                             return footnotes
                           }
-                          
+
                           // Try multiple sources for footnotes:
                           // 1. metadata.footnotes (legacy)
                           // 2. Extract from content (markdown format)
                           // 3. metadata.citations (new format - convert to footnotes)
                           let footnotes: Record<number, string> = thesis?.metadata?.footnotes || {}
-                          
+
                           if (Object.keys(footnotes).length === 0 && content) {
                             footnotes = extractFootnotesFromContent(content)
                           }
-                          
+
                           // If still no footnotes and we have citations, create footnotes from them
                           if (Object.keys(footnotes).length === 0 && thesis?.metadata?.citations) {
                             const citations = thesis.metadata.citations as any[]
                             citations.forEach((citation, idx) => {
-                              const authors = Array.isArray(citation.authors) 
-                                ? citation.authors.join(', ') 
+                              const authors = Array.isArray(citation.authors)
+                                ? citation.authors.join(', ')
                                 : citation.authors || 'Unbekannt'
                               const year = citation.year || ''
                               const title = citation.title || ''
@@ -1279,7 +1406,7 @@ export default function ThesisPreviewPage() {
                               footnotes[idx + 1] = `${authors} (${year}): ${title}${pages ? `, S. ${pages}` : ''}`
                             })
                           }
-                          
+
                           // Build a map of footnote numbers to PDF URLs by matching citation text with sources
                           // STRICT matching: must match BOTH year AND first author's last name
                           const footnotePdfUrls: Record<number, string | null> = {}
@@ -1287,30 +1414,30 @@ export default function ThesisPreviewPage() {
                             Object.entries(footnotes).forEach(([numStr, citationText]) => {
                               const num = parseInt(numStr, 10)
                               const citation = citationText as string
-                              
+
                               // Extract year from citation (e.g., "(2022)" or "2022:" or ", 2022,")
                               const yearMatch = citation.match(/[\(\s,](\d{4})[\)\s,:]/)
                               const citationYear = yearMatch ? yearMatch[1] : null
-                              
+
                               // Extract first author's last name from citation
                               // Patterns: "Merola (2022)" or "Merola, Korinek (2022)" or "Korinek/Stiglitz (2017)"
                               const authorMatch = citation.match(/^([A-ZÄÖÜa-zäöüß][a-zäöüß]+)(?:\s|,|\/|\(|\:)/)
                               const citationAuthorLastName = authorMatch ? authorMatch[1].toLowerCase() : null
-                              
+
                               if (!citationYear && !citationAuthorLastName) {
                                 return // Can't match without year or author
                               }
-                              
+
                               // Find source with matching year AND first author's last name
                               const matchingSource = bibliographySources.find((source: any) => {
                                 const meta = source.metadata || source
                                 const sourceYear = String(meta.year || source.year || '')
                                 const authors = meta.authors || []
-                                
+
                                 // Get first author's last name from source
                                 const firstAuthor = authors[0] || ''
                                 const sourceAuthorLastName = firstAuthor.split(' ').pop()?.toLowerCase() || ''
-                                
+
                                 // STRICT: Must match year AND author (if we have both)
                                 if (citationYear && citationAuthorLastName) {
                                   return sourceYear === citationYear && sourceAuthorLastName === citationAuthorLastName
@@ -1325,13 +1452,13 @@ export default function ThesisPreviewPage() {
                                 }
                                 return false
                               })
-                              
+
                               if (matchingSource) {
                                 footnotePdfUrls[num] = matchingSource.sourceUrl || matchingSource.metadata?.sourceUrl || matchingSource.pdfUrl || null
                               }
                             })
                           }
-                          
+
                           const citationStyle = thesis?.citation_style
 
                           // Check if this paragraph should be highlighted (related passage)
@@ -1410,7 +1537,7 @@ export default function ThesisPreviewPage() {
                                         onMouseEnter={(e) => {
                                           const tooltip = document.createElement('div')
                                           tooltip.id = `footnote-tooltip-${footnoteNum}`
-                                          tooltip.innerHTML = hasPdf 
+                                          tooltip.innerHTML = hasPdf
                                             ? `${footnoteText}<br/><span style="color: #4CAF50; font-size: 10pt; margin-top: 4px; display: block;">📄 Klicken zum Öffnen der PDF</span>`
                                             : footnoteText
                                           tooltip.style.cssText = `
@@ -1796,7 +1923,7 @@ export default function ThesisPreviewPage() {
                               const journal = meta.journal || source.journal
                               const pages = meta.pages || (meta.pageStart && meta.pageEnd ? `${meta.pageStart}-${meta.pageEnd}` : '')
                               const doi = meta.doi || source.doi
-                              
+
                               // Format authors (Last, First; Last, First)
                               // First, clean and filter authors - remove "et al." variations
                               const cleanedAuthors = authors
@@ -1806,33 +1933,33 @@ export default function ThesisPreviewPage() {
                                 // Filter out standalone "et al.", "et", "al.", etc.
                                 .filter((a: string) => {
                                   const lower = a.toLowerCase().trim()
-                                  return a.length > 0 && 
-                                    lower !== 'et al.' && 
-                                    lower !== 'et al' && 
-                                    lower !== 'et' && 
-                                    lower !== 'al.' && 
+                                  return a.length > 0 &&
+                                    lower !== 'et al.' &&
+                                    lower !== 'et al' &&
+                                    lower !== 'et' &&
+                                    lower !== 'al.' &&
                                     lower !== 'al' &&
                                     lower !== 'u.a.' &&
                                     lower !== 'u. a.' &&
                                     !lower.match(/^et\s+al/)
                                 })
-                              
-                              const formattedAuthors = cleanedAuthors.length > 0 
+
+                              const formattedAuthors = cleanedAuthors.length > 0
                                 ? cleanedAuthors.slice(0, 3).map((a: string) => {
-                                    const parts = a.trim().split(' ')
-                                    if (parts.length >= 2) {
-                                      const lastName = parts[parts.length - 1]
-                                      const firstName = parts.slice(0, -1).join(' ')
-                                      return `${lastName}, ${firstName}`
-                                    }
-                                    return a
-                                  }).join('; ') + (cleanedAuthors.length > 3 ? ' et al.' : '')
+                                  const parts = a.trim().split(' ')
+                                  if (parts.length >= 2) {
+                                    const lastName = parts[parts.length - 1]
+                                    const firstName = parts.slice(0, -1).join(' ')
+                                    return `${lastName}, ${firstName}`
+                                  }
+                                  return a
+                                }).join('; ') + (cleanedAuthors.length > 3 ? ' et al.' : '')
                                 : 'o.V.'
-                              
+
                               return (
-                                <p key={index} style={{ 
-                                  marginBottom: '4mm', 
-                                  textIndent: '-10mm', 
+                                <p key={index} style={{
+                                  marginBottom: '4mm',
+                                  textIndent: '-10mm',
                                   paddingLeft: '10mm',
                                   textAlign: 'left',
                                 }}>
@@ -1867,523 +1994,749 @@ export default function ThesisPreviewPage() {
       </div>
 
       {/* Sources Modal */}
-      {showSourcesModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowSourcesModal(false)}>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
-                <BookOpen className="w-6 h-6 mr-2" />
-                Verwendete Quellen
-              </h2>
-              <button
-                onClick={() => setShowSourcesModal(false)}
-                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+      {
+        showSourcesModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowSourcesModal(false)}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              {/* Modal Header */}
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                  <BookOpen className="w-6 h-6 mr-2" />
+                  Verwendete Quellen
+                </h2>
+                <button
+                  onClick={() => setShowSourcesModal(false)}
+                  className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
 
-            {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {bibliographySources && bibliographySources.length > 0 ? (
-                <div className="space-y-4">
-                  {bibliographySources.map((source: any, index: number) => (
-                    <div
-                      key={index}
-                      className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-lg text-gray-900 dark:text-white mb-2">
-                            {source.title || source.metadata?.title || 'Unbekannter Titel'}
-                          </h3>
+              {/* Modal Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {bibliographySources && bibliographySources.length > 0 ? (
+                  <div className="space-y-4">
+                    {bibliographySources.map((source: any, index: number) => (
+                      <div
+                        key={index}
+                        className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-lg text-gray-900 dark:text-white mb-2">
+                              {source.title || source.metadata?.title || 'Unbekannter Titel'}
+                            </h3>
 
-                          <div className="space-y-1 text-sm text-gray-600 dark:text-gray-300">
-                            {/* Authors - handle both flat and nested formats */}
-                            {(source.authors || source.metadata?.authors) && (
-                              <p>
-                                <span className="font-medium">Autoren:</span>{' '}
-                                {Array.isArray(source.authors || source.metadata?.authors)
-                                  ? (source.authors || source.metadata?.authors).join(', ')
-                                  : (source.authors || source.metadata?.authors)}
-                              </p>
-                            )}
-
-                            {/* Year - handle both flat and nested */}
-                            {(source.year || source.metadata?.year) && (
-                              <p>
-                                <span className="font-medium">Jahr:</span> {source.year || source.metadata?.year}
-                              </p>
-                            )}
-
-                            {/* Journal - handle both flat and nested */}
-                            {(source.journal || source.metadata?.journal) && (
-                              <p>
-                                <span className="font-medium">Journal:</span> {source.journal || source.metadata?.journal}
-                              </p>
-                            )}
-
-                            {/* DOI */}
-                            {(source.doi || source.metadata?.doi) && (
-                              <p>
-                                <span className="font-medium">DOI:</span>{' '}
-                                <a
-                                  href={`https://doi.org/${source.doi || source.metadata?.doi}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-yellow-600 dark:text-yellow-500 hover:underline"
-                                >
-                                  {source.doi || source.metadata?.doi}
-                                </a>
-                              </p>
-                            )}
-
-                            {/* PDF URL */}
-                            {(source.pdf_url || source.pdfUrl) && (
-                              <p>
-                                <span className="font-medium">PDF:</span>{' '}
-                                <a
-                                  href={source.pdf_url || source.pdfUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-green-600 dark:text-green-500 hover:underline"
-                                >
-                                  PDF öffnen
-                                </a>
-                              </p>
-                            )}
-
-                            {/* URL */}
-                            {(source.url || source.sourceUrl) && (
-                              <p>
-                                <span className="font-medium">URL:</span>{' '}
-                                <a
-                                  href={source.url || source.sourceUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 dark:text-blue-400 hover:underline break-all"
-                                >
-                                  {(source.url || source.sourceUrl).length > 60 
-                                    ? `${(source.url || source.sourceUrl).substring(0, 60)}...` 
-                                    : (source.url || source.sourceUrl)}
-                                </a>
-                              </p>
-                            )}
-
-                            {/* Relevance Score */}
-                            {source.relevance_score && (
-                              <p>
-                                <span className="font-medium">Relevanz:</span> {Math.round(source.relevance_score * 100)}%
-                              </p>
-                            )}
-
-                            {/* Chapter assignment */}
-                            {source.chapter_title && (
-                              <p>
-                                <span className="font-medium">Kapitel:</span> {source.chapter_number} {source.chapter_title}
-                              </p>
-                            )}
-
-                            {/* Abstract */}
-                            {(source.abstract || source.metadata?.abstract) && (
-                              <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                                <p className="font-medium mb-1">Abstract:</p>
-                                <p className="text-gray-600 dark:text-gray-400 italic text-xs line-clamp-3">
-                                  {source.abstract || source.metadata?.abstract}
+                            <div className="space-y-1 text-sm text-gray-600 dark:text-gray-300">
+                              {/* Authors - handle both flat and nested formats */}
+                              {(source.authors || source.metadata?.authors) && (
+                                <p>
+                                  <span className="font-medium">Autoren:</span>{' '}
+                                  {Array.isArray(source.authors || source.metadata?.authors)
+                                    ? (source.authors || source.metadata?.authors).join(', ')
+                                    : (source.authors || source.metadata?.authors)}
                                 </p>
-                              </div>
-                            )}
+                              )}
+
+                              {/* Year - handle both flat and nested */}
+                              {(source.year || source.metadata?.year) && (
+                                <p>
+                                  <span className="font-medium">Jahr:</span> {source.year || source.metadata?.year}
+                                </p>
+                              )}
+
+                              {/* Journal - handle both flat and nested */}
+                              {(source.journal || source.metadata?.journal) && (
+                                <p>
+                                  <span className="font-medium">Journal:</span> {source.journal || source.metadata?.journal}
+                                </p>
+                              )}
+
+                              {/* DOI */}
+                              {(source.doi || source.metadata?.doi) && (
+                                <p>
+                                  <span className="font-medium">DOI:</span>{' '}
+                                  <a
+                                    href={`https://doi.org/${source.doi || source.metadata?.doi}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-yellow-600 dark:text-yellow-500 hover:underline"
+                                  >
+                                    {source.doi || source.metadata?.doi}
+                                  </a>
+                                </p>
+                              )}
+
+                              {/* PDF URL */}
+                              {(source.pdf_url || source.pdfUrl) && (
+                                <p>
+                                  <span className="font-medium">PDF:</span>{' '}
+                                  <a
+                                    href={source.pdf_url || source.pdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-green-600 dark:text-green-500 hover:underline"
+                                  >
+                                    PDF öffnen
+                                  </a>
+                                </p>
+                              )}
+
+                              {/* URL */}
+                              {(source.url || source.sourceUrl) && (
+                                <p>
+                                  <span className="font-medium">URL:</span>{' '}
+                                  <a
+                                    href={source.url || source.sourceUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 dark:text-blue-400 hover:underline break-all"
+                                  >
+                                    {(source.url || source.sourceUrl).length > 60
+                                      ? `${(source.url || source.sourceUrl).substring(0, 60)}...`
+                                      : (source.url || source.sourceUrl)}
+                                  </a>
+                                </p>
+                              )}
+
+                              {/* Relevance Score */}
+                              {source.relevance_score && (
+                                <p>
+                                  <span className="font-medium">Relevanz:</span> {Math.round(source.relevance_score * 100)}%
+                                </p>
+                              )}
+
+                              {/* Chapter assignment */}
+                              {source.chapter_title && (
+                                <p>
+                                  <span className="font-medium">Kapitel:</span> {source.chapter_number} {source.chapter_title}
+                                </p>
+                              )}
+
+                              {/* Abstract */}
+                              {(source.abstract || source.metadata?.abstract) && (
+                                <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                                  <p className="font-medium mb-1">Abstract:</p>
+                                  <p className="text-gray-600 dark:text-gray-400 italic text-xs line-clamp-3">
+                                    {source.abstract || source.metadata?.abstract}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                  <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Keine Quellen verfügbar</p>
-                </div>
-              )}
-            </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                    <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>Keine Quellen verfügbar</p>
+                  </div>
+                )}
+              </div>
 
-            {/* Modal Footer */}
-            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
-              <button
-                onClick={() => setShowSourcesModal(false)}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                Schließen
-              </button>
+              {/* Modal Footer */}
+              <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                <button
+                  onClick={() => setShowSourcesModal(false)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Schließen
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Versions Modal */}
-      {showVersionsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowVersionsModal(false)}>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
-                <FileText className="w-6 h-6 mr-2" />
-                Versionsverlauf
-              </h2>
-              <button
-                onClick={() => setShowVersionsModal(false)}
-                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+      {
+        showVersionsModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowVersionsModal(false)}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              {/* Modal Header */}
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                  <FileText className="w-6 h-6 mr-2" />
+                  Versionsverlauf
+                </h2>
+                <button
+                  onClick={() => setShowVersionsModal(false)}
+                  className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
 
-            {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {thesisVersions.length > 0 ? (
-                <div className="space-y-4">
-                  {thesisVersions.map((version) => (
-                    <div
-                      key={version.id}
-                      className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div>
-                          <h3 className="font-semibold text-gray-900 dark:text-white">
-                            Version {version.version_number}
-                          </h3>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            {version.change_description || `Erstellt am ${new Date(version.created_at).toLocaleString('de-DE')}`}
-                          </p>
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={async () => {
-                              try {
-                                const response = await fetch('/api/rollback-thesis', {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                  },
-                                  body: JSON.stringify({
-                                    thesisId,
-                                    versionNumber: version.version_number,
-                                  }),
-                                })
+              {/* Modal Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {thesisVersions.length > 0 ? (
+                  <div className="space-y-4">
+                    {thesisVersions.map((version) => (
+                      <div
+                        key={version.id}
+                        className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <h3 className="font-semibold text-gray-900 dark:text-white">
+                              Version {version.version_number}
+                            </h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              {version.change_description || `Erstellt am ${new Date(version.created_at).toLocaleString('de-DE')}`}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const response = await fetch('/api/rollback-thesis', {
+                                    method: 'POST',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({
+                                      thesisId,
+                                      versionNumber: version.version_number,
+                                    }),
+                                  })
 
-                                if (response.ok) {
-                                  await loadThesis()
-                                  setShowVersionsModal(false)
-                                  const successMessage: ChatMessage = {
-                                    id: Date.now().toString(),
-                                    role: 'assistant',
-                                    content: `✓ Zur Version ${version.version_number} zurückgesetzt.`,
-                                    timestamp: new Date(),
+                                  if (response.ok) {
+                                    await loadThesis()
+                                    setShowVersionsModal(false)
+                                    const successMessage: ChatMessage = {
+                                      id: Date.now().toString(),
+                                      role: 'assistant',
+                                      content: `✓ Zur Version ${version.version_number} zurückgesetzt.`,
+                                      timestamp: new Date(),
+                                    }
+                                    setChatMessages(prev => [...prev, successMessage])
                                   }
-                                  setChatMessages(prev => [...prev, successMessage])
+                                } catch (error) {
+                                  console.error('Error rolling back:', error)
+                                  alert('Fehler beim Zurücksetzen')
                                 }
-                              } catch (error) {
-                                console.error('Error rolling back:', error)
-                                alert('Fehler beim Zurücksetzen')
-                              }
-                            }}
-                            className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                          >
-                            Wiederherstellen
-                          </button>
+                              }}
+                              className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                            >
+                              Wiederherstellen
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                          {new Date(version.created_at).toLocaleString('de-DE')}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                    <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>Noch keine Versionen vorhanden</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                <button
+                  onClick={() => setShowVersionsModal(false)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Schließen
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Winston Modal */}
+      {
+        showWinstonModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowWinstonModal(false)}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              {/* Modal Header */}
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                  <Shield className="w-6 h-6 mr-2" />
+                  Winston AI-Erkennung
+                </h2>
+                <button
+                  onClick={() => setShowWinstonModal(false)}
+                  className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {thesis?.metadata?.winstonResult ? (
+                  <div className="space-y-6">
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                        Erkennungsergebnis (Human Score)
+                      </h3>
+
+                      <div className="grid grid-cols-1 gap-4 mb-4">
+                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 flex flex-col items-center justify-center">
+                          <div className="text-sm text-blue-700 dark:text-blue-300 font-medium mb-1">
+                            Menschlichkeits-Score
+                          </div>
+                          <div className="text-5xl font-bold text-blue-600 dark:text-blue-400">
+                            {thesis.metadata.winstonResult.score}%
+                          </div>
+                          <div className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                            (0% = KI, 100% = Mensch)
+                          </div>
                         </div>
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                        {new Date(version.created_at).toLocaleString('de-DE')}
+
+                      <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                        {thesis.metadata.winstonResult.checkedAt && (
+                          <div>
+                            <span className="font-medium">Geprüft am:</span>{' '}
+                            {new Date(thesis.metadata.winstonResult.checkedAt).toLocaleString('de-DE')}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleCheckWinston}
+                      disabled={isCheckingWinston}
+                      className="w-full mt-4 inline-flex items-center justify-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isCheckingWinston ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Prüfe erneut...
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="w-5 h-5 mr-2" />
+                          Erneut prüfen
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                    <Shield className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium mb-2">Kein Winston-Ergebnis verfügbar</p>
+                    <p className="text-sm mb-6">
+                      Prüfe deine Thesis auf KI-Erkennung mit Winston AI.
+                    </p>
+                    <button
+                      onClick={handleCheckWinston}
+                      disabled={isCheckingWinston || !thesis?.latex_content}
+                      className="inline-flex items-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isCheckingWinston ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Prüfe...
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="w-5 h-5 mr-2" />
+                          Winston-Check starten
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                <button
+                  onClick={() => setShowWinstonModal(false)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Schließen
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+
+
+      {/* Unified AI Analysis Modal */}
+      {
+        showAIModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowAIModal(false)}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              {/* Modal Header */}
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                  <Shield className="w-6 h-6 mr-2" />
+                  AI Content Analysis
+                </h2>
+                <button
+                  onClick={() => setShowAIModal(false)}
+                  className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                  {/* Winston AI Card */}
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-3xl p-8 border border-gray-200 dark:border-gray-600 flex flex-col items-center text-center">
+                    <div className="h-20 mb-6 flex items-center justify-center">
+                      <img src="/assets/winston.png" alt="Winston AI" className="h-16 object-contain" />
+                    </div>
+
+                    {thesis?.metadata?.winstonResult ? (
+                      <div className="w-full">
+                        <div className="relative w-32 h-32 mx-auto mb-4 flex items-center justify-center">
+                          <svg className="w-full h-full transform -rotate-90">
+                            <circle cx="64" cy="64" r="60" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-gray-200 dark:text-gray-600" />
+                            <circle cx="64" cy="64" r="60" stroke="currentColor" strokeWidth="8" fill="transparent"
+                              strokeDasharray={2 * Math.PI * 60}
+                              strokeDashoffset={2 * Math.PI * 60 * (1 - thesis.metadata.winstonResult.score / 100)}
+                              className="text-blue-600 dark:text-blue-500" />
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className="text-3xl font-bold text-gray-900 dark:text-white">{thesis.metadata.winstonResult.score}%</span>
+                            <span className="text-xs text-gray-500">Human</span>
+                          </div>
+                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Probability of human-written content</p>
+                      </div>
+                    ) : (
+                      <div className="py-8 text-gray-400">
+                        <p>No data available</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ZeroGPT Card */}
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-3xl p-8 border border-gray-200 dark:border-gray-600 flex flex-col items-center text-center">
+                    <div className="h-20 mb-6 flex items-center justify-center">
+                      <img src="/assets/zerogpt.png" alt="ZeroGPT" className="h-14 object-contain" />
+                    </div>
+
+                    {thesis?.metadata?.zeroGptResult ? (
+                      <div className="w-full">
+                        <div className="relative w-32 h-32 mx-auto mb-4 flex items-center justify-center">
+                          <svg className="w-full h-full transform -rotate-90">
+                            <circle cx="64" cy="64" r="60" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-gray-200 dark:text-gray-600" />
+                            <circle cx="64" cy="64" r="60" stroke="currentColor" strokeWidth="8" fill="transparent"
+                              strokeDasharray={2 * Math.PI * 60}
+                              strokeDashoffset={2 * Math.PI * 60 * (1 - thesis.metadata.zeroGptResult.isHumanWritten / 100)}
+                              className="text-orange-500 dark:text-orange-400" />
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className="text-3xl font-bold text-gray-900 dark:text-white">{thesis.metadata.zeroGptResult.isHumanWritten}%</span>
+                            <span className="text-xs text-gray-500">Human</span>
+                          </div>
+                        </div>
+                        <div className="flex justify-center items-center space-x-4 text-xs">
+                          <span className="text-orange-600 dark:text-orange-400 font-medium">AI: {thesis.metadata.zeroGptResult.isGptGenerated}%</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="py-8 text-gray-400">
+                        <p>No data available</p>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+
+                <div className="flex justify-center mt-8">
+                  <button
+                    onClick={handleAICheck}
+                    disabled={isCheckingAI}
+                    className="flex items-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-full font-medium shadow-lg hover:scale-105 transition-transform disabled:opacity-50 disabled:scale-100"
+                  >
+                    {isCheckingAI ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <RefreshCw className="w-5 h-5 mr-2" />}
+                    Run New Analysis
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* ZeroGPT Modal - HIDDEN/DEPRECATED - Kept for fallback access if needed, or remove completely */}
+      {
+        false && showZeroGptModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowZeroGptModal(false)}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              {/* Modal Header */}
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                  <Shield className="w-6 h-6 mr-2" />
+                  ZeroGPT AI-Erkennung
+                </h2>
+                <button
+                  onClick={() => setShowZeroGptModal(false)}
+                  className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {thesis?.metadata?.zeroGptResult ? (
+                  <div className="space-y-6">
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                        Erkennungsergebnis
+                      </h3>
+
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                          <div className="text-sm text-green-700 dark:text-green-300 font-medium mb-1">
+                            Menschlich geschrieben
+                          </div>
+                          <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+                            {thesis.metadata.zeroGptResult.isHumanWritten}%
+                          </div>
+                        </div>
+
+                        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                          <div className="text-sm text-red-700 dark:text-red-300 font-medium mb-1">
+                            KI-generiert
+                          </div>
+                          <div className="text-3xl font-bold text-red-600 dark:text-red-400">
+                            {thesis.metadata.zeroGptResult.isGptGenerated}%
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                        <div>
+                          <span className="font-medium">Wörter geprüft:</span>{' '}
+                          {thesis.metadata.zeroGptResult.wordsCount?.toLocaleString() || 'N/A'}
+                        </div>
+                        {thesis.metadata.zeroGptResult.checkedAt && (
+                          <div>
+                            <span className="font-medium">Geprüft am:</span>{' '}
+                            {new Date(thesis.metadata.zeroGptResult.checkedAt).toLocaleString('de-DE')}
+                          </div>
+                        )}
+                        {thesis.metadata.zeroGptResult.feedbackMessage && (
+                          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
+                            <span className="font-medium text-blue-700 dark:text-blue-300">Hinweis:</span>{' '}
+                            <span className="text-blue-600 dark:text-blue-400">
+                              {thesis.metadata.zeroGptResult.feedbackMessage}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                        <strong>Hinweis:</strong> Die Erkennungsgenauigkeit kann variieren und sollte nur als Indikator verwendet werden.
                       </p>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                  <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Noch keine Versionen vorhanden</p>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
-              <button
-                onClick={() => setShowVersionsModal(false)}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                Schließen
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ZeroGPT Modal */}
-      {showZeroGptModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowZeroGptModal(false)}>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
-                <Shield className="w-6 h-6 mr-2" />
-                ZeroGPT AI-Erkennung
-              </h2>
-              <button
-                onClick={() => setShowZeroGptModal(false)}
-                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {thesis?.metadata?.zeroGptResult ? (
-                <div className="space-y-6">
-                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                      Erkennungsergebnis
-                    </h3>
-
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                        <div className="text-sm text-green-700 dark:text-green-300 font-medium mb-1">
-                          Menschlich geschrieben
-                        </div>
-                        <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                          {thesis.metadata.zeroGptResult.isHumanWritten}%
-                        </div>
-                      </div>
-
-                      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                        <div className="text-sm text-red-700 dark:text-red-300 font-medium mb-1">
-                          KI-generiert
-                        </div>
-                        <div className="text-3xl font-bold text-red-600 dark:text-red-400">
-                          {thesis.metadata.zeroGptResult.isGptGenerated}%
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                      <div>
-                        <span className="font-medium">Wörter geprüft:</span>{' '}
-                        {thesis.metadata.zeroGptResult.wordsCount?.toLocaleString() || 'N/A'}
-                      </div>
-                      {thesis.metadata.zeroGptResult.checkedAt && (
-                        <div>
-                          <span className="font-medium">Geprüft am:</span>{' '}
-                          {new Date(thesis.metadata.zeroGptResult.checkedAt).toLocaleString('de-DE')}
-                        </div>
+                    <button
+                      onClick={handleCheckZeroGpt}
+                      disabled={isCheckingZeroGpt}
+                      className="w-full mt-4 inline-flex items-center justify-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isCheckingZeroGpt ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Prüfe erneut...
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="w-5 h-5 mr-2" />
+                          Erneut prüfen
+                        </>
                       )}
-                      {thesis.metadata.zeroGptResult.feedbackMessage && (
-                        <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded">
-                          <span className="font-medium text-blue-700 dark:text-blue-300">Hinweis:</span>{' '}
-                          <span className="text-blue-600 dark:text-blue-400">
-                            {thesis.metadata.zeroGptResult.feedbackMessage}
-                          </span>
-                        </div>
-                      )}
-                    </div>
+                    </button>
                   </div>
-
-                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                      <strong>Hinweis:</strong> Die Erkennungsgenauigkeit kann variieren und sollte nur als Indikator verwendet werden.
+                ) : (
+                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                    <Shield className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium mb-2">Kein ZeroGPT-Ergebnis verfügbar</p>
+                    <p className="text-sm mb-6">
+                      Prüfe deine Thesis auf KI-Erkennung mit ZeroGPT.
                     </p>
+                    <button
+                      onClick={handleCheckZeroGpt}
+                      disabled={isCheckingZeroGpt || !thesis?.latex_content}
+                      className="inline-flex items-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isCheckingZeroGpt ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Prüfe...
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="w-5 h-5 mr-2" />
+                          ZeroGPT-Check starten
+                        </>
+                      )}
+                    </button>
                   </div>
-                  <button
-                    onClick={handleCheckZeroGpt}
-                    disabled={isCheckingZeroGpt}
-                    className="w-full mt-4 inline-flex items-center justify-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isCheckingZeroGpt ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Prüfe erneut...
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="w-5 h-5 mr-2" />
-                        Erneut prüfen
-                      </>
-                    )}
-                  </button>
-                </div>
-              ) : (
-                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                  <Shield className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium mb-2">Kein ZeroGPT-Ergebnis verfügbar</p>
-                  <p className="text-sm mb-6">
-                    Prüfe deine Thesis auf KI-Erkennung mit ZeroGPT.
-                  </p>
-                  <button
-                    onClick={handleCheckZeroGpt}
-                    disabled={isCheckingZeroGpt || !thesis?.latex_content}
-                    className="inline-flex items-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isCheckingZeroGpt ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Prüfe...
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="w-5 h-5 mr-2" />
-                        ZeroGPT-Check starten
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
 
-            {/* Modal Footer */}
-            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
-              <button
-                onClick={() => setShowZeroGptModal(false)}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                Schließen
-              </button>
+              {/* Modal Footer */}
+              <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                <button
+                  onClick={() => setShowZeroGptModal(false)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Schließen
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Plagiarism Modal */}
-      {showPlagiarismModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowPlagiarismModal(false)}>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            {/* Modal Header */}
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
-                <FileText className="w-6 h-6 mr-2" />
-                Plagiat-Erkennung (Grammarly)
-              </h2>
-              <button
-                onClick={() => setShowPlagiarismModal(false)}
-                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+      {
+        showPlagiarismModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowPlagiarismModal(false)}>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+              {/* Modal Header */}
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                  <FileText className="w-6 h-6 mr-2" />
+                  Plagiat-Erkennung (Grammarly)
+                </h2>
+                <button
+                  onClick={() => setShowPlagiarismModal(false)}
+                  className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
 
-            {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {thesis?.metadata?.plagiarismResult ? (
-                <div className="space-y-6">
-                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                      Originalitäts-Ergebnis
-                    </h3>
+              {/* Modal Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {thesis?.metadata?.plagiarismResult ? (
+                  <div className="space-y-6">
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-6">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                        Originalitäts-Ergebnis
+                      </h3>
 
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                        <div className="text-sm text-green-700 dark:text-green-300 font-medium mb-1">
-                          Originalität
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                          <div className="text-sm text-green-700 dark:text-green-300 font-medium mb-1">
+                            Originalität
+                          </div>
+                          <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+                            {thesis.metadata.plagiarismResult.originalityPercentage}%
+                          </div>
+                          <div className="text-xs text-green-600 dark:text-green-400 mt-1">
+                            Score: {thesis.metadata.plagiarismResult.originality.toFixed(2)}
+                          </div>
                         </div>
-                        <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                          {thesis.metadata.plagiarismResult.originalityPercentage}%
-                        </div>
-                        <div className="text-xs text-green-600 dark:text-green-400 mt-1">
-                          Score: {thesis.metadata.plagiarismResult.originality.toFixed(2)}
+
+                        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                          <div className="text-sm text-red-700 dark:text-red-300 font-medium mb-1">
+                            Potentiell plagiiert
+                          </div>
+                          <div className="text-3xl font-bold text-red-600 dark:text-red-400">
+                            {thesis.metadata.plagiarismResult.plagiarismPercentage}%
+                          </div>
                         </div>
                       </div>
 
-                      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                        <div className="text-sm text-red-700 dark:text-red-300 font-medium mb-1">
-                          Potentiell plagiiert
-                        </div>
-                        <div className="text-3xl font-bold text-red-600 dark:text-red-400">
-                          {thesis.metadata.plagiarismResult.plagiarismPercentage}%
-                        </div>
+                      <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                        {thesis.metadata.plagiarismResult.checkedAt && (
+                          <div>
+                            <span className="font-medium">Geprüft am:</span>{' '}
+                            {new Date(thesis.metadata.plagiarismResult.checkedAt).toLocaleString('de-DE')}
+                          </div>
+                        )}
+                        {thesis.metadata.plagiarismResult.scoreRequestId && (
+                          <div>
+                            <span className="font-medium">Request ID:</span>{' '}
+                            <span className="font-mono text-xs">{thesis.metadata.plagiarismResult.scoreRequestId}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                      {thesis.metadata.plagiarismResult.checkedAt && (
-                        <div>
-                          <span className="font-medium">Geprüft am:</span>{' '}
-                          {new Date(thesis.metadata.plagiarismResult.checkedAt).toLocaleString('de-DE')}
-                        </div>
-                      )}
-                      {thesis.metadata.plagiarismResult.scoreRequestId && (
-                        <div>
-                          <span className="font-medium">Request ID:</span>{' '}
-                          <span className="font-mono text-xs">{thesis.metadata.plagiarismResult.scoreRequestId}</span>
-                        </div>
-                      )}
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                        <strong>Hinweis:</strong> Die Plagiat-Erkennung vergleicht den Text mit Milliarden von Webseiten und akademischen Arbeiten. Ein niedriger Originalitäts-Score bedeutet nicht automatisch Plagiat, sondern kann auch auf korrekte Zitationen zurückzuführen sein.
+                      </p>
                     </div>
+                    <button
+                      onClick={handleCheckPlagiarism}
+                      disabled={isCheckingPlagiarism}
+                      className="w-full mt-4 inline-flex items-center justify-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-purple-600 dark:hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isCheckingPlagiarism ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Prüfe erneut...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="w-5 h-5 mr-2" />
+                          Erneut prüfen
+                        </>
+                      )}
+                    </button>
                   </div>
-
-                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                      <strong>Hinweis:</strong> Die Plagiat-Erkennung vergleicht den Text mit Milliarden von Webseiten und akademischen Arbeiten. Ein niedriger Originalitäts-Score bedeutet nicht automatisch Plagiat, sondern kann auch auf korrekte Zitationen zurückzuführen sein.
+                ) : (
+                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                    <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg font-medium mb-2">Kein Plagiat-Ergebnis verfügbar</p>
+                    <p className="text-sm mb-6">
+                      Prüfe deine Thesis auf Plagiate mit Grammarly.
                     </p>
+                    <button
+                      onClick={handleCheckPlagiarism}
+                      disabled={isCheckingPlagiarism || !thesis?.latex_content}
+                      className="inline-flex items-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-purple-600 dark:hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isCheckingPlagiarism ? (
+                        <>
+                          <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                          Prüfe...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="w-5 h-5 mr-2" />
+                          Plagiat-Check starten
+                        </>
+                      )}
+                    </button>
                   </div>
-                  <button
-                    onClick={handleCheckPlagiarism}
-                    disabled={isCheckingPlagiarism}
-                    className="w-full mt-4 inline-flex items-center justify-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-purple-600 dark:hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isCheckingPlagiarism ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Prüfe erneut...
-                      </>
-                    ) : (
-                      <>
-                        <FileText className="w-5 h-5 mr-2" />
-                        Erneut prüfen
-                      </>
-                    )}
-                  </button>
-                </div>
-              ) : (
-                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                  <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium mb-2">Kein Plagiat-Ergebnis verfügbar</p>
-                  <p className="text-sm mb-6">
-                    Prüfe deine Thesis auf Plagiate mit Grammarly.
-                  </p>
-                  <button
-                    onClick={handleCheckPlagiarism}
-                    disabled={isCheckingPlagiarism || !thesis?.latex_content}
-                    className="inline-flex items-center px-6 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:bg-purple-600 dark:hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isCheckingPlagiarism ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Prüfe...
-                      </>
-                    ) : (
-                      <>
-                        <FileText className="w-5 h-5 mr-2" />
-                        Plagiat-Check starten
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
 
-            {/* Modal Footer */}
-            <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
-              <button
-                onClick={() => setShowPlagiarismModal(false)}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                Schließen
-              </button>
+              {/* Modal Footer */}
+              <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                <button
+                  onClick={() => setShowPlagiarismModal(false)}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Schließen
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   )
 }
 
