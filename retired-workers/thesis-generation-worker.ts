@@ -2076,6 +2076,16 @@ ${citationStyle === 'deutsche-zitierweise' || citationStyle === 'fussnoten' ? `*
 - Zitiere im Fließtext: (Autor, Jahr, S. XX)
 - Beispiel: (Müller, 2021, S. 12) oder (Schmidt et al., 2020, S. 5-7)`}
 
+**🚫 ABSOLUT VERBOTEN: FRAGEN & FRAGE-ANTWORT-MUSTER 🚫**
+- NIEMALS Konstruktionen wie "Begriff? Definition." verwenden!
+  ✗ "Politische Korruption? Sie ist definiert als..."
+  ✗ "Was bedeutet das? Es bedeutet..."
+  ✗ "Ist das wirklich so? Ja, denn..."
+- NIEMALS rhetorische Fragen nutzen!
+- Schreibe IMMER in direkten Aussagen:
+  ✓ "Politische Korruption wird definiert als..."
+  ✓ "Dies bedeutet konkret, dass..."
+
 **🚫 ABSOLUT VERBOTEN: EIGENE STUDIEN BEHAUPTEN 🚫**
 Dies ist eine LITERATURBASIERTE Arbeit - du hast KEINE eigene Forschung durchgeführt!
 
@@ -2123,6 +2133,16 @@ ${citationStyle === 'deutsche-zitierweise' || citationStyle === 'fussnoten' ? `*
 - DO NOT write footnote definitions at the end` : `**${citationStyleLabel}:**
 - Cite in text: (Author, Year, p. XX)
 - Example: (Miller, 2021, p. 12) or (Smith et al., 2020, p. 5-7)`}
+
+**🚫 ABSOLUTELY FORBIDDEN: QUESTIONS & Q&A PATTERNS 🚫**
+- NEVER use constructions like "Term? Definition."!
+  ✗ "Political Corruption? It is defined as..."
+  ✗ "What does this mean? It means..."
+  ✗ "Is this true? Yes, because..."
+- NEVER use rhetorical questions!
+- ALWAYS write in direct statements:
+  ✓ "Political corruption is defined as..."
+  ✓ "Concretely, this means that..."
 
 **🚫 ABSOLUTELY FORBIDDEN: CLAIMING OWN STUDIES 🚫**
 This is a LITERATURE-BASED thesis - you have performed NO original research!
@@ -2211,12 +2231,14 @@ ${sectionInstructions}${planInstructions}${contextInstruction}${lengthInstructio
 ${strictRules}
 
 Weitere Anforderungen:
+- ${isGerman ? 'HALTE DICH STRIKT AN DIE VORGEGEBENE GLIEDERUNG. Ändere KEINE Überschriften. Nutze exakt die vorgegebenen Unterkapitel.' : 'ADHERE STRICTLY TO THE PROVIDED OUTLINE. Do NOT change any headings. Use exactly the provided subchapters.'}
 - ${isGerman ? 'Nutze die bereitgestellten Quellen INTENSIV.' : 'Use the provided sources EXTENSIVELY.'}
 - ${isGerman ? 'Integriere Kontext, Analyse, Beispiele, Methodik und Diskussion.' : 'Include context, analysis, examples, methodology, and discussion.'}
 - ${isGerman ? 'Füge Übergänge zu vorherigen und folgenden Kapiteln ein, ohne Inhalte zu wiederholen.' : 'Add transitions to previous and upcoming chapters without repeating content.'}
-- ${isGerman ? 'Gliedere das Kapitel mit passenden Zwischenüberschriften (##, ###, etc.).' : 'Structure the chapter with appropriate subheadings (##, ###, etc.).'}
+- ${isGerman ? 'Gliedere das Kapitel mit passenden Zwischenüberschriften (##, ###, etc.) gemäß der Gliederungsvorgabe.' : 'Structure the chapter with appropriate subheadings (##, ###, etc.) according to the outline.'}
 - ${isGerman ? 'Nutze ein akademisches, menschliches Sprachmuster mit Variation in Satzlängen und Syntax.' : 'Use academic, human-like language with varied sentence lengths and syntax.'}
 - ${isGerman ? 'Keine Meta-Kommentare, nur Inhalt.' : 'No meta commentary, only content.'}
+- ${isGerman ? 'VERMEIDE ÜBERTRIEBENE ADJEKTIVE/ADVERBIEN (UNWISSENSCHAFTLICH): Nutze niemals Wörter wie "unglaublich", "extrem", "total", "absolut", "schockierend", "riesig". Bleibe neutral und sachlich.' : 'AVOID HYPERBOLIC ADJECTIVES/ADVERBS (UNSCIENTIFIC): Never use words like "incredibly", "extremely", "totally", "absolutely", "shocking", "massive". Remain neutral and objective.'}
 
 ${startInstruction}`
   }
@@ -4110,6 +4132,14 @@ L. **Unpredictable Structures (CRITICAL):**
    - Avoid perfectly symmetrical paragraph lengths.
 
 M. **FORBIDDEN WORDS AND FORMULATIONS (ABSOLUTELY CRITICAL):**
+   - ABSOLUTELY FORBIDDEN: Over-Emphasis / Emotional Language (UNSCIENTIFIC!):
+     - DO NOT use: "incredibly", "extremely", "totally", "absolutely", "shocking", "dramatic", "massive", "huge", "breathtaking", "unbelievable", "undoubtedly", "obviously".
+     - DO NOT use emotional adjectives/adverbs or hyperbolic intensifiers.
+     - WRONG: "It is incredibly hard to define..." -> CORRECT: "It is difficult to define..."
+     - WRONG: "This is extremely important..." -> CORRECT: "This is significant..."
+     - WRONG: "A massive change..." -> CORRECT: "A substantial change..."
+     - Keep the tone NEUTRAL, OBJECTIVE, and RESTRAINED.
+
    - ABSOLUTELY FORBIDDEN: Personal pronouns like "we", "I", "us", "our" - use passive or impersonal constructions instead.
      WRONG: "We will address this in the next section..."
      CORRECT: "This will be addressed in the next section..." or "The next section addresses..."
