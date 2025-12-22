@@ -1770,6 +1770,7 @@ interface GenerateChapterParams {
   chapterTargetWords: number
   thesisPlan: string
   previousContent: string
+  previousChapterSummaries: string[]
   isGerman: boolean
   sources: Source[]
   citationStyle: string
@@ -2001,6 +2002,7 @@ async function generateChapterContent({
   chapterTargetWords,
   thesisPlan,
   previousContent,
+  previousChapterSummaries,
   isGerman,
   sources,
   citationStyle,
@@ -2206,12 +2208,28 @@ INSTEAD - Attribute research to REAL authors:
         ? `**BEREITS GESCHRIEBENER TEIL DIESES KAPITELS (Fortsetzung hieran anschließen):**\n<<<\n${currentChapterContext}\n>>>\n\nFühre den Text logisch fort. Wiederhole NICHTS was oben steht. Schreibe einfach weiter.`
         : `**ALREADY WRITTEN PART OF THIS CHAPTER (Continue from here):**\n<<<\n${currentChapterContext}\n>>>\n\nContinue the text logically. Do NOT repeat anything above. Just keep writing.`
     } else {
-      // NEW CHAPTER MODE: Context is previous chapters
-      contextInstruction = previousContent
-        ? (isGerman
-          ? `Vorheriger Textausschnitt (Kontext, NICHT wiederholen, nur für Übergänge verwenden):\n<<<\n${previousExcerpt}\n>>>\n`
-          : `Previous text excerpt (context only, DO NOT repeat, use only for transitions):\n<<<\n${previousExcerpt}\n>>>\n`)
+      // NEW CHAPTER MODE: Context is SUMMARY of previous chapters (Rolling Context)
+      // This solves the 'Amnesia' problem by telling the AI exactly what happened before.
+      const previousSummariesText = previousChapterSummaries && previousChapterSummaries.length > 0
+        ? previousChapterSummaries.join('\n\n---\n\n')
         : ''
+
+      if (previousSummariesText) {
+        contextInstruction = isGerman
+          ? `**GRUNDLAGE: ZUSAMMENFASSUNG DER VORHERIGEN KAPITEL:**
+             (Damit du weißt, was bereits definiert/diskutiert wurde - Wiederhole dies NICHT, sondern baue darauf auf)
+             <<<\n${previousSummariesText}\n>>>\n`
+          : `**CONTEXT: SUMMARY OF PREVIOUS CHAPTERS:**
+             (So you know what has already been defined/discussed - DO NOT repeat this, but build upon it)
+             <<<\n${previousSummariesText}\n>>>\n`
+      } else {
+        // Fallback to text excerpt if no summaries (e.g. Chapter 1 or legacy mode)
+        contextInstruction = previousContent
+          ? (isGerman
+            ? `Vorheriger Textausschnitt (Kontext, NICHT wiederholen, nur für Übergänge verwenden):\n<<<\n${previousExcerpt}\n>>>\n`
+            : `Previous text excerpt (context only, DO NOT repeat, use only for transitions):\n<<<\n${previousExcerpt}\n>>>\n`)
+          : ''
+      }
     }
 
     const lengthInstruction = isGerman
@@ -2313,6 +2331,193 @@ ${startInstruction}`
   return { content: chapterContent, wordCount: finalWordCount }
 }
 
+/**
+ * Creates a concise summary of a generated chapter to maintain context without exceeding token limits.
+ */
+async function summarizeChapter(chapterTitle: string, content: string, isGerman: boolean): Promise<string> {
+  // Use a cheaper/faster model for summarization if available, or standard model
+  const prompt = isGerman
+    ? `Fasse das folgende Buchkapitel ("${chapterTitle}") in ca. 150-200 Wörtern zusammen.
+       Konzentriere dich auf:
+       1. Welche Begriffe wurden definiert?
+       2. Welche Hauptargumente wurden gemacht?
+       3. Was ist das Fazit dieses Kapitels?
+       
+       Ziel: Ein nachfolgendes Kapitel soll wissen, was hier bereits besprochen wurde, um Wiederholungen zu vermeiden.
+       
+       TEXT:
+       ${content.substring(0, 15000)}`
+    : `Summarize the following book chapter ("${chapterTitle}") in approx 150-200 words.
+       Focus on:
+       1. What terms were defined?
+       2. What were the main arguments?
+       3. What is the conclusion of this chapter?
+       
+       Goal: A subsequent chapter should know what has already been discussed here to avoid repetition.
+       
+       TEXT:
+       ${content.substring(0, 15000)}`
+
+  try {
+    const response = await retryApiCall(() => ai.models.generateContent({
+      model: 'gemini-1.5-flash',
+      contents: prompt,
+      config: { maxOutputTokens: 500, temperature: 0.3 },
+    }))
+    return response.text || ''
+  } catch (error) {
+    console.warn('[ThesisGeneration] Failed to summarize chapter:', error)
+    return `(Summary unavailable for ${chapterTitle})`
+  }
+}
+
+/**
+ * Critiques the final thesis for structure, research question, and citations.
+ */
+async function critiqueThesis(
+  thesisText: string,
+  outlineChapters: OutlineChapterInfo[],
+  researchQuestion: string,
+  sources: Source[],
+  isGerman: boolean
+): Promise<string> {
+  console.log('[ThesisCritique] Starting comprehensive thesis critique...')
+
+  // Simplify sources for prompt (Title + Author only)
+  const sourceListShort = sources.map((s, i) => `[${i + 1}] ${s.authors.join(', ')} - ${s.title}`).join('\n')
+
+  // Simplify outline for prompt
+  const outlineShort = outlineChapters.map(c => `${c.number} ${c.title}`).join('\n')
+
+  const prompt = isGerman
+    ? `Du bist ein strenger akademischer Prüfer. Überprüfe die folgende Thesis (Ausschnitt/Zusammenfassung) auf Herz und Nieren.
+    
+    PRÜFUNGSKRITERIEN:
+    1. **STRUKTUR:** Entsprechen die Kapitelüberschriften exakt der Vorgabe?
+       VORGABE:
+       ${outlineShort}
+    
+    2. **FORSCHUNGSFRAGE:** Wird die folgende Forschungsfrage explizit und schlüssig beantwortet?
+       FRAGE: "${researchQuestion}"
+       (Schaue besonders auf Einleitung und Fazit)
+    
+    3. **QUELLEN-CHECK:** Werden Quellen zitiert, die NICHT in der erlaubten Liste stehen? (Halluzinations-Check)
+       ERLAUBTE QUELLEN:
+       ${sourceListShort}
+    
+    THESIS TEXT (Ausschnitte):
+    ${thesisText.substring(0, 50000)} ... [Text gekürzt für Analyse]
+    
+    ANTWORTE IN DIESEM FORMAT:
+    ## 🧐 CRITIQUE REPORT
+    **1. Struktur:** [OK / FEHLER] - Kommentar...
+    **2. Forschungsfrage:** [BEANTWORTET / UNKLAR] - Kommentar...
+    **3. Quellen:** [SAUBER / HALLUZINATIONEN VERMUTET] - Kommentar...
+    **Gesamturteil:** [Kurzes Fazit]`
+
+    : `You are a strict academic auditor. Critique the following thesis (excerpt/summary) rigorously.
+    
+    CRITERIA:
+    1. **STRUCTURE:** Do the chapter headings match the outline exactly?
+       OUTLINE:
+       ${outlineShort}
+    
+    2. **RESEARCH QUESTION:** Is the following Research Question explicitly and coherently answered?
+       QUESTION: "${researchQuestion}"
+       (Focus on Intro and Conclusion)
+    
+    3. **SOURCE CHECK:** No fake sources?
+       ALLOWED SOURCES:
+       ${sourceListShort}
+    
+    THESIS TEXT (Excerpt):
+    ${thesisText.substring(0, 50000)} ... [Text truncated]
+    
+    ANSWER IN THIS FORMAT:
+    ## 🧐 CRITIQUE REPORT
+    **1. Structure:** [OK / ERROR] - Comment...
+    **2. Research Question:** [ANSWERED / UNCLEAR] - Comment...
+    **3. Sources:** [CLEAN / HALLUCINATIONS SUSPECTED] - Comment...
+    **Verdict:** [Short Conclusion]`
+
+  try {
+    // Use decent model for critique (Pro or Flash)
+    const response = await retryApiCall(() => ai.models.generateContent({
+      model: 'gemini-1.5-flash',
+      contents: prompt,
+      config: { maxOutputTokens: 1000, temperature: 0.1 },
+    }))
+    return response.text || 'Critique generation failed.'
+  } catch (error) {
+    console.error('[ThesisCritique] Failed to generate critique:', error)
+    return 'Critique failed due to error.'
+  }
+}
+
+/**
+ * Repairs a specific chapter based on the global critique report.
+ */
+async function fixChapterContent(
+  chapterContent: string,
+  critiqueReport: string,
+  isGerman: boolean
+): Promise<string> {
+  // If the content is too short (e.g. placeholder), don't touch it
+  if (chapterContent.length < 100) return chapterContent
+
+  const prompt = isGerman
+    ? `Du bist ein erfahrener akademischer Lektor. Unten siehst du ein Buchkapitel und einen "Critique Report" für die gesamte Thesis.
+    
+    DEINE AUFGABE:
+    Korrigiere dieses Kapitel NUR DANN, wenn der Critique Report Fehler nennt, die für DIESES Kapitel relevant sind.
+    
+    CRITIQUE REPORT:
+    ${critiqueReport}
+    
+    REGELN:
+    1. Wenn der Report sagt "Forschungsfrage in der Einleitung fehlt" und dies IST die Einleitung: FÜGE SIE EIN!
+    2. Wenn der Report sagt "Strukturfehler in Kapitel 3" und dies IST Kapitel 3: KORRIGIERE ES!
+    3. Wenn der Report keine Fehler nennt, die für diesen Text relevant sind: Gib den Text EXAKT SO ZURÜCK WIE ER WAR (keine Änderungen).
+    4. Ändere NICHTS am Stil, nur die kritisierten inhaltlichen/strukturellen Fehler.
+    
+    KAPITEL TEXT:
+    ${chapterContent}
+    
+    GIB NUR DEN (KORRIGIERTEN) TEXT ZURÜCK. KEINE KOMMENTARE.`
+
+    : `You are an expert academic editor. Below is a book chapter and a "Critique Report" for the entire thesis.
+    
+    YOUR TASK:
+    Correct this chapter ONLY IF the Critique Report mentions errors relevant to THIS chapter.
+    
+    CRITIQUE REPORT:
+    ${critiqueReport}
+    
+    RULES:
+    1. If report says "RQ missing in Intro" and this IS the Intro: ADD IT!
+    2. If report says "Structure error in Ch 3" and this IS Ch 3: FIX IT!
+    3. If report mentions no errors relevant to this text: Return the text EXACTLY AS IS (no changes).
+    4. Do NOT change style, only the criticized errors.
+    
+    CHAPTER TEXT:
+    ${chapterContent}
+    
+    OUTPUT ONLY THE (CORRECTED) TEXT. NO COMMENTS.`
+
+  try {
+    const response = await retryApiCall(() => ai.models.generateContent({
+      model: 'gemini-1.5-flash',
+      contents: prompt,
+      config: { maxOutputTokens: 8000, temperature: 0.1 }, // Flash allows 8k output
+    }))
+    return response.text ? response.text.trim() : chapterContent
+  } catch (error) {
+    console.warn('[ThesisRepair] Failed to repair chapter:', error)
+    return chapterContent // Fallback to original on error
+  }
+}
+
+
 
 async function generateThesisContent(thesisData: ThesisData, rankedSources: Source[], thesisPlan: string = ''): Promise<string> {
   console.log('[ThesisGeneration] Starting thesis content generation...')
@@ -2393,6 +2598,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   if (useChapterGeneration) {
     console.log('[ThesisGeneration] Using per-chapter generation strategy')
     const chapterContents: string[] = []
+    const chapterSummaries: string[] = [] // Store rolling summaries
     let totalWordCount = 0
 
     // Helper function to check if a chapter should be skipped (e.g., Verzeichnisse, Bibliography)
@@ -2424,6 +2630,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
         chapterTargetWords: chapterTarget,
         thesisPlan: thesisPlan || '',
         previousContent: chapterContents.join('\n\n'),
+        previousChapterSummaries: chapterSummaries, // Pass the rolling summaries
         isGerman,
         sources: rankedSources,
         citationStyle: thesisData.citationStyle,
@@ -2432,6 +2639,11 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
       chapterContents.push(chapterText.trim())
       totalWordCount += chapterWordCount
       console.log(`[ThesisGeneration] Chapter ${chapter.number} complete (~${chapterWordCount} words, total ${totalWordCount}/${expectedWordCount})`)
+
+      // Generate Summary for next chapters
+      const summary = await summarizeChapter(`${chapter.number} ${chapter.title}`, chapterText, isGerman)
+      chapterSummaries.push(summary)
+      console.log(`[ThesisGeneration] Chapter summary generated (${summary.length} chars)`)
     }
 
     let combinedContent = chapterContents.join('\n\n\n')
@@ -5123,6 +5335,66 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       throw new Error('Thesis generation failed and no valid content was produced')
     }
 
+    // Step 7.1: Thesis Critique Agent (Refactored Order)
+    // Run Critique BEFORE humanization/checks to ensure we fix content first
+    let critiqueReport = ''
+    console.log('\n[PROCESS] ========== Step 7.1: Thesis Critique Agent (Refactored) ==========')
+    try {
+      // Map outline to expected format for critique
+      const outlineForCritique = (thesisData.outline || []).map((chapter: any, index: number) => ({
+        number: (chapter?.number ?? `${index + 1}.`).toString().trim(),
+        title: (chapter?.title ?? '').toString().trim(),
+        sections: []
+      }))
+
+      critiqueReport = await critiqueThesis(
+        thesisContent,
+        outlineForCritique,
+        thesisData.researchQuestion || 'N/A',
+        sourcesForGeneration || [],
+        thesisData.language === 'german'
+      )
+      console.log('[Critique] Report generated:')
+      console.log(critiqueReport)
+    } catch (error) {
+      console.error('[PROCESS] ERROR in Thesis Critique:', error)
+    }
+
+    // Step 7.2: Thesis Repair Agent (Refactored Order)
+    console.log('\n[PROCESS] ========== Step 7.2: Thesis Repair Agent (Refactored) ==========')
+    try {
+      if (critiqueReport && critiqueReport.length > 100) {
+        console.log('[Repair] Critique report available. Starting chunked repair...')
+
+        // 1. Split content into chapters (using headlines as delimiter)
+        // Regex looks for "## " at start of line
+        const chapters = thesisContent.split(/(?=^## )/gm).filter(c => c.trim().length > 0)
+        console.log(`[Repair] Split thesis into ${chapters.length} chunks for processing`)
+
+        const repairedChapters: string[] = []
+
+        // 2. Process each chapter
+        for (let i = 0; i < chapters.length; i++) {
+          const chunk = chapters[i]
+          const chunkTitle = chunk.split('\n')[0].replace(/#/g, '').trim()
+          console.log(`[Repair] Repairing chunk ${i + 1}/${chapters.length}: "${chunkTitle.substring(0, 50)}..."`)
+
+          const repairedChunk = await fixChapterContent(chunk, critiqueReport, thesisData.language === 'german')
+          repairedChapters.push(repairedChunk)
+        }
+
+        // 3. Reassemble
+        thesisContent = repairedChapters.join('\n')
+        console.log('[Repair] Thesis successfully repaired and reassembled.')
+
+      } else {
+        console.log('[Repair] No critique report available or report too short. Skipping repair.')
+      }
+    } catch (error) {
+      console.error('[PROCESS] ERROR in Thesis Repair:', error)
+      console.warn('[Repair] Continuing with original content (repair failed)')
+    }
+
     // Step 7.4: Check with GPTZero and rewrite flagged sentences
     console.log('\n[PROCESS] ========== Step 7.4: GPTZero Check & Sentence Rewrite ==========')
     const gptZeroCheckStart = Date.now()
@@ -5208,6 +5480,11 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     } catch (error) {
       console.error('[PROCESS] ERROR in Winston check:', error)
     }
+
+
+
+
+
 
     // Process footnotes for German citation style
     let processedContent = thesisContent
