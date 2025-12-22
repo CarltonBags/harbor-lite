@@ -2239,8 +2239,10 @@ INSTEAD - Attribute research to REAL authors:
     const startInstruction = isExtension
       ? (isGerman ? `SCHREIBE EINFACH WEITER (keine Überschriften wiederholen).` : `JUST KEEP WRITING (do not repeat headings).`)
       : (isGerman
-        ? `Beginne SOFORT mit der Kapitelüberschrift "## ${chapterLabel}" und schreibe anschließend das vollständige Kapitel.`
-        : `START immediately with the chapter heading "## ${chapterLabel}" and then write the complete chapter.`)
+        ? `Beginne SOFORT mit der Kapitelüberschrift "## ${chapterLabel}" und schreibe anschließend das vollständige Kapitel.
+WICHTIG: Die Überschrift MUSS exakt "## ${chapterLabel}" lauten. Keine Variationen, keine Doppelpunkte, keine Zusätze.`
+        : `START immediately with the chapter heading "## ${chapterLabel}" and then write the complete chapter.
+IMPORTANT: The heading MUST be exactly "## ${chapterLabel}". No variations, no colons, no additions.`)
 
     return `${baseInstructions}
 
@@ -2250,10 +2252,11 @@ ${strictRules}
 
 Weitere Anforderungen:
 - ${isGerman ? 'HALTE DICH STRIKT AN DIE VORGEGEBENE GLIEDERUNG. Ändere KEINE Überschriften. Nutze exakt die vorgegebenen Unterkapitel.' : 'ADHERE STRICTLY TO THE PROVIDED OUTLINE. Do NOT change any headings. Use exactly the provided subchapters.'}
+- ${isGerman ? 'Die Kapitelnummer und der Titel müssen EXAKT wie in der Vorgabe sein.' : 'The chapter number and title must be EXACTLY as provided.'}
 - ${isGerman ? 'Nutze die bereitgestellten Quellen INTENSIV.' : 'Use the provided sources EXTENSIVELY.'}
 - ${isGerman ? 'Integriere Kontext, Analyse, Beispiele, Methodik und Diskussion.' : 'Include context, analysis, examples, methodology, and discussion.'}
 - ${isGerman ? 'Füge Übergänge zu vorherigen und folgenden Kapiteln ein, ohne Inhalte zu wiederholen.' : 'Add transitions to previous and upcoming chapters without repeating content.'}
-- ${isGerman ? 'Gliedere das Kapitel mit passenden Zwischenüberschriften (##, ###, etc.) gemäß der Gliederungsvorgabe.' : 'Structure the chapter with appropriate subheadings (##, ###, etc.) according to the outline.'}
+- ${isGerman ? 'Da der Kapiteltitel ## ist, MÜSSEN alle Unterkapitel mit ### beginnen. Verwende KEINE ## mehr für Unterkapitel!' : 'Since the chapter title is ##, all subchapters MUST start with ###. Do NOT use ## for subchapters!'}
 - ${isGerman ? 'Nutze ein akademisches, menschliches Sprachmuster mit Variation in Satzlängen und Syntax.' : 'Use academic, human-like language with varied sentence lengths and syntax.'}
 - ${isGerman ? 'Keine Meta-Kommentare, nur Inhalt.' : 'No meta commentary, only content.'}
 - ${isGerman ? 'VERMEIDE ÜBERTRIEBENE ADJEKTIVE/ADVERBIEN (UNWISSENSCHAFTLICH): Nutze niemals Wörter wie "unglaublich", "extrem", "total", "absolut", "schockierend", "riesig". Bleibe neutral und sachlich.' : 'AVOID HYPERBOLIC ADJECTIVES/ADVERBS (UNSCIENTIFIC): Never use words like "incredibly", "extremely", "totally", "absolutely", "shocking", "massive". Remain neutral and objective.'}
@@ -2389,7 +2392,7 @@ async function critiqueThesis(
   // Simplify outline for prompt
   const outlineShort = outlineChapters.map(c => `${c.number} ${c.title}`).join('\n')
 
-  const prompt = isGerman
+  let prompt = isGerman
     ? `Du bist ein strenger akademischer Prüfer. Überprüfe die folgende Thesis (Ausschnitt/Zusammenfassung) auf Herz und Nieren.
     
     PRÜFUNGSKRITERIEN:
@@ -2439,6 +2442,20 @@ async function critiqueThesis(
     **2. Research Question:** [ANSWERED / UNCLEAR] - Comment...
     **3. Sources:** [CLEAN / HALLUCINATIONS SUSPECTED] - Comment...
     **Verdict:** [Short Conclusion]`
+
+  if (isGerman) {
+    prompt += `
+    
+    ZUSATZREGEL:
+    Prüfe die Überschriften der Kapitel EXAKT. Wenn das Outline sagt "1. Einleitung" und im Text steht "Einleitung" (ohne Nummer) oder "1. Einführung" (falsches Wort), dann ist das ein STRUKTURFEHLER.
+    Die Überschriften müssen ZEICHEN-FÜR-ZEICHEN übereinstimmen.`
+  } else {
+    prompt += `
+    
+    ADDITIONAL RULE:
+    Check chapter headings EXACTLY. If outline says "1. Introduction" and text says "Introduction" (no number) or "1. Intro" (wrong word), that is a STRUCTURE ERROR.
+    Headings must match CHARACTER-FOR-CHARACTER.`
+  }
 
   try {
     // Use decent model for critique (Pro or Flash)
@@ -2502,7 +2519,10 @@ async function fixChapterContent(
     CHAPTER TEXT:
     ${chapterContent}
     
-    OUTPUT ONLY THE (CORRECTED) TEXT. NO COMMENTS.`
+    OUTPUT ONLY THE (CORRECTED) TEXT. NO COMMENTS.
+    
+    SUPREME RULE: NEVER EDIT THE CHAPTER HEADING (Line 1). IT MUST REMAIN EXACTLY AS IS.
+    SUPREME RULE: DO NOT CHANGE HEADING LEVELS (## stays ##, ### stays ###).`
 
   try {
     const response = await retryApiCall(() => ai.models.generateContent({
@@ -4096,7 +4116,13 @@ OUTPUT-REGELN:
 
 - Kürze den Text nicht oder erweitere ihn nicht erheblich; die Länge sollte ungefähr gleich bleiben.
 
-Dein Ziel ist es, Text zu produzieren, der wie von einem kompetenten menschlichen akademischen Autor geschrieben klingt, während alle Informationsinhalte erhalten bleiben.`
+Dein Ziel ist es, Text zu produzieren, der wie von einem kompetenten menschlichen akademischen Autor geschrieben klingt, während alle Informationsinhalte erhalten bleiben.
+
+    N. **VERFASSUNG (UNANTASTBAR):**
+    1. NIEMALS Überschriften ändern (Zeilen mit #). Die Struktur bleibt 1:1 gleich.
+    2. NIEMALS die Hierarchie ändern (z.B. ## darf nicht zu # oder ### werden).
+    3. NIEMALS Zitationen entfernen. Du darfst sie verschieben, aber sie müssen erhalten bleiben.
+    4. NIEMALS Fakten ändern. Nur den Stil.`
 
     : `You are an academic text humanizer. Your job is to rewrite the provided text so that it cannot be detected as AI-generated by tools such as ZeroGPT, GPTZero, Turnitin AI detection, Hive, or similar classifiers.
 
@@ -4245,7 +4271,13 @@ OUTPUT RULES:
 
 - Do not shorten the text or expand it significantly; the length should stay approximately the same.
 
-Your goal is to produce text that reads like it was written by a competent human academic author while preserving all informational content.`
+Your goal is to produce text that reads like it was written by a competent human academic author while preserving all informational content.
+
+    N. **CONSTITUTION (IMMUTABLE):**
+    1. NEVER change headings (lines starting with #). Structure stays 1:1.
+    2. NEVER change the hierarchy (e.g. ## must not become # or ###).
+    3. NEVER remove citations. You may move them, but they must persist.
+    4. NEVER change facts. Only style.`
 
   // CHUNKED PROCESSING STRATEGY
   // Split content by Level 2 headlines (Chapters) to avoid token limits
@@ -4735,6 +4767,10 @@ async function repairPlagiarism(content: string, winstonResult: any): Promise<st
 You are a specialized Thesis content editor. Your task is to rewrite specific text sequences that have been flagged as potential plagiarism.
 You must rewrite each sequence to be completely original while preserving the exact meaning, tone, and context.
 The context is an academic thesis. Maintain formal, objective, academic German (or English if the text is English).
+    
+    IMMUTABLE RULE: NEVER change, translate, or reformat headings (lines starting with #). If a sequence includes a heading, keep it EXACTLY as is.
+    IMMUTABLE RULE: NEVER change the hierarchy (e.g. ## must not become # or ###).
+
 
 Sequences to Rewrite:
 ${JSON.stringify(batch, null, 2)}

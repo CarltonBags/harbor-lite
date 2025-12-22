@@ -2642,7 +2642,7 @@ export default function ThesisPreviewPage() {
                             {thesis.metadata.plagiarismResult.originalityPercentage}%
                           </div>
                           <div className="text-xs text-green-600 dark:text-green-400 mt-1">
-                            Score: {thesis.metadata.plagiarismResult.originality.toFixed(2)}
+                            Score: {thesis.metadata.plagiarismResult.originalityPercentage?.toFixed(2)}
                           </div>
                         </div>
 
