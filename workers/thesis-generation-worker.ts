@@ -1882,8 +1882,12 @@ async function generateChapterContent({
       : `Write AT LEAST ${remainingWords} new words for this chapter (more is welcome).`
 
     const startInstruction = isGerman
-      ? `Beginne SOFORT mit der Kapitelüberschrift "## ${chapterLabel}" und schreibe anschließend das vollständige Kapitel.`
-      : `START immediately with the chapter heading "## ${chapterLabel}" and then write the complete chapter.`
+      ? `Beginne DIREKT mit dem Einleitungstext oder dem ersten Unterkapitel.
+         SCHREIBE NICHT DIE HAUPT-KAPITELÜBERSCHRIFT ("## ${chapterLabel}").
+         Diese wird automatisch hinzugefügt. Schreibe NUR den Inhalt.`
+      : `START directly with the introduction text or the first subchapter.
+         DO NOT WRITE THE MAIN CHAPTER HEADING ("## ${chapterLabel}").
+         It will be added automatically. Write ONLY the content.`
 
     return `${baseInstructions}
 
@@ -1896,6 +1900,27 @@ Weitere Anforderungen:
 - ${isGerman ? 'Gliedere das Kapitel mit passenden Zwischenüberschriften (##, ###, etc.).' : 'Structure the chapter with appropriate subheadings (##, ###, etc.).'}
 - ${isGerman ? 'Nutze ein akademisches, menschliches Sprachmuster mit Variation in Satzlängen und Syntax.' : 'Use academic, human-like language with varied sentence lengths and syntax.'}
 - ${isGerman ? 'Keine Meta-Kommentare, nur Inhalt.' : 'No meta commentary, only content.'}
+
+${isGerman ? `
+**⚠️ ABSOLUT VERBOTEN (KILL LIST):**
+- "Die globale Finanzkrise? Ein großes Thema." -> VERBOTEN! (Frage-Antwort-Muster)
+- "Digitalisierung? Sie verändert alles." -> VERBOTEN!
+- "Der Grund? Ganz einfach." -> VERBOTEN!
+- "Was bedeutet das? Es bedeutet..." -> VERBOTEN!
+- JEDES (Substantiv)? (Satz). Muster ist VERBOTEN. LÖSCHE DAS FRAGEZEICHEN.
+
+**⚠️ ABSOLUT VERBOTEN: "man" / "wir" / "uns":**
+- ✗ "Man sieht..." -> VERBOTEN! -> ✓ "Es ist ersichtlich..."
+- ✗ "Wir untersuchen..." -> VERBOTEN! -> ✓ "Es wird untersucht..."
+- ✗ "Unsere Analyse..." -> VERBOTEN! -> ✓ "Die Analyse..." (Einzelautor-Thesis!)` : `
+**⚠️ ABSOLUTELY FORBIDDEN (KILL LIST):**
+- "The global crisis? A big topic." -> FORBIDDEN! (Q&A Pattern)
+- "Digitization? It changes everything." -> FORBIDDEN!
+- ANY Question? Answer. pattern is FORBIDDEN.
+
+**⚠️ ABSOLUTELY FORBIDDEN: "we" / "our" / "one":**
+- ✗ "We found..." -> FORBIDDEN! -> ✓ "It was found..."
+- ✗ "Our analysis..." -> FORBIDDEN! -> ✓ "The analysis..."`}
 
 ${startInstruction}`
   }
@@ -1951,7 +1976,15 @@ ${startInstruction}`
     // Don't throw error - generation must ALWAYS succeed and deliver a thesis
   }
 
-  return { content: chapterContent, wordCount: finalWordCount }
+  // Force exact chapter heading from outline to prevent hallucinations/changes
+  // We explicitly told AI NOT to write it, so we prepend it here safely.
+  // Also strip any potential AI-generated heading if it ignored instructions (safety check)
+  const cleanContent = chapterContent.replace(/^\s*##\s+.*?\n/, '').trim()
+
+  const finalContent = `## ${chapterLabel}\n\n${cleanContent}`
+  const totalWordCount = finalContent.split(/\s+/).length
+
+  return { content: finalContent, wordCount: totalWordCount }
 }
 
 
@@ -3169,6 +3202,12 @@ M. **VERBOTENE WÖRTER UND FORMULIERUNGEN (ABSOLUT KRITISCH):**
      FALSCH: "Wir können feststellen, dass..."
      RICHTIG: "Es lässt sich feststellen, dass..." oder "Festzustellen ist, dass..."
    - ABSOLUT VERBOTEN: Direkte Ansprache des Lesers ("man", "Sie" in direkter Anrede).
+   - ABSOLUT VERBOTEN: Das Wort "man" generell vermeiden! -> "Es lässt sich...", "Dabei wird..."
+   - ABSOLUT VERBOTEN: Rhetorische Fragen oder Frage-Antwort-Muster ("Was bedeutet das?").
+   - KILL LIST (LÖSCHEN/UMSCHREIBEN):
+     * "Topic? Statement." -> "Topic ist Statement."
+     * "Grund? Einfach." -> "Der Grund ist einfach."
+     * "Man sieht..." -> "Es ist ersichtlich..."
    - KRITISCH: Wenn du solche Formulierungen im Originaltext findest, MUSST du sie in passive/unpersönliche Konstruktionen umwandeln.
    - Verwende stattdessen: Passivkonstruktionen, unpersönliche Formulierungen, Nominalisierungen.
    - Beispiele für korrekte Formulierungen:
@@ -3295,6 +3334,11 @@ M. **FORBIDDEN WORDS AND FORMULATIONS (ABSOLUTELY CRITICAL):**
      WRONG: "We can observe that..."
      CORRECT: "It can be observed that..." or "Observation shows that..."
    - ABSOLUTELY FORBIDDEN: Direct address to the reader ("you", "one" in direct address).
+   - ABSOLUTELY FORBIDDEN: Rhetorical questions or Q&A patterns ("What does this mean?").
+   - KILL LIST (DELETE/REWRITE):
+     * "Topic? Statement." -> "Topic is Statement."
+     * "Reason? Simple." -> "The reason is simple."
+     * "We see..." -> "It is evident..."
    - CRITICAL: If you find such formulations in the original text, you MUST convert them to passive/impersonal constructions.
    - Use instead: Passive constructions, impersonal formulations, nominalizations.
    - Examples of correct formulations:
@@ -3345,12 +3389,15 @@ Your goal is to produce text that reads like it was written by a competent human
       return content
     }
 
-    // Verify headings are preserved
-    const originalHeadings = (content.match(/^#+\s+/gm) || []).length
-    const humanizedHeadings = (humanizedContent.match(/^#+\s+/gm) || []).length
+    // Verify and RESTORE headings
+    const originalHeadingsList = content.match(/^## .*$/gm) || []
+    const humanizedHeadingsList = humanizedContent.match(/^## .*$/gm) || []
 
-    if (originalHeadings !== humanizedHeadings) {
-      console.warn(`[Humanize] Heading count mismatch (original: ${originalHeadings}, humanized: ${humanizedHeadings}), using original`)
+    const originalHeadingsCount = originalHeadingsList.length
+    const humanizedHeadingsCount = humanizedHeadingsList.length
+
+    if (originalHeadingsCount !== humanizedHeadingsCount) {
+      console.warn(`[Humanize] Heading count mismatch (original: ${originalHeadingsCount}, humanized: ${humanizedHeadingsCount}), using original`)
       return content
     }
 
@@ -3369,7 +3416,7 @@ Your goal is to produce text that reads like it was written by a competent human
       return content
     }
 
-    // Check if specific citations are missing
+    // Check if specific citations are missing (Strict Check)
     const missingCitations = originalCitations.filter(citation => !humanizedContent.includes(citation))
     if (missingCitations.length > 0) {
       console.warn(`[Humanize] Missing specific citations: ${missingCitations.slice(0, 5).join(', ')}${missingCitations.length > 5 ? '...' : ''}`)
@@ -3377,12 +3424,25 @@ Your goal is to produce text that reads like it was written by a competent human
       return content
     }
 
-    console.log(`[Humanize] Humanization successful - length: ${humanizedContent.length} characters`)
+    // RESTORE HEADINGS: Force the humanized text to use the EXACT original headings
+    let fixedContent = humanizedContent
+    humanizedHeadingsList.forEach((wrongHeading, index) => {
+      const correctHeading = originalHeadingsList[index]
+      if (wrongHeading !== correctHeading) {
+        console.log(`[Humanize] Restoring headline: "${wrongHeading}" -> "${correctHeading}"`)
+        // Escape special regex chars in wrongHeading for replacement
+        // Use replaceAll to be safe if multiple occurrences? No, index-based replacement is safest but complex.
+        // Using simple replace because headlines are usually unique per document distinctness
+        fixedContent = fixedContent.replace(wrongHeading, correctHeading)
+      }
+    })
+
+    console.log(`[Humanize] Humanization successful - length: ${fixedContent.length} characters`)
     console.log(`[Humanize] Footnotes preserved: ${originalFootnotes}`)
-    console.log(`[Humanize] Headings preserved: ${originalHeadings}`)
+    console.log(`[Humanize] Headings preserved: ${originalHeadingsCount} (Restored exactly)`)
     console.log(`[Humanize] Citations preserved: ${originalCitations.length} → ${humanizedCitations.length}`)
 
-    return humanizedContent
+    return fixedContent
   } catch (error) {
     console.error('[Humanize] Error during humanization:', error)
     // Return original content if humanization fails

@@ -2282,6 +2282,27 @@ Weitere Anforderungen:
 - ${isGerman ? 'ABSOLUT UNEMOTIONAL: Der Text muss nüchtern, distanziert und analytisch sein. Keine Begeisterung, keine Dramatik, nur Fakten.' : 'ABSOLUTELY UNEMOTIONAL: The text must be cold, distant, and analytical. No excitement, no drama, only facts.'}
 - ${isGerman ? `FORSCHUNGSFRAGE UNANTASTBAR: Die Forschungsfrage ("${thesisData.researchQuestion}") darf NICHT verändert, umformuliert oder neu interpretiert werden. Sie steht absolut fest.` : `RESEARCH QUESTION IMMUTABLE: The research question ("${thesisData.researchQuestion}") must NOT be changed, rephrased, or reinterpreted. It is absolute.`}
 
+${isGerman ? `
+**⚠️ ABSOLUT VERBOTEN (KILL LIST):**
+- "Die globale Finanzkrise? Ein großes Thema." -> VERBOTEN! (Frage-Antwort-Muster)
+- "Digitalisierung? Sie verändert alles." -> VERBOTEN!
+- "Der Grund? Ganz einfach." -> VERBOTEN!
+- "Was bedeutet das? Es bedeutet..." -> VERBOTEN!
+- JEDES (Substantiv)? (Satz). Muster ist VERBOTEN. LÖSCHE DAS FRAGEZEICHEN.
+
+**⚠️ ABSOLUT VERBOTEN: "man" / "wir" / "uns":**
+- ✗ "Man sieht..." -> VERBOTEN! -> ✓ "Es ist ersichtlich..."
+- ✗ "Wir untersuchen..." -> VERBOTEN! -> ✓ "Es wird untersucht..."
+- ✗ "Unsere Analyse..." -> VERBOTEN! -> ✓ "Die Analyse..." (Einzelautor-Thesis!)` : `
+**⚠️ ABSOLUTELY FORBIDDEN (KILL LIST):**
+- "The global crisis? A big topic." -> FORBIDDEN! (Q&A Pattern)
+- "Digitization? It changes everything." -> FORBIDDEN!
+- ANY Question? Answer. pattern is FORBIDDEN.
+
+**⚠️ ABSOLUTELY FORBIDDEN: "we" / "our" / "one":**
+- ✗ "We found..." -> FORBIDDEN! -> ✓ "It was found..."
+- ✗ "Our analysis..." -> FORBIDDEN! -> ✓ "The analysis..."`}
+
 ${startInstruction}`
   }
 
@@ -2436,7 +2457,9 @@ async function critiqueThesis(
        - Enthält der Text das Wort "man" oder "wir"? (VERBOTEN)
        - Ist der Stil zu umgangssprachlich?
        - Gibt es Flüchtigkeitsfehler ("Jahrhunderts. Jahrhunderts." oder "..")?
-       - Wurden verbotene Frage-Muster verwendet?
+       - **VERBOTENE FRAGE-MUSTER:** Prüfe auf "Thema? Aussage." Muster (z.B. "Der Grund? Einfach."). Das ist VERBOTEN.
+       - **RHETORISCHE FRAGEN:** Sind rhetorische Fragen enthalten? (VERBOTEN)
+       - **TON:** Zu emotional? Zu umgangssprachlich ("halt", "eben", "quasi")?
     
     THESIS TEXT (Ausschnitte):
     ${thesisText.substring(0, 50000)} ... [Text gekürzt für Analyse]
@@ -2467,7 +2490,9 @@ async function critiqueThesis(
     4. **LANGUAGE & TONE:**
        - Any usage of "man", "we", "I"? (FORBIDDEN)
        - Sloppy errors (double words/punctuation)?
-       - Banned rhetorical questions?
+       - **BANNED PATTERNS:** Check for "Topic? Statement." (e.g. "The reason? Simple."). FORBIDDEN.
+       - **RHETORICAL QUESTIONS:** Are there any? (FORBIDDEN)
+       - Is the tone too emotional or colloquial?
     
     THESIS TEXT (Excerpt):
     ${thesisText.substring(0, 50000)} ... [Text truncated]
@@ -2537,6 +2562,11 @@ async function fixChapterContent(
        - Ersetze Umgangssprache durch Fachsprache.
     4. Wenn der Report keine Fehler nennt, die für diesen Text relevant sind: Gib den Text EXAKT SO ZURÜCK WIE ER WAR (keine Änderungen).
     5. Ändere NICHTS am Stil, nur die kritisierten inhaltlichen/strukturellen/sprachlichen Fehler.
+    
+    SUPREME REGEL: ÄNDERE NIEMALS DIE KAPITELÜBERSCHRIFT (Zeile 1). SIE MUSS EXAKT BLEIBEN.
+    SUPREME REGEL: KEINE HIERARCHIE-ÄNDERUNGEN (## bleibt ##).
+    SUPREME REGEL: LÖSCHE ALLE "Thema? Aussage." MUSTER! "Grund? Einfach." -> VERBOTEN. Schreibe als Aussagesatz!
+    SUPREME REGEL: LÖSCHE "man" und "wir" -> Passiv!
     
     KAPITEL TEXT:
     ${chapterContent}
@@ -4299,6 +4329,12 @@ L. **Unpredictable Structures (CRITICAL):**
    - Vary between deductive and inductive argumentation.
    - Avoid perfectly symmetrical paragraph lengths.
 
+    **⚠️ ABSOLUT VERBOTEN (KILL LIST) - GILT AUCH BEIM UMSCHREIBEN:**
+    - "Begriff? Definition." (Frage-Antwort) -> VERBOTEN. Mach einen Aussagesatz daraus.
+    - "Was heißt das? Das heißt..." -> VERBOTEN. "Dies bedeutet..."
+    - "Wir", "Ich", "Uns" -> VERBOTEN. Passiv nutzen!
+    - "Man" -> VERBOTEN. "Es lässt sich..." nutzen!
+
 M. **FORBIDDEN WORDS AND FORMULATIONS (ABSOLUTELY CRITICAL):**
    - ABSOLUTELY FORBIDDEN: Over-Emphasis / Emotional Language (UNSCIENTIFIC!):
      - DO NOT use: "incredibly", "extremely", "totally", "absolutely", "shocking", "dramatic", "massive", "huge", "breathtaking", "unbelievable", "undoubtedly", "obviously".
@@ -4395,7 +4431,31 @@ Your goal is to produce text that reads like it was written by a competent human
         console.warn(`[Humanize] WARNING: Section ${i + 1} output suspiciously short (${sectionHumanized.length} vs ${section.length}), reverting to original`)
         humanizedSections.push(section)
       } else {
-        humanizedSections.push(sectionHumanized)
+        // Enforce Headline integrity (Output Repair)
+        // If the section started with a headline (##), ensure the output starts with THE SAME headline.
+        // This fixes the "random chapter names" issue by forcing restoration.
+        const originalHeadlineMatch = section.match(/^\s*##\s+[^\n]+/);
+        if (originalHeadlineMatch) {
+          const originalHeadline = originalHeadlineMatch[0].trim();
+          let fixedOutput = sectionHumanized.trim();
+
+          // 1. Remove any potentially hallucinated or wrong headline at the start
+          // Check if output starts with ## but it's different
+          if (fixedOutput.startsWith('##') && !fixedOutput.startsWith(originalHeadline)) {
+            fixedOutput = fixedOutput.replace(/^\s*##\s+[^\n]+\n+/, '');
+          }
+
+          // 2. If it doesn't start with the correct headline (because we removed it or it was missing), prepend it
+          if (!fixedOutput.startsWith(originalHeadline)) {
+            // Check if there's possibly a duplicated headline further down? No, just force prepend.
+            fixedOutput = `${originalHeadline}\n\n${fixedOutput.replace(/^\s*##\s+[^\n]+\n+/, '')}`;
+            // The replace again is just safety in case we missed something
+          }
+
+          humanizedSections.push(fixedOutput);
+        } else {
+          humanizedSections.push(sectionHumanized); // No headline in input, so just push output
+        }
       }
 
       // Small delay to be polite to the API between heavy chunks
