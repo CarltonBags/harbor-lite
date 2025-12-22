@@ -2088,6 +2088,13 @@ ${citationStyle === 'deutsche-zitierweise' || citationStyle === 'fussnoten' ? `*
   ✓ "Politische Korruption wird definiert als..."
   ✓ "Dies bedeutet konkret, dass..."
 
+    **⚠️ ABSOLUT VERBOTEN (KILL LIST):**
+    - "Die globale Finanzkrise? Ein großes Thema." -> VERBOTEN!
+    - "Digitalisierung? Sie verändert alles." -> VERBOTEN!
+    - "Der Grund? Ganz einfach." -> VERBOTEN!
+    - JEDES (Substantiv)? (Satz). Muster ist VERBOTEN.
+    - Wenn du ein Fragezeichen schreiben willst: LÖSCHE ES SOFORT. SCHREIBE EINE AUSSAGE.
+
 **🚫 ABSOLUT VERBOTEN: EIGENE STUDIEN BEHAUPTEN 🚫**
 Dies ist eine LITERATURBASIERTE Arbeit - du hast KEINE eigene Forschung durchgeführt!
 
@@ -2145,6 +2152,13 @@ ${citationStyle === 'deutsche-zitierweise' || citationStyle === 'fussnoten' ? `*
 - ALWAYS write in direct statements:
   ✓ "Political corruption is defined as..."
   ✓ "Concretely, this means that..."
+
+    **⚠️ ABSOLUTELY FORBIDDEN (KILL LIST):**
+    - "The global financial crisis? A big topic." -> FORBIDDEN!
+    - "Digitization? It changes everything." -> FORBIDDEN!
+    - "The reason? Quite simple." -> FORBIDDEN!
+    - ANY (Noun)? (Sentence). Pattern is FORBIDDEN.
+    - If you want to write a question mark: DELETE IT IMMEDIATELY. WRITE A STATEMENT.
 
 **🚫 ABSOLUTELY FORBIDDEN: CLAIMING OWN STUDIES 🚫**
 This is a LITERATURE-BASED thesis - you have performed NO original research!
@@ -2407,6 +2421,12 @@ async function critiqueThesis(
     3. **QUELLEN-CHECK:** Werden Quellen zitiert, die NICHT in der erlaubten Liste stehen? (Halluzinations-Check)
        ERLAUBTE QUELLEN:
        ${sourceListShort}
+
+    4. **SPRACHE & TON:** 
+       - Enthält der Text das Wort "man" oder "wir"? (VERBOTEN)
+       - Ist der Stil zu umgangssprachlich?
+       - Gibt es Flüchtigkeitsfehler ("Jahrhunderts. Jahrhunderts." oder "..")?
+       - Wurden verbotene Frage-Muster verwendet?
     
     THESIS TEXT (Ausschnitte):
     ${thesisText.substring(0, 50000)} ... [Text gekürzt für Analyse]
@@ -2416,6 +2436,7 @@ async function critiqueThesis(
     **1. Struktur:** [OK / FEHLER] - Kommentar...
     **2. Forschungsfrage:** [BEANTWORTET / UNKLAR] - Kommentar...
     **3. Quellen:** [SAUBER / HALLUZINATIONEN VERMUTET] - Kommentar...
+    **4. Sprache:** [SAUBER / FEHLERHAFT] - (Nenne konkrete Probleme: "man" verwendet, Doppelte Punkte, Zu umgangssprachlich, etc.)
     **Gesamturteil:** [Kurzes Fazit]`
 
     : `You are a strict academic auditor. Critique the following thesis (excerpt/summary) rigorously.
@@ -2432,6 +2453,11 @@ async function critiqueThesis(
     3. **SOURCE CHECK:** No fake sources?
        ALLOWED SOURCES:
        ${sourceListShort}
+
+    4. **LANGUAGE & TONE:**
+       - Any usage of "man", "we", "I"? (FORBIDDEN)
+       - Sloppy errors (double words/punctuation)?
+       - Banned rhetorical questions?
     
     THESIS TEXT (Excerpt):
     ${thesisText.substring(0, 50000)} ... [Text truncated]
@@ -2441,6 +2467,7 @@ async function critiqueThesis(
     **1. Structure:** [OK / ERROR] - Comment...
     **2. Research Question:** [ANSWERED / UNCLEAR] - Comment...
     **3. Sources:** [CLEAN / HALLUCINATIONS SUSPECTED] - Comment...
+    **4. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
     **Verdict:** [Short Conclusion]`
 
   if (isGerman) {
@@ -2494,8 +2521,12 @@ async function fixChapterContent(
     REGELN:
     1. Wenn der Report sagt "Forschungsfrage in der Einleitung fehlt" und dies IST die Einleitung: FÜGE SIE EIN!
     2. Wenn der Report sagt "Strukturfehler in Kapitel 3" und dies IST Kapitel 3: KORRIGIERE ES!
-    3. Wenn der Report keine Fehler nennt, die für diesen Text relevant sind: Gib den Text EXAKT SO ZURÜCK WIE ER WAR (keine Änderungen).
-    4. Ändere NICHTS am Stil, nur die kritisierten inhaltlichen/strukturellen Fehler.
+    3. Wenn der Report "Sprache: FEHLERHAFT" ("man", "wir", "Umgangssprache", "Tippfehler") meldet: KORRIGIERE ALLE DIESE FEHLER IM TEXT!
+       - Wandle "man" und "wir" in Passiv um.
+       - Entferne doppelte Wörter/Punkte.
+       - Ersetze Umgangssprache durch Fachsprache.
+    4. Wenn der Report keine Fehler nennt, die für diesen Text relevant sind: Gib den Text EXAKT SO ZURÜCK WIE ER WAR (keine Änderungen).
+    5. Ändere NICHTS am Stil, nur die kritisierten inhaltlichen/strukturellen/sprachlichen Fehler.
     
     KAPITEL TEXT:
     ${chapterContent}
@@ -2513,8 +2544,9 @@ async function fixChapterContent(
     RULES:
     1. If report says "RQ missing in Intro" and this IS the Intro: ADD IT!
     2. If report says "Structure error in Ch 3" and this IS Ch 3: FIX IT!
-    3. If report mentions no errors relevant to this text: Return the text EXACTLY AS IS (no changes).
-    4. Do NOT change style, only the criticized errors.
+    3. If report says "Language: ISSUES": FIX THEM! (Remove "man", "we", fix typos, formalize tone).
+    4. If report mentions no errors relevant to this text: Return the text EXACTLY AS IS (no changes).
+    5. Do NOT change style, only the criticized errors.
     
     CHAPTER TEXT:
     ${chapterContent}
@@ -2522,7 +2554,8 @@ async function fixChapterContent(
     OUTPUT ONLY THE (CORRECTED) TEXT. NO COMMENTS.
     
     SUPREME RULE: NEVER EDIT THE CHAPTER HEADING (Line 1). IT MUST REMAIN EXACTLY AS IS.
-    SUPREME RULE: DO NOT CHANGE HEADING LEVELS (## stays ##, ### stays ###).`
+    SUPREME RULE: DO NOT CHANGE HEADING LEVELS (## stays ##, ### stays ###).
+    SUPREME RULE: NO "Topic? Statement." rhetorical patterns. "Global Crisis? Huge." -> BANNED.`
 
   try {
     const response = await retryApiCall(() => ai.models.generateContent({
@@ -4075,6 +4108,13 @@ M. **ABSOLUT VERBOTEN - JEGLICHE FRAGEN (KRITISCH):**
    - VERBOTEN: JEDE Konstruktion mit Fragezeichen gefolgt von einer Antwort - macht Text unlesbar!
    - Stattdessen: IMMER direkte Aussagen und Feststellungen verwenden
    - Beispiel: Statt "Die Grenze zwischen X und Y? In der öffentlichen Wahrnehmung..." → "Die Grenze zwischen X und Y verwischt in der öffentlichen Wahrnehmung..."
+   
+   **⚠️ ABSOLUT VERBOTEN (KILL LIST):**
+   - "Die globale Finanzkrise? Ein großes Thema." -> VERBOTEN!
+   - "Digitalisierung? Sie verändert alles." -> VERBOTEN!
+   - "Der Grund? Ganz einfach." -> VERBOTEN!
+   - JEDES (Substantiv)? (Satz). Muster ist VERBOTEN.
+   - Wenn du ein Fragezeichen schreiben willst: LÖSCHE ES SOFORT. SCHREIBE EINE AUSSAGE.
    - Beispiel: Statt "Korruption? In der wirtschaftswissenschaftlichen Literatur..." → "In der wirtschaftswissenschaftlichen Literatur versteht man unter Korruption..."
    - Beispiel: Statt "Was bedeutet Digitalisierung für die Arbeitswelt?" → "Die Digitalisierung verändert die Arbeitswelt grundlegend."
    - Beispiel: Statt "Was ist Forschung? Ein wichtiger Aspekt..." → "Die Forschung stellt einen wichtigen Aspekt dar."
@@ -4101,6 +4141,27 @@ M. **VERBOTENE WÖRTER UND FORMULIERUNGEN (ABSOLUT KRITISCH):**
      * "Es zeigt sich, dass..." statt "Wir sehen, dass..."
      * "Dabei handelt es sich um..." statt "Wir haben es hier mit... zu tun"
      * "Die Untersuchung ergab..." statt "Wir haben festgestellt..."
+
+   - **ABSOLUT VERBOTEN: Das Wort "man" (Generalisierendes Personalpronomen).**
+     - ✗ "Man schuf Instrumente..." -> VERBOTEN!
+     - ✗ "Man kann sehen..." -> VERBOTEN!
+     - ✓ "Instrumente wurden geschaffen..." (Passiv)
+     - ✓ "Es ist ersichtlich..." (Unpersönlich)
+     - Wandle JEDES "man" in eine Passiv- oder unpersönliche Konstruktion um.
+
+   - **ABSOLUT VERBOTEN: "wir" / "uns" / "unser" / "ich" (Einzelautor-Thesis!).**
+     - ✗ "Wir stellten fest..." -> VERBOTEN! (Es gibt kein "wir")
+     - ✗ "Unsere Analyse zeigt..." -> VERBOTEN!
+     - ✗ "Ich untersuche..." -> VERBOTEN!
+     - ✓ "Es wurde festgestellt..." (Passiv)
+     - ✓ "Die Analyse zeigt..." (Unpersönlich)
+     - ✓ "Diese Arbeit untersucht..." (Unpersönlich)
+     - Dies ist eine Einzelarbeit. "Wir" ist ein logischer Fehler.
+
+   - **ENDKONTROLLE AUF FLÜCHTIGKEITSFEHLER (KRITISCH):**
+     - Prüfe auf doppelte Wörter: "Jahrhunderts. Jahrhunderts." -> Korrigiere zu "Jahrhunderts."
+     - Prüfe auf doppelte Satzzeichen: ".." -> Korrigiere zu "."
+     - Prüfe auf "Deppenleerzeichen" vor Satzzeichen: " ." -> Korrigiere zu "."
 
 OUTPUT-REGELN:
 
@@ -4218,6 +4279,13 @@ L. **Unpredictable Structures (CRITICAL):**
    - ABSOLUTELY FORBIDDEN: Rhetorical questions, suggestive questions, or any question forms - NEVER use them!
    - ABSOLUTELY FORBIDDEN: QUESTION-ANSWER PATTERN - NEVER use constructions like "X? Y." or "X? In the literature..." - makes text unreadable!
    - Sometimes build in parenthetical insertions (in em-dashes or parentheses).
+   
+    **⚠️ ABSOLUTELY FORBIDDEN (KILL LIST):**
+    - "The global financial crisis? A big topic." -> FORBIDDEN!
+    - "Digitization? It changes everything." -> FORBIDDEN!
+    - "The reason? Quite simple." -> FORBIDDEN!
+    - ANY (Noun)? (Sentence). Pattern is FORBIDDEN.
+    - If you want to write a question mark: DELETE IT IMMEDIATELY. WRITE A STATEMENT.
    - Vary between deductive and inductive argumentation.
    - Avoid perfectly symmetrical paragraph lengths.
 
@@ -4770,6 +4838,7 @@ The context is an academic thesis. Maintain formal, objective, academic German (
     
     IMMUTABLE RULE: NEVER change, translate, or reformat headings (lines starting with #). If a sequence includes a heading, keep it EXACTLY as is.
     IMMUTABLE RULE: NEVER change the hierarchy (e.g. ## must not become # or ###).
+    IMMUTABLE RULE: NO "Topic? Statement." patterns. If you see one, REWRITE IT to a statement.
 
 
 Sequences to Rewrite:
