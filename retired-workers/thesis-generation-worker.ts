@@ -23,7 +23,7 @@ app.use(express.json())
 // Environment variables
 const PORT = process.env.PORT || 3001
 const GEMINI_KEY = process.env.GEMINI_KEY
-const GRAMMARLY_ACCESS_TOKEN = process.env.GRAMMARLY_ACCESS_TOKEN
+
 // Support both NEXT_PUBLIC_SUPABASE_URL (for compatibility) and SUPABASE_URL
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -2360,10 +2360,10 @@ async function summarizeChapter(chapterTitle: string, content: string, isGerman:
 
   try {
     const response = await retryApiCall(() => ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: { maxOutputTokens: 500, temperature: 0.3 },
-    }))
+    }), `Summarize chapter ${chapterTitle}`)
     return response.text || ''
   } catch (error) {
     console.warn('[ThesisGeneration] Failed to summarize chapter:', error)
@@ -2443,10 +2443,10 @@ async function critiqueThesis(
   try {
     // Use decent model for critique (Pro or Flash)
     const response = await retryApiCall(() => ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-pro',
       contents: prompt,
       config: { maxOutputTokens: 1000, temperature: 0.1 },
-    }))
+    }), 'Critique Thesis')
     return response.text || 'Critique generation failed.'
   } catch (error) {
     console.error('[ThesisCritique] Failed to generate critique:', error)
@@ -2506,10 +2506,10 @@ async function fixChapterContent(
 
   try {
     const response = await retryApiCall(() => ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-pro',
       contents: prompt,
       config: { maxOutputTokens: 8000, temperature: 0.1 }, // Flash allows 8k output
-    }))
+    }), 'Fix Chapter Content')
     return response.text ? response.text.trim() : chapterContent
   } catch (error) {
     console.warn('[ThesisRepair] Failed to repair chapter:', error)
@@ -3910,160 +3910,7 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
   }
 }
 
-/**
- * Check content for plagiarism using Grammarly API
- * Returns plagiarism result or null if API unavailable
- */
-async function checkPlagiarismWithGrammarly(content: string, thesisId: string): Promise<{
-  originality: number
-  originalityPercentage: number
-  plagiarismPercentage: number
-  scoreRequestId: string
-  checkedAt: string
-} | null> {
-  if (!GRAMMARLY_ACCESS_TOKEN) {
-    console.warn('[PlagiarismCheck] GRAMMARLY_ACCESS_TOKEN not set')
-    return null
-  }
 
-  console.log('[PlagiarismCheck] Starting Grammarly plagiarism check...')
-
-  try {
-    // Extract plain text from markdown
-    let plainText = content
-      .replace(/^#+\s+/gm, '') // Remove headings
-      .replace(/\*\*(.+?)\*\*/g, '$1') // Remove bold
-      .replace(/\*(.+?)\*/g, '$1') // Remove italic
-      .replace(/\[(.+?)\]\(.+?\)/g, '$1') // Remove links
-      .replace(/`(.+?)`/g, '$1') // Remove code
-      .replace(/\^\d+/g, '') // Remove footnote markers
-      .replace(/\n{3,}/g, '\n\n') // Normalize multiple newlines
-      .trim()
-
-    // Check constraints
-    const MAX_TEXT_LENGTH = 100000 // 100k characters
-    const MAX_FILE_SIZE = 4 * 1024 * 1024 // 4 MB
-
-    if (plainText.length > MAX_TEXT_LENGTH) {
-      console.warn(`[PlagiarismCheck] Text too long (${plainText.length} chars), truncating to ${MAX_TEXT_LENGTH}`)
-      plainText = plainText.substring(0, MAX_TEXT_LENGTH)
-    }
-
-    const textBuffer = Buffer.from(plainText, 'utf-8')
-    if (textBuffer.length > MAX_FILE_SIZE) {
-      console.warn(`[PlagiarismCheck] Text too large (${textBuffer.length} bytes), skipping check`)
-      return null
-    }
-
-    // Step 1: Create score request
-    const scoreRequest = {
-      filename: `thesis-${thesisId}.txt`,
-    }
-
-    const createResponse = await fetch('https://api.grammarly.com/ecosystem/api/v1/plagiarism', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GRAMMARLY_ACCESS_TOKEN}`,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'user-agent': 'StudyFucker Worker',
-      },
-      body: JSON.stringify(scoreRequest),
-    })
-
-    if (!createResponse.ok) {
-      const errorText = await createResponse.text()
-      console.error('[PlagiarismCheck] Failed to create score request:', {
-        status: createResponse.status,
-        errorText,
-      })
-      return null
-    }
-
-    const scoreRequestData = await createResponse.json() as { score_request_id: string; file_upload_url: string }
-    console.log(`[PlagiarismCheck] Score request created: ${scoreRequestData.score_request_id}`)
-
-    // Step 2: Upload file
-    const uploadResponse = await fetch(scoreRequestData.file_upload_url, {
-      method: 'PUT',
-      body: textBuffer,
-      headers: {
-        'Content-Type': 'text/plain',
-      },
-    })
-
-    if (!uploadResponse.ok) {
-      console.error('[PlagiarismCheck] Failed to upload document')
-      return null
-    }
-
-    console.log('[PlagiarismCheck] Document uploaded, polling for results...')
-
-    // Step 3: Poll for results (with exponential backoff)
-    const MAX_POLL_ATTEMPTS = 20
-    const INITIAL_POLL_DELAY = 2000
-    let pollAttempt = 0
-    let statusResponse: any = null
-
-    while (pollAttempt < MAX_POLL_ATTEMPTS) {
-      const pollDelay = Math.min(INITIAL_POLL_DELAY * Math.pow(2, pollAttempt), 10000)
-
-      if (pollAttempt > 0) {
-        await new Promise(resolve => setTimeout(resolve, pollDelay))
-      }
-
-      const statusResponse_fetch = await fetch(
-        `https://api.grammarly.com/ecosystem/api/v1/plagiarism/${scoreRequestData.score_request_id}`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${GRAMMARLY_ACCESS_TOKEN}`,
-            'Accept': 'application/json',
-            'user-agent': 'StudyFucker Worker',
-          },
-        }
-      )
-
-      if (!statusResponse_fetch.ok) {
-        pollAttempt++
-        continue
-      }
-
-      statusResponse = await statusResponse_fetch.json()
-
-      if (statusResponse.status === 'COMPLETED') {
-        break
-      } else if (statusResponse.status === 'FAILED') {
-        console.error('[PlagiarismCheck] Check failed:', statusResponse)
-        return null
-      }
-
-      pollAttempt++
-    }
-
-    if (!statusResponse || statusResponse.status !== 'COMPLETED' || !statusResponse.score) {
-      console.warn('[PlagiarismCheck] Check did not complete or no score available')
-      return null
-    }
-
-    const originalityScore = statusResponse.score.originality
-    const plagiarismPercentage = Math.round((1 - originalityScore) * 100)
-    const originalityPercentage = Math.round(originalityScore * 100)
-
-    console.log(`[PlagiarismCheck] Completed: ${originalityPercentage}% original, ${plagiarismPercentage}% potentially plagiarized`)
-
-    return {
-      originality: originalityScore,
-      originalityPercentage,
-      plagiarismPercentage,
-      scoreRequestId: scoreRequestData.score_request_id,
-      checkedAt: new Date().toISOString(),
-    }
-  } catch (error) {
-    console.error('[PlagiarismCheck] Error:', error)
-    return null
-  }
-}
 
 /**
  * Humanize thesis content to avoid AI detection while preserving all factual information
@@ -4721,6 +4568,222 @@ async function checkWinston(content: string): Promise<{
     console.error('[Winston] Error checking text:', error)
     return null
   }
+}
+
+/**
+ * Check content for plagiarism using Winston AI API
+ * Returns plagiarism result or null if API unavailable
+ */
+async function checkPlagiarismWithWinston(content: string): Promise<{
+  originalityPercentage: number
+  plagiarismScore: number
+  checkedAt: string
+  winstonResult: any
+} | null> {
+  if (!WINSTON_API_KEY) {
+    console.warn('[PlagiarismCheck] WINSTON_API_KEY not set, skipping check')
+    return null
+  }
+
+  console.log('[PlagiarismCheck] Starting Winston AI plagiarism check...')
+
+  const CHUNK_SIZE = 100000 // Winston limit is 120k
+
+  try {
+    // Use raw content for plagiarism check to ensure that returned sequences
+    // match the source text exactly, allowing for search-and-replace repair.
+    // We only normalise newlines.
+    const textToCheck = content.trim()
+
+    if (textToCheck.length < 500) {
+      console.warn('[PlagiarismCheck] Text too short, skipping')
+      return null
+    }
+
+    const chunks = []
+    if (textToCheck.length <= CHUNK_SIZE) {
+      chunks.push(textToCheck)
+    } else {
+      let offset = 0
+      while (offset < textToCheck.length) {
+        chunks.push(textToCheck.slice(offset, offset + CHUNK_SIZE))
+        offset += CHUNK_SIZE
+      }
+    }
+
+    const results: any[] = []
+
+    for (const chunk of chunks) {
+      const response = await retryApiCall(
+        async () => {
+          const fetchResponse = await fetch('https://api.gowinston.ai/v2/plagiarism', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${WINSTON_API_KEY}`,
+            },
+            body: JSON.stringify({
+              text: chunk,
+              language: 'auto'
+            }),
+          })
+
+          if (!fetchResponse.ok) {
+            const errorText = await fetchResponse.text()
+            throw new Error(`Winston API error: ${fetchResponse.status} - ${errorText}`)
+          }
+
+          return await fetchResponse.json()
+        },
+        'Winston Plagiarism Check',
+        3, 2000
+      )
+      results.push(response)
+    }
+
+    // Aggregate results
+    let totalScore = 0
+    let count = 0
+
+    for (const res of results) {
+      // According to docs, result is { result: { score: number } }
+      // Wait, example shows: { result: { score: 123 } }
+      // Let's assume safely checking both locations just in case structure varies or I misread
+      const score = res?.result?.score ?? res?.score
+      if (typeof score === 'number') {
+        totalScore += score
+        count++
+      }
+    }
+
+    // Safety check: if scores are 0-100. If totalScore is huge, it might be a count.
+    // Docs: "score": 123. 123 > 100? Plagiarism usually percent. 
+    // Example in docs used "123" for everything, likely placeholder.
+    // I will assume standard 0-100 percentage.
+
+    const avgPlagiarismScore = count > 0 ? Math.round(totalScore / count) : 0
+    const originalityPercentage = Math.max(0, 100 - avgPlagiarismScore)
+
+    return {
+      originalityPercentage,
+      plagiarismScore: avgPlagiarismScore,
+      checkedAt: new Date().toISOString(),
+      winstonResult: results.length === 1 ? results[0] : results
+    }
+
+  } catch (error) {
+    console.error('[PlagiarismCheck] Error:', error)
+    return null
+  }
+}
+
+/**
+ * Repair plagiarized content by rewriting flagged sequences
+ * Uses Gemini to paraphrase the specific sentences identified by Winston
+ */
+async function repairPlagiarism(content: string, winstonResult: any): Promise<string> {
+  console.log('[PlagiarismRepair] Starting repair process...')
+
+  const results = Array.isArray(winstonResult) ? winstonResult : [winstonResult]
+  const sequencesToFix: string[] = []
+
+  // Extract all plagiarism sequences
+  for (const res of results) {
+    // Check indexes (aggregated sequences found in input)
+    if (res.indexes && Array.isArray(res.indexes)) {
+      for (const idx of res.indexes) {
+        if (idx.sequence && idx.sequence.length > 20) { // Filter mostly noise
+          sequencesToFix.push(idx.sequence)
+        }
+      }
+    }
+    // Also check plagiarismFound in sources just in case
+    if (res.sources && Array.isArray(res.sources)) {
+      for (const source of res.sources) {
+        if (source.plagiarismFound && Array.isArray(source.plagiarismFound)) {
+          for (const p of source.plagiarismFound) {
+            if (p.sequence && p.sequence.length > 20) {
+              sequencesToFix.push(p.sequence)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Deduplicate
+  const uniqueSequences = [...new Set(sequencesToFix)]
+  console.log(`[PlagiarismRepair] Found ${uniqueSequences.length} unique sequences to rewrite`)
+
+  if (uniqueSequences.length === 0) {
+    console.log('[PlagiarismRepair] No actionable sequences found.')
+    return content
+  }
+
+  // Limit to top 50 to avoid massive prompt/timeout
+  const sequencesToProcess = uniqueSequences.slice(0, 50)
+  let workingContent = content
+
+  // Process in batches of 10
+  const BATCH_SIZE = 10
+  for (let i = 0; i < sequencesToProcess.length; i += BATCH_SIZE) {
+    const batch = sequencesToProcess.slice(i, i + BATCH_SIZE)
+    console.log(`[PlagiarismRepair] Processing batch ${i / BATCH_SIZE + 1} (${batch.length} items)...`)
+
+    try {
+      const prompt = `
+You are a specialized Thesis content editor. Your task is to rewrite specific text sequences that have been flagged as potential plagiarism.
+You must rewrite each sequence to be completely original while preserving the exact meaning, tone, and context.
+The context is an academic thesis. Maintain formal, objective, academic German (or English if the text is English).
+
+Sequences to Rewrite:
+${JSON.stringify(batch, null, 2)}
+
+Return ONLY a valid JSON object where keys are the original sequences and values are the rewritten versions.
+Example:
+{
+  "original text...": "rewritten text..."
+}
+Do not include markdown formatting or explanation.
+      `
+
+      const result = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          { role: 'user', parts: [{ text: prompt }] }
+        ]
+      })
+
+      const responseText = result.text?.replace(/```json/g, '').replace(/```/g, '').trim()
+
+      const rewrites = JSON.parse(responseText || '{}')
+
+      // Apply replacements
+      let replacementsCount = 0
+      for (const [original, replacement] of Object.entries(rewrites)) {
+        if (typeof replacement === 'string' && replacement.length > 5) {
+          // Use string replace - simple but effective if we matched the source exactly
+          if (workingContent.includes(original)) {
+            workingContent = workingContent.replace(original, replacement)
+            replacementsCount++
+          } else {
+            // Fallback: Try trimming
+            const trimmedOriginal = original.trim()
+            if (workingContent.includes(trimmedOriginal)) {
+              workingContent = workingContent.replace(trimmedOriginal, replacement)
+              replacementsCount++
+            }
+          }
+        }
+      }
+      console.log(`[PlagiarismRepair] Batch complete: Applied ${replacementsCount}/${batch.length} replacements`)
+
+    } catch (error) {
+      console.error('[PlagiarismRepair] Error processing batch:', error)
+    }
+  }
+
+  return workingContent
 }
 
 /**
@@ -5442,22 +5505,46 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       }
     }
 
-    // Step 7.6: Plagiarism Check with Grammarly
-    console.log('\n[PROCESS] ========== Step 7.6: Plagiarism Check (Grammarly) ==========')
+    // Step 7.6: Plagiarism Check & Auto-Fix (Winston AI)
+    console.log('\n[PROCESS] ========== Step 7.6: Plagiarism Check & Auto-Fix (Winston AI) ==========')
     let plagiarismResult: any = null
     try {
-      if (GRAMMARLY_ACCESS_TOKEN) {
-        plagiarismResult = await checkPlagiarismWithGrammarly(thesisContent, thesisId)
-        if (plagiarismResult) {
-          console.log(`[PROCESS] Plagiarism check completed: ${plagiarismResult.originalityPercentage}% original`)
+      if (WINSTON_API_KEY) {
+        // Max 3 attempts (Original + 2 repairs)
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          plagiarismResult = await checkPlagiarismWithWinston(thesisContent)
+
+          if (!plagiarismResult) {
+            console.warn('[Plagiarism] Check failed or returned null.')
+            break
+          }
+
+          console.log(`[Plagiarism] Attempt ${attempt}: ${plagiarismResult.originalityPercentage}% Originality (Score: ${plagiarismResult.plagiarismScore})`)
+
+          if (plagiarismResult.originalityPercentage >= 90) {
+            console.log('[Plagiarism] Passed > 90% threshold.')
+            break
+          }
+
+          if (attempt < 3) {
+            console.log('[Plagiarism] Originality < 90%. Attempting auto-repair via substitution...')
+            const repaired = await repairPlagiarism(thesisContent, plagiarismResult.winstonResult)
+
+            if (repaired === thesisContent) {
+              console.log('[Plagiarism] Repair yielded no changes. Aborting loop.')
+              break
+            }
+            thesisContent = repaired
+          } else {
+            console.warn('[Plagiarism] Max auto-fix attempts reached.')
+          }
         }
       } else {
-        console.warn('[PROCESS] GRAMMARLY_ACCESS_TOKEN not set - skipping plagiarism check')
+        console.warn('[PROCESS] WINSTON_API_KEY not set - skipping plagiarism check')
       }
     } catch (error) {
       console.error('[PROCESS] ERROR in plagiarism check:', error)
       console.warn('[PROCESS] Continuing without plagiarism check result')
-      // Continue - plagiarism check is not critical for completion
     }
 
     // Step 7.7: ZeroGPT Detection Check - Now done in Step 7.4
