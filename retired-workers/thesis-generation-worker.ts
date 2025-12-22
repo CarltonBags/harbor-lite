@@ -2253,10 +2253,12 @@ INSTEAD - Attribute research to REAL authors:
     const startInstruction = isExtension
       ? (isGerman ? `SCHREIBE EINFACH WEITER (keine Überschriften wiederholen).` : `JUST KEEP WRITING (do not repeat headings).`)
       : (isGerman
-        ? `Beginne SOFORT mit der Kapitelüberschrift "## ${chapterLabel}" und schreibe anschließend das vollständige Kapitel.
-WICHTIG: Die Überschrift MUSS exakt "## ${chapterLabel}" lauten. Keine Variationen, keine Doppelpunkte, keine Zusätze.`
-        : `START immediately with the chapter heading "## ${chapterLabel}" and then write the complete chapter.
-IMPORTANT: The heading MUST be exactly "## ${chapterLabel}". No variations, no colons, no additions.`)
+        ? `Beginne DIREKT mit dem Einleitungstext oder dem ersten Unterkapitel.
+           SCHREIBE NICHT DIE HAUPT-KAPITELÜBERSCHRIFT ("## ${chapterLabel}").
+           Diese wird automatisch hinzugefügt. Schreibe NUR den Inhalt.`
+        : `START directly with the introduction text or the first subchapter.
+           DO NOT WRITE THE MAIN CHAPTER HEADING ("## ${chapterLabel}").
+           It will be added automatically. Write ONLY the content.`)
 
     return `${baseInstructions}
 
@@ -2345,7 +2347,15 @@ ${startInstruction}`
     // Don't throw error - generation must ALWAYS succeed and deliver a thesis
   }
 
-  return { content: chapterContent, wordCount: finalWordCount }
+  // Force exact chapter heading from outline to prevent hallucinations/changes
+  // We explicitly told AI NOT to write it, so we prepend it here safely.
+  // Also strip any potential AI-generated heading if it ignored instructions (safety check)
+  const cleanContent = chapterContent.replace(/^\s*##\s+.*?\n/, '').trim()
+
+  const finalContent = `## ${chapterLabel}\n\n${cleanContent}`
+  const totalWordCount = finalContent.split(/\s+/).length
+
+  return { content: finalContent, wordCount: totalWordCount }
 }
 
 /**
