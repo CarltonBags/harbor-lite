@@ -3838,6 +3838,10 @@ Schreibe die folgenden Sätze so um, dass sie natürlicher und menschlicher klin
 3. **Syntax-Variation:** Nutze unterschiedliche Satzstrukturen (Inversionen, Einschübe, Ellipsen). Beginne Sätze nicht immer mit dem Subjekt.
 4. **KI-Marker VERBOTEN:** Verwende NIEMALS Wörter wie: "zunächst", "ferner", "des Weiteren", "zusammenfassend", "es ist wichtig zu beachten", "in diesem Zusammenhang", "darüber hinaus", "diesbezüglich".
 5. **Inhalt bewahren:** Behalte ALLE Fakten, Daten, Namen und vor allem Zitationen (z.B. (Müller, 2023)) exakt bei.
+6. **VERBOTENE MUSTER (KILL LIST):**
+   - "Thema? Aussage." (Frage-Antwort) -> VERBOTEN! Mache einen normalen Satz daraus.
+   - "Grund? Einfach." -> VERBOTEN!
+   - "Man", "Wir", "Uns" -> VERBOTEN! Nutze Passiv/Unpersönlich.
 
 **Zu überarbeitende Sätze:**
 ${batch.map((s, idx) => `${idx + 1}. ${s}`).join('\n\n')}
@@ -3856,6 +3860,10 @@ Rewrite the following sentences to sound more natural and human. Your goal is to
 3. **Syntax Variation:** Use different sentence structures (inversions, parentheticals, ellipses). Do not always start sentences with the subject.
 4. **FORBIDDEN AI Markers:** NEVER use words like: "firstly", "furthermore", "moreover", "in conclusion", "it is important to note", "in this context", "additionally", "regarding".
 5. **Preserve Content:** Keep ALL facts, data, names, and especially citations (e.g., (Smith, 2023)) exactly as they are.
+6. **FORBIDDEN PATTERNS (KILL LIST):**
+   - "Topic? Statement." (Q&A Pattern) -> FORBIDDEN! Use a statement.
+   - "Reason? Simple." -> FORBIDDEN!
+   - "We", "I", "One" -> FORBIDDEN! Use passive voice.
 
 **Sentences to rewrite:**
 ${batch.map((s, idx) => `${idx + 1}. ${s}`).join('\n\n')}
