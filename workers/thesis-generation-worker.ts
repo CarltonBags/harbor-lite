@@ -2471,32 +2471,11 @@ The text must sound like written by a human author from the start and must not b
 - If the page number is not explicitly in the context, use a plausible page number based on context (e.g., chapter, section).
 - NEVER output a citation without a page number.
 
-**Bibliography (ABSOLUTELY CRITICAL - MUST BE COMPLETE - ONLY CITED SOURCES):**
-- At the end of the document, you MUST output a complete, correctly formatted bibliography with ACTUAL sources.
-- ABSOLUTELY CRITICAL: The bibliography MUST be present and MUST NOT be empty.
-- ABSOLUTELY CRITICAL: The bibliography must contain at least ${Math.max(5, Math.floor(recommendedSourceCount * 0.6))} sources (based on the number of sources cited in the text).
-- ABSOLUTELY CRITICAL: The bibliography may ONLY contain sources that were ACTUALLY cited in the text with a footnote (^1, ^2, etc.).
-- ABSOLUTELY FORBIDDEN: Creating an empty bibliography.
-- ABSOLUTELY FORBIDDEN: Including sources in the bibliography that were NOT cited in the text.
-- ABSOLUTELY FORBIDDEN: Including sources in the bibliography that do not have a footnote in the text.
-- Include ONLY sources that are:
-  1. Actually cited in the text with a footnote (^1, ^2, etc.)
-  2. Actually available in the FileSearchStore/RAG context
-  3. Actually retrieved during the generation process
-- The bibliography MUST contain ALL sources cited in the text (none may be missing).
-- The bibliography MUST NOT contain any sources that were not cited in the text.
-- ABSOLUTELY FORBIDDEN: Including sources marked as "(Hypothetische Quelle)", "(Hypothetical Source)", or any placeholder sources.
-- ABSOLUTELY FORBIDDEN: Creating or inventing sources that are not in the RAG context.
-- If you cannot find a source in the RAG context, you MUST NOT include it in the bibliography, but you MUST include all sources you actually cited with footnotes.
-- Every source in the bibliography MUST:
-  * Have been retrieved from the FileSearchStore
-  * Have been cited at least once in the text with a footnote
-- Alphabetically sorted.
-- Format according to the citation style (${citationStyleLabel}).
-- Use DOI, URL and journal metadata if available from the actual source metadata.
-- No duplicate entries.
-- If a source is missing from the RAG context, simply do not cite it - do NOT create a hypothetical version.
-- IMPORTANT: The bibliography is a MANDATORY part of the work - it MUST be present, MUST NOT be empty, and must contain ONLY cited sources.
+**Bibliography (STRICTLY FORBIDDEN):**
+- DO NOT generate a "References", "Bibliography", or "Sources" section.
+- The bibliography is generated automatically from metadata by the system.
+- ABSOLUTELY FORBIDDEN: Including a bibliography section in your text output.
+- End the thesis content with the Conclusion chapter.
 
 **STRICT SOURCE USAGE (ANTI-HALLUCINATION) - ABSOLUTELY CRITICAL:**
 - **YOU MUST ONLY USE THE SOURCES PROVIDED IN THE FILE SEARCH CONTEXT.**
@@ -2524,8 +2503,8 @@ The text must sound like written by a human author from the start and must not b
   ## 1. Introduction
   ...
   ## Conclusion
-  ## Bibliography
 - START directly with the first chapter - NO title, NO table of contents, NO meta-information.
+- DO NOT add a Bibliography section.
 
 **CRITICAL - COMPLETENESS AND LENGTH (ABSOLUTELY IMPORTANT):**
 
@@ -2543,25 +2522,21 @@ ${thesisData.lengthUnit === 'words' ? `- For word-based length, you can be up to
 - A ${targetPages}-page work requires approx. ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words.
 - If you've only written 1500 words, ${(thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250) - 1500} words are still missing - you must fully develop ALL chapters.
 - **CRITICAL: Reaching the target word count does NOT mean you can stop!**
-- **You MUST continue writing until ALL chapters are complete AND the bibliography is written.**
-- **Even if you've reached ${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words, you MUST still write the complete bibliography with all sources.**
+- **You MUST continue writing until ALL chapters from the outline are complete.**
 - The work is only complete when:
   * ALL chapters from the outline are complete
   * The target length is reached (${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words${thesisData.lengthUnit === 'words' ? `, can be up to ${Math.ceil(thesisData.targetLength * 1.05)} words` : ''})
-  * The bibliography is present AND contains actual source entries (NOT empty)
   * ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'All footnotes are present' : 'All citations are correct'}
 
 **3. NO EARLY STOPPING - ABSOLUTELY CRITICAL:**
 - The work must NOT end in the middle of a chapter.
-- The work must NOT end without a bibliography.
-- The work must NOT end with an empty bibliography - the bibliography MUST contain all cited sources.
 - The work must NOT end without ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'footnotes' : 'citations'}.
 - You MUST write until you reach the target length - do NOT stop early.
 - If you notice you haven't reached the target length yet, develop the chapters in more detail, add more details, expand the discussion.
 - Each chapter should be proportionally detailed relative to the total length.
-- The bibliography section MUST be complete with actual source entries - it cannot be empty.
+- DO NOT write a Bibliography section.
 - You MUST write ALL chapters from the outline - do not skip any chapter.
-- Continue writing until ALL requirements are met: all chapters complete, target length reached, bibliography with sources present.
+- Continue writing until ALL requirements are met: all chapters complete, target length reached.
 
 **4. STRUCTURAL COMPLETENESS:**
 - Introduction: Complete with introduction, problem statement, research question, structure of the work
@@ -2572,7 +2547,6 @@ ${thesisData.lengthUnit === 'words' ? `- For word-based length, you can be up to
   - Begin the description with the second chapter, since Chapter 1 is already present.
 - Main chapters: Each chapter fully developed
 - Discussion/Conclusion: Complete with summary, answer to research question, outlook
-- Bibliography: Complete with all cited sources
 ${thesisData.citationStyle === 'deutsche-zitierweise' ? '- Footnotes: Complete with all citations\n' : ''}
 
 **5. QUALITY WITH COMPLETENESS:**
@@ -2582,13 +2556,13 @@ ${thesisData.citationStyle === 'deutsche-zitierweise' ? '- Footnotes: Complete w
 
 **IMPORTANT:**
 - If the API stops you before you're finished, that's an error - you must write the COMPLETE work.
-- The work is only finished when ALL requirements are met: Complete structure, target length reached, bibliography present.
+- The work is only finished when ALL requirements are met: Complete structure, target length reached.
 
 **Goal:**
 Create a COMPLETE, FULL-LENGTH, citable, scientifically sound thesis that:
 1. Implements ALL chapters from the outline completely
 2. Reaches the target length of ${thesisData.targetLength} ${thesisData.lengthUnit} (${targetPages} pages, ~${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words)
-3. Includes a complete bibliography
+3. (Deleted requirement)
 ${thesisData.citationStyle === 'deutsche-zitierweise' ? '4. Includes all footnotes\n' : '4. Includes all citations\n'}5. Is logically structured and correctly implements the citation style
 6. Uses exclusively validated sources
 7. Sounds natural and human from the start, not like AI-generated
@@ -4309,7 +4283,8 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.log('[PROCESS] Updating thesis in database with generated content...')
     const dbUpdateStart = Date.now()
 
-    // Generate Bibliography and append to content
+    // Identify used sources for metadata (Strict Compliance)
+    // NOTE: We do NOT append bibliography text here anymore, as it interferes with auto-generation.
     const bibResult = generateBibliography(
       processedContent,
       sourcesForGeneration || [],
@@ -4318,8 +4293,9 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       footnotes
     )
 
-    let finalContent = processedContent + bibResult.text
-    console.log('[PROCESS] Appended bibliography. Length: ' + bibResult.text.length)
+    // Just use processed content without bibliography text
+    let finalContent = processedContent
+    console.log('[PROCESS] Identified used sources matching strict criteria.')
 
     // Generate clean Markdown version for exports
     console.log('[PROCESS] Generating clean Markdown version for exports...')

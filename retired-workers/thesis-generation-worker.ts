@@ -3452,8 +3452,9 @@ Create a COMPLETE, FULL-LENGTH, citable, scientifically sound thesis that:
 5. Uses exclusively validated sources from the provided list
 6. Sounds natural and human from the start, not like AI-generated
 
-DO NOT write a Bibliography section - end with the Conclusion chapter.
-DO NOT STOP until all chapters are complete. The thesis must be COMPLETE.`
+DO NOT write a Bibliography or References section - end with the Conclusion chapter.
+DO NOT STOP until all chapters are complete. The thesis must be COMPLETE.
+ABSOLUTELY NO BIBLIOGRAPHY OR SOURCE LIST IS ALLOWED IN THE OUTPUT TEXT.`
 
   console.log('[ThesisGeneration] Calling Gemini Pro to generate thesis content...')
   console.log('[ThesisGeneration] Using FileSearchStore for RAG context')
@@ -3522,6 +3523,7 @@ Wenn du wieder zu wenig schreibst, wird die Arbeit mit zu wenig Inhalt abgeliefe
 ❌ Nur 2-3 Sätze pro Unterkapitel
 ❌ Aufzählungen statt Fließtext
 ❌ Weniger als ${targetWordCount} Wörter abliefern!
+❌ ERSTELLEN EINES LITERATURVERZEICHNISSES (Dies wird automatisch generiert)!
 `
         : `
 
@@ -5772,7 +5774,8 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.log('[PROCESS] Updating thesis in database with generated content...')
     const dbUpdateStart = Date.now()
 
-    // Generate Bibliography and append to content
+    // Identify used sources for metadata (Strict Compliance)
+    // NOTE: We do NOT append bibliography text here anymore, as it interferes with auto-generation.
     const bibResult = generateBibliography(
       processedContent,
       sourcesForGeneration || [],
@@ -5781,8 +5784,9 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       footnotes
     )
 
-    let finalContent = processedContent + bibResult.text
-    console.log('[PROCESS] Appended bibliography. Length: ' + bibResult.text.length)
+    // Just use processed content without bibliography text
+    let finalContent = processedContent
+    console.log('[PROCESS] Identified used sources matching strict criteria.')
 
     // Generate clean Markdown version for exports
     console.log('[PROCESS] Generating clean Markdown version for exports...')
