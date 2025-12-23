@@ -4309,15 +4309,28 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.log('[PROCESS] Updating thesis in database with generated content...')
     const dbUpdateStart = Date.now()
 
+    // Generate Bibliography and append to content
+    const bibResult = generateBibliography(
+      processedContent,
+      sourcesForGeneration || [],
+      thesisData.citationStyle,
+      thesisData.language,
+      footnotes
+    )
+
+    let finalContent = processedContent + bibResult.text
+    console.log('[PROCESS] Appended bibliography. Length: ' + bibResult.text.length)
+
     // Generate clean Markdown version for exports
     console.log('[PROCESS] Generating clean Markdown version for exports...')
-    const cleanMarkdownContent = convertToCleanMarkdown(processedContent)
+    const { convertToCleanMarkdown } = await import('../lib/markdown-utils.js')
+    const cleanMarkdownContent = convertToCleanMarkdown(finalContent)
     console.log(`[PROCESS] Clean Markdown generated: ${cleanMarkdownContent.length} characters`)
 
     await retryApiCall(
       async () => {
         const updateData: any = {
-          latex_content: processedContent,
+          latex_content: finalContent,
           clean_markdown_content: cleanMarkdownContent,
           status: 'completed',
           completed_at: new Date().toISOString(),
@@ -4334,6 +4347,10 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         updateData.metadata = {
           ...existingMetadata,
         }
+
+        // Add used sources to metadata (Critical for Sources Tab)
+        updateData.metadata.used_sources = bibResult.usedSourceIds
+        updateData.metadata.bibliography_sources = bibResult.usedSourceIds
 
         // Add footnotes if German citation style
         if (thesisData.citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
@@ -4697,3 +4714,125 @@ app.listen(PORT, () => {
 })
 
 
+
+/**
+ * Generate a formatted bibliography based on the thesis content and citation style
+ */
+function generateBibliography(
+  content: string,
+  sources: Source[],
+  citationStyle: string,
+  language: string,
+  footnotes: Record<number, string> = {}
+): { text: string; usedSourceIds: string[] } {
+  console.log(`[Bibliography] Generating bibliography (Style: ${citationStyle}, Language: ${language})...`)
+
+  // 1. Identify used sources
+  const usedSourceIds = new Set<string>()
+  const usedSources: Source[] = []
+
+  // Create a map for quick lookup
+  const sourceMap = new Map<string, Source>()
+  sources.forEach(s => {
+    // Generate a unique ID if not present
+    const id = s.url || s.title || 'unknown'
+    sourceMap.set(id, s)
+  })
+
+  if (citationStyle === 'deutsche-zitierweise') {
+    // For German style, use the extracted footnotes matching
+    // Strategy: List ONLY sources referenced in footnotes
+    if (Object.keys(footnotes).length > 0) {
+      // Create a set of text content from footnotes to match against
+      const footnoteTexts = Object.values(footnotes).join(' ').toLowerCase()
+
+      sources.forEach(s => {
+        // Match Author or Title in footnotes
+        const author = s.authors[0]?.split(' ').pop()?.toLowerCase() || ''
+        const title = s.title.toLowerCase()
+
+        let found = false
+        if (author && footnoteTexts.includes(author)) found = true
+        if (title.length > 10 && footnoteTexts.includes(title.substring(0, 20))) found = true
+
+        if (found) {
+          usedSources.push(s)
+          usedSourceIds.add(s.url || s.title || 'unknown')
+        }
+      })
+    } else {
+      // If no footnotes extracted, rely on text matching
+      sources.forEach(s => {
+        const author = s.authors[0]?.split(' ').pop() || ''
+        if (author) {
+          const pattern = new RegExp(author, 'i')
+          if (pattern.test(content)) {
+            usedSources.push(s)
+            usedSourceIds.add(s.url || s.title || 'unknown')
+          }
+        }
+      })
+    }
+  } else {
+    // For APA/Harvard/etc., scan text for (Author, Year) or just Author
+    sources.forEach(s => {
+      const author = s.authors[0]?.split(' ').pop() || '' // Last name
+      const year = s.year
+      let found = false
+
+      // Strict Check: (Author, Year)
+      if (author && year) {
+        const citationPattern = new RegExp(`${author}.{0,10}${year}`, 'i')
+        if (citationPattern.test(content)) found = true
+        else {
+          const namePattern = new RegExp(`\\b${author}\\b`, 'i')
+          if (namePattern.test(content)) found = true
+        }
+      } else if (author) {
+        const namePattern = new RegExp(`\\b${author}\\b`, 'i')
+        if (namePattern.test(content)) found = true
+      }
+
+      if (found) {
+        usedSources.push(s)
+        usedSourceIds.add(s.url || s.title || 'unknown')
+      }
+    })
+
+    // REMOVED FALLBACK to ensure "not a single more"
+  }
+
+  console.log(`[Bibliography] Identified ${usedSources.length} sources for bibliography`)
+
+  // 2. Format Bibliography
+  const title = language === 'german' ? '## Literaturverzeichnis' : '## References'
+
+  // Sort alphabetically by first author
+  usedSources.sort((a, b) => {
+    const authorA = a.authors[0] || a.title || ''
+    const authorB = b.authors[0] || b.title || ''
+    return authorA.localeCompare(authorB)
+  })
+
+  let bibText = `\n\n${title}\n\n`
+
+  usedSources.forEach(s => {
+    const authors = s.authors.join(', ')
+    const title = s.title
+    const year = s.year ? `(${s.year})` : '(n.d.)'
+    const publisher = s.publisher || s.journal || 'n.p.'
+    const url = s.url ? ` Retrieved from ${s.url}` : ''
+
+    // Simple APA-like format for everyone (adjust as needed)
+    if (language === 'german') {
+      bibText += `* ${authors} ${year}: *${title}*. ${publisher}.${url}\n`
+    } else {
+      bibText += `* ${authors} ${year}. *${title}*. ${publisher}.${url}\n`
+    }
+  })
+
+  return {
+    text: bibText,
+    usedSourceIds: Array.from(usedSourceIds)
+  }
+}

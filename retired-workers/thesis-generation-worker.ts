@@ -5772,22 +5772,34 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.log('[PROCESS] Updating thesis in database with generated content...')
     const dbUpdateStart = Date.now()
 
+    // Generate Bibliography and append to content
+    const bibResult = generateBibliography(
+      processedContent,
+      sourcesForGeneration || [],
+      thesisData.citationStyle,
+      thesisData.language,
+      footnotes
+    )
+
+    let finalContent = processedContent + bibResult.text
+    console.log('[PROCESS] Appended bibliography. Length: ' + bibResult.text.length)
+
     // Generate clean Markdown version for exports
     console.log('[PROCESS] Generating clean Markdown version for exports...')
     const { convertToCleanMarkdown } = await import('../lib/markdown-utils.js')
-    const cleanMarkdownContent = convertToCleanMarkdown(processedContent)
+    const cleanMarkdownContent = convertToCleanMarkdown(finalContent)
     console.log(`[PROCESS] Clean Markdown generated: ${cleanMarkdownContent.length} characters`)
 
     await retryApiCall(
       async () => {
         const updateData: any = {
-          latex_content: processedContent,
+          latex_content: finalContent,
           clean_markdown_content: cleanMarkdownContent,
           status: 'completed',
           completed_at: new Date().toISOString(),
         }
 
-        // Store footnotes and ZeroGPT result in metadata
+        // Store footnotes and metadata
         const { data: existingThesis } = await supabase
           .from('theses')
           .select('metadata')
@@ -5799,38 +5811,30 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           ...existingMetadata,
         }
 
-        // Add footnotes if German citation style
+        // Add used sources to metadata
+        updateData.metadata.used_sources = bibResult.usedSourceIds
+        updateData.metadata.bibliography_sources = bibResult.usedSourceIds
+
         if (thesisData.citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
           updateData.metadata.footnotes = footnotes
         }
-
-        // Add ZeroGPT result if available
         if (zeroGptResult) {
           updateData.metadata.zeroGptResult = zeroGptResult
-          console.log('[PROCESS] Saving ZeroGPT result to metadata:', zeroGptResult)
         }
-
-        // Add plagiarism result if available
         if (plagiarismResult) {
           updateData.metadata.plagiarismResult = plagiarismResult
-          console.log('[PROCESS] Saving plagiarism result to metadata:', plagiarismResult)
         }
-
-        // Add Winston result if available
         if (winstonResult) {
           updateData.metadata.winstonResult = winstonResult
-          console.log('[PROCESS] Saving Winston result to metadata:', winstonResult.score)
         }
 
-        const result = await supabase
-          .from('theses')
-          .update(updateData)
-          .eq('id', thesisId)
+        const result = await supabase.from('theses').update(updateData).eq('id', thesisId)
         if (result.error) throw result.error
         return result
       },
       `Update thesis status (completed): ${thesisId}`
     )
+
     const dbUpdateDuration = Date.now() - dbUpdateStart
     console.log(`[PROCESS] Database updated in ${dbUpdateDuration}ms`)
 
@@ -5851,7 +5855,6 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     // The trigger (005_thesis_completion_email_trigger.sql) handles everything
     console.log('\n[PROCESS] ========== Step 9: Email Notification ==========')
     console.log('[PROCESS] Email will be sent automatically via database trigger')
-    // No action needed - the status update above triggers the email automatically
 
     const processDuration = Date.now() - processStartTime
     console.log('\n[PROCESS] ========== Thesis Generation Complete ==========')
@@ -5879,7 +5882,6 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       },
       `Update thesis status (error): ${thesisId}`
     ).catch(err => {
-      // If even the error update fails, just log it
       console.error('Failed to update thesis status on error:', err)
     })
 
@@ -6170,3 +6172,137 @@ app.listen(PORT, () => {
 })
 
 
+/**
+ * Generate a formatted bibliography based on the thesis content and citation style
+ */
+function generateBibliography(
+  content: string,
+  sources: Source[],
+  citationStyle: string,
+  language: string,
+  footnotes: Record<number, string> = {}
+): { text: string; usedSourceIds: string[] } {
+  console.log(`[Bibliography] Generating bibliography (Style: ${citationStyle}, Language: ${language})...`)
+
+  // 1. Identify used sources
+  const usedSourceIds = new Set<string>()
+  const usedSources: Source[] = []
+
+  // Create a map for quick lookup
+  const sourceMap = new Map<string, Source>()
+  sources.forEach(s => {
+    // Generate a unique ID if not present
+    const id = s.url || s.title || 'unknown'
+    sourceMap.set(id, s)
+  })
+
+  if (citationStyle === 'deutsche-zitierweise') {
+    // For German style, use the extracted footnotes matching
+    // Strategy: List ONLY sources referenced in footnotes
+    if (Object.keys(footnotes).length > 0) {
+      // Create a set of text content from footnotes to match against
+      const footnoteTexts = Object.values(footnotes).join(' ').toLowerCase()
+
+      sources.forEach(s => {
+        // Match Author or Title in footnotes
+        const author = s.authors[0]?.split(' ').pop()?.toLowerCase() || ''
+        const title = s.title.toLowerCase()
+
+        let found = false
+        if (author && footnoteTexts.includes(author)) found = true
+        if (title.length > 10 && footnoteTexts.includes(title.substring(0, 20))) found = true
+
+        if (found) {
+          usedSources.push(s)
+          usedSourceIds.add(s.url || s.title || 'unknown')
+        }
+      })
+    } else {
+      // If no footnotes extracted (unlikely for German style if we are here),
+      // we must rely on standard text matching or if empty, we output nothing.
+      // But user demand is "not a single more or less".
+      // If AI failed to footnote, bibliography should be empty? 
+      // Safe fallback: Scan regular text content as well for Author/Title
+      sources.forEach(s => {
+        const author = s.authors[0]?.split(' ').pop() || ''
+        if (author) {
+          const pattern = new RegExp(author, 'i')
+          if (pattern.test(content)) {
+            usedSources.push(s)
+            usedSourceIds.add(s.url || s.title || 'unknown')
+          }
+        }
+      })
+    }
+  } else {
+    // For APA/Harvard/etc., scan text for (Author, Year) or just Author
+    sources.forEach(s => {
+      const author = s.authors[0]?.split(' ').pop() || '' // Last name
+      const year = s.year
+      let found = false
+
+      // Strict Check: (Author, Year) or (Author, n.d.)
+      if (author && year) {
+        // Look for "Author" AND "Year" in close proximity (citation like (Smith, 2023) or Smith (2023))
+        // or just Author name appearing in text is usually a sign of usage.
+        // User says "not a single more or less".
+        // Strict citation matching:
+        const citationPattern = new RegExp(`${author}.{0,10}${year}`, 'i')
+        // Also simple name check if the above is too strict
+        if (citationPattern.test(content)) found = true
+        else {
+          // Fallback to just name check if strict citation missed (e.g. narrative citation)
+          // But verified against content.
+          const namePattern = new RegExp(`\\b${author}\\b`, 'i')
+          if (namePattern.test(content)) found = true
+        }
+      } else if (author) {
+        const namePattern = new RegExp(`\\b${author}\\b`, 'i')
+        if (namePattern.test(content)) found = true
+      }
+
+      if (found) {
+        usedSources.push(s)
+        usedSourceIds.add(s.url || s.title || 'unknown')
+      }
+    })
+
+    // REMOVED FALLBACK: "not a single more or less"
+    // searching for low citation count fallback deleted.
+  }
+
+  console.log(`[Bibliography] Identified ${usedSources.length} sources for bibliography`)
+
+  // 2. Format Bibliography
+  const title = language === 'german' ? '## Literaturverzeichnis' : '## References'
+
+  // Sort alphabetically by first author
+  usedSources.sort((a, b) => {
+    const authorA = a.authors[0] || a.title || ''
+    const authorB = b.authors[0] || b.title || ''
+    return authorA.localeCompare(authorB)
+  })
+
+  let bibText = `\n\n${title}\n\n`
+
+  usedSources.forEach(s => {
+    const authors = s.authors.join(', ')
+    const title = s.title
+    const year = s.year ? `(${s.year})` : '(n.d.)'
+    const publisher = s.publisher || s.journal || 'n.p.'
+    const url = s.url ? ` Retrieved from ${s.url}` : ''
+
+    // Simple APA-like format for everyone (adjust as needed)
+    // Author (Year). Title. Publisher. URL.
+    if (language === 'german') {
+      bibText += `* ${authors} ${year}: *${title}*. ${publisher}.${url}\n`
+    } else {
+      bibText += `* ${authors} ${year}. *${title}*. ${publisher}.${url}\n`
+    }
+  })
+
+  return {
+    text: bibText,
+    usedSourceIds: Array.from(usedSourceIds)
+  }
+}
