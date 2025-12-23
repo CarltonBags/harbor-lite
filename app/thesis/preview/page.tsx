@@ -422,11 +422,16 @@ export default function ThesisPreviewPage() {
       setContent(thesisContent)
       setOriginalContent(thesisContent)
 
-      // Load sources - use uploaded_sources directly (from research pipeline)
-      // or fall back to extracting from bibliography for older theses
+      // Load sources - prioritize strictly used sources from metadata
+      // This ensures the "Sources" tab matches the bibliography exactly ("not a single more or less")
+      const strictUsedSources = thesisData.metadata?.used_sources
       const uploadedSources = thesisData.uploaded_sources || []
-      if (uploadedSources.length > 0) {
-        // New format: sources are stored directly
+
+      if (Array.isArray(strictUsedSources) && strictUsedSources.length > 0) {
+        // Strict mode: use sources actually used in thesis
+        setBibliographySources(strictUsedSources)
+      } else if (uploadedSources.length > 0) {
+        // Fallback: use all uploaded sources (less precise)
         setBibliographySources(uploadedSources)
       } else {
         // Legacy: try to extract from bibliography text

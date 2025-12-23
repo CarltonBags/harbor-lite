@@ -4349,7 +4349,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         }
 
         // Add used sources to metadata (Critical for Sources Tab)
-        updateData.metadata.used_sources = bibResult.usedSourceIds
+        updateData.metadata.used_sources = bibResult.usedSources
         updateData.metadata.bibliography_sources = bibResult.usedSourceIds
 
         // Add footnotes if German citation style
@@ -4724,7 +4724,7 @@ function generateBibliography(
   citationStyle: string,
   language: string,
   footnotes: Record<number, string> = {}
-): { text: string; usedSourceIds: string[] } {
+): { text: string; usedSourceIds: string[]; usedSources: Source[] } {
   console.log(`[Bibliography] Generating bibliography (Style: ${citationStyle}, Language: ${language})...`)
 
   // 1. Identify used sources
@@ -4833,6 +4833,7 @@ function generateBibliography(
 
   return {
     text: bibText,
-    usedSourceIds: Array.from(usedSourceIds)
+    usedSourceIds: Array.from(usedSourceIds),
+    usedSources: usedSources
   }
 }
