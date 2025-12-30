@@ -1886,12 +1886,24 @@ async function generateChapterContent({
          SCHREIBE NICHT DIE HAUPT-KAPITELÜBERSCHRIFT ("## ${chapterLabel}").
          Diese wird automatisch hinzugefügt. Schreibe NUR den Inhalt.`
       : `START directly with the introduction text or the first subchapter.
+         SUPREME RULE: NEVER EDIT THE CHAPTER HEADING (Line 1). IT MUST REMAIN EXACTLY AS IS.
+    SUPREME RULE: DO NOT CHANGE HEADING LEVELS (## stays ##, ### stays ###).
+    SUPREME RULE: NO "Topic? Statement." rhetorical patterns. "Global Crisis? Huge." -> BANNED.
+    SUPREME RULE: RESEARCH QUESTION MUST REMAIN THE EXACT SAME STRING.
          DO NOT WRITE THE MAIN CHAPTER HEADING ("## ${chapterLabel}").
          It will be added automatically. Write ONLY the content.`
+
+    const isIntroduction = chapter.number === '1' || chapter.number === '1.' || chapterLabel.toLowerCase().includes('einleitung') || chapterLabel.toLowerCase().includes('introduction');
+    const structureInstruction = isIntroduction
+      ? (isGerman
+        ? `\n**⚠️ WICHTIG - AUFBAU DER ARBEIT (Letzter Abschnitt):**\nWenn du den Aufbau der Arbeit beschreibst: Erwähne NIEMALS Kapitel 1 (dieses Kapitel). Beginne SOFORT mit Kapitel 2.\nFALSCH: "Kapitel 1 leitet ein..."\nRICHTIG: "Das zweite Kapitel beleuchtet..."`
+        : `\n**⚠️ IMPORTANT - STRUCTURE OF THE WORK (Last section):**\nWhen describing the thesis structure: NEVER mention Chapter 1 (this chapter). Start IMMEDIATELY with Chapter 2.\nWRONG: "Chapter 1 introduces..."\nCORRECT: "The second chapter examines..."`)
+      : '';
 
     return `${baseInstructions}
 
 ${sectionInstructions}${planInstructions}${previousContext}${lengthInstruction}
+${structureInstruction}
 
 Weitere Anforderungen:
 - ${isGerman ? 'Nutze ausschließlich die bereitgestellten FileSearch-Quellen und setze korrekte Zitationen/Fußnoten.' : 'Use only the provided FileSearch sources and include proper citations/footnotes.'}
@@ -2450,18 +2462,31 @@ The text must sound like written by a human author from the start and must not b
 - Make only minimal adjustments if they improve the logical structure.
 - Each section must serve a clear scientific purpose.
 
-**Citation Style:**
+**Citation Style (STRICT):**
 - Strictly adhere to the specified citation style (${citationStyleLabel}).
-- The citation style MUST also be considered in the running text. Where a source is used, this must be marked in the corresponding citation style.
-- Format strictly correctly in the text and in the bibliography.
+- **Rule 1: NO Structural Citations.**
+  - WRONG: "This chapter discusses (Müller, 2020)..." or "This analysis contains (Schmidt, 2019)..."
+  - WRONG: "As seen in (Meyer, 2021)..." or "Following (Schulze, 2018)..."
+  - CORRECT: "The market grew by 5% (Müller, 2020)." (Cite only FACTS and ARGUMENTS).
+  - Only cite when you are using a specific fact, figure, or argument from the source. Do not cite the structure of your own writing.
+- **Rule 2: Authors:**
+  - If a source has ONE author: Cite as "Surname".
+  - If a source has MORE THAN ONE author: ALWAYS use "Surname et al." (e.g., "Müller et al., 2020").
+- Format strictly correctly in the text.
 
 **PAGE NUMBERS IN CITATIONS - MANDATORY:**
-- EVERY citation MUST include page numbers - this is an absolute REQUIREMENT.
-- Page numbers are required in ALL citation styles.
-- Use the page numbers from the RAG context or source metadata.
-- Format: (Author, Year, p. XX) or (Author, Year, pp. XX-YY) depending on style.
-- If the page number is not explicitly in the context, use a plausible page number based on context (e.g., chapter, section).
-- NEVER output a citation without a page number.
+- EVERY citation MUST include page numbers.
+- **Page Range Formatting (CRITICAL):**
+  - **Single Page:** "S. 324" or "p. 324"
+  - **Two Pages (x to x+1):** Use "f." (e.g., "S. 324f." or "p. 324f."). Example: Range 324-325 becomes "324f."
+  - **Multiple Pages (>2 pages):** Use "ff." (e.g., "S. 324ff." or "p. 324ff."). Example: Range 324-330 becomes "324ff."
+- Never write "324-325" explicitly - use "324f."
+- Never write "324-330" explicitly - use "324ff."
+- Format:
+  - APA/Harvard: (Müller et al., 2020, p. 324f.)
+  - German: (Müller et al., 2020, S. 324f.)
+  - Footnotes: ^1 Müller et al., 2020, S. 324f.
+- If page number is missing in source, estimate plausibly based on context/length.
 
 **PAGE NUMBERS IN CITATIONS - MANDATORY:**
 - EVERY citation MUST include page numbers - this is an absolute REQUIREMENT.
@@ -2619,7 +2644,7 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
               fileSearch: {
                 fileSearchStoreNames: [thesisData.fileSearchStoreId],
               },
-            }],
+            },],
           },
         }),
         `Generate thesis content (Gemini Pro + FileSearchStore) - Attempt ${attempt}`,
@@ -2910,9 +2935,10 @@ Rewrite the following sentences to sound more natural and human. Your goal is to
 4. **FORBIDDEN AI Markers:** NEVER use words like: "firstly", "furthermore", "moreover", "in conclusion", "it is important to note", "in this context", "additionally", "regarding".
 5. **Preserve Content:** Keep ALL facts, data, names, and especially citations (e.g., (Smith, 2023)) exactly as they are.
 6. **FORBIDDEN PATTERNS (KILL LIST):**
-   - "Topic? Statement." (Q&A Pattern) -> FORBIDDEN! Use a statement.
-   - "Reason? Simple." -> FORBIDDEN!
-   - "We", "I", "One" -> FORBIDDEN! Use passive voice.
+   - "Topic? Statement." (Q&A Pattern)   - **BANNED PATTERNS:** Check for "Topic? Statement." (e.g. "The reason? Simple."). FORBIDDEN.
+   - **RHETORICAL QUESTIONS:** Are there any? (FORBIDDEN)
+   - Is the tone too emotional or colloquial?
+   - **RESEARCH QUESTION IMMUTABLE:** "Topic? Statement" patterns are forbidden, but the **Research Question itself must be worded EXACTLY as provided.** No paraphrasing.
 
 **Sentences to rewrite:**
 ${batch.map((s, idx) => `${idx + 1}. ${s}`).join('\n\n')}

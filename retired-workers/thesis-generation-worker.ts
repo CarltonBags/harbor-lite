@@ -2074,9 +2074,18 @@ ${availableSourcesList}
 ${citationStyle === 'deutsche-zitierweise' || citationStyle === 'fussnoten' ? `**Deutsche Zitierweise (Fußnoten):**
 - Im Text: Verwende "^N" direkt nach dem zitierten Inhalt (z.B. "...wurde belegt.^1")
 - Fortlaufende Nummerierung (^1, ^2, ^3...)
-- KEINE Fußnoten-Definitionen am Ende schreiben (diese werden automatisch generiert)` : `**${citationStyleLabel}:**
+- KEINE Fußnoten-Definitionen am Ende schreiben (diese werden automatisch generiert)` : `**${citationStyleLabel} (STRENG):**
 - Zitiere im Fließtext: (Autor, Jahr, S. XX)
-- Beispiel: (Müller, 2021, S. 12) oder (Schmidt et al., 2020, S. 5-7)`}
+- **REGEL 1: KEINE strukturellen Zitationen.**
+  - FALSCH: "Dieses Kapitel diskutiert (Müller, 2020)..." oder "Wie bei (Schmidt, 2019) gesehen..."
+  - RICHTIG: "Der Markt wuchs um 5% (Müller, 2020)." (Nur FAKTEN zitieren).
+- **REGEL 2: Autoren:**
+  - 1 Autor: "Name"
+  - >1 Autor: IMMER "Name et al." (z.B. "Müller et al., 2020")
+- **REGEL 3: Seitenzahlen (f./ff.):**
+  - Eine Seite: "S. 324"
+  - Zwei Seiten: "S. 324f." (NICHT 324-325)
+  - Mehrere Seiten: "S. 324ff." (NICHT 324-330)`}
 
 **🚫 ABSOLUT VERBOTEN: FRAGEN & FRAGE-ANTWORT-MUSTER 🚫**
 - NIEMALS Konstruktionen wie "Begriff? Definition." verwenden!
@@ -2139,9 +2148,18 @@ ${availableSourcesList}
 ${citationStyle === 'deutsche-zitierweise' || citationStyle === 'fussnoten' ? `**German Citation (Footnotes):**
 - In text: Use "^N" directly after content (e.g. "...was proven.^1")
 - Continuous numbering (^1, ^2, ^3...)
-- DO NOT write footnote definitions at the end` : `**${citationStyleLabel}:**
+- DO NOT write footnote definitions at the end` : `**${citationStyleLabel} (STRICT):**
 - Cite in text: (Author, Year, p. XX)
-- Example: (Miller, 2021, p. 12) or (Smith et al., 2020, p. 5-7)`}
+- **RULE 1: NO Structural Citations.**
+  - WRONG: "This chapter discusses (Miller, 2021)..."
+  - CORRECT: "The market grew (Miller, 2021)." (Cite FACTS only).
+- **RULE 2: Authors:**
+  - 1 Author: "Name"
+  - >1 Author: ALWAYS "Name et al." (e.g. "Smith et al., 2020")
+- **RULE 3: Page Numbers (f./ff.):**
+  - One page: "p. 324"
+  - Two pages: "p. 324f." (NOT 324-325)
+  - Multiple pages: "p. 324ff." (NOT 324-330)`}
 
 **🚫 ABSOLUTELY FORBIDDEN: QUESTIONS & Q&A PATTERNS 🚫**
 - NEVER use constructions like "Term? Definition."!
@@ -2260,11 +2278,19 @@ INSTEAD - Attribute research to REAL authors:
            DO NOT WRITE THE MAIN CHAPTER HEADING ("## ${chapterLabel}").
            It will be added automatically. Write ONLY the content.`)
 
+    const isIntroduction = chapter.number === '1' || chapter.number === '1.' || chapterLabel.toLowerCase().includes('einleitung') || chapterLabel.toLowerCase().includes('introduction');
+    const structureInstruction = isIntroduction
+      ? (isGerman
+        ? `\n**⚠️ WICHTIG - AUFBAU DER ARBEIT (Letzter Abschnitt):**\nWenn du den Aufbau der Arbeit beschreibst: Erwähne NIEMALS Kapitel 1 (dieses Kapitel). Beginne SOFORT mit Kapitel 2.\nFALSCH: "Kapitel 1 leitet ein..."\nRICHTIG: "Das zweite Kapitel beleuchtet..."`
+        : `\n**⚠️ IMPORTANT - STRUCTURE OF THE WORK (Last section):**\nWhen describing the thesis structure: NEVER mention Chapter 1 (this chapter). Start IMMEDIATELY with Chapter 2.\nWRONG: "Chapter 1 introduces..."\nCORRECT: "The second chapter examines..."`)
+      : '';
+
     return `${baseInstructions}
 
 ${sectionInstructions}${planInstructions}${contextInstruction}${lengthInstruction}
 
 ${strictRules}
+${structureInstruction}
 
 Weitere Anforderungen:
 - ${isGerman ? 'HALTE DICH STRIKT AN DIE VORGEGEBENE GLIEDERUNG. Ändere KEINE Überschriften. Nutze exakt die vorgegebenen Unterkapitel.' : 'ADHERE STRICTLY TO THE PROVIDED OUTLINE. Do NOT change any headings. Use exactly the provided subchapters.'}
@@ -2280,7 +2306,7 @@ Weitere Anforderungen:
 - ${isGerman ? 'KEINE PERSONALPRONOMEN (ABSOLUT VERBOTEN): Verwende NIEMALS "ich", "wir", "uns", "unser". Nutze stattdessen Passiv- oder "Man"-Konstruktionen (z.B. "Es wird untersucht" statt "Wir untersuchen").' : 'NO PERSONAL PRONOUNS (ABSOLUTELY FORBIDDEN): NEVER use "I", "we", "us", "our". Use passive or impersonal constructions instead (e.g., "It is analyzed" instead of "We analyze").'}
 - ${isGerman ? 'STRENG WISSENSCHAFTLICHER STIL: Nutze präzise Fachterminologie, komplexe Satzstrukturen (Hypotaxen) und vermeide persönliche Meinungen.' : 'STRICT SCIENTIFIC STYLE: Use precise terminology, complex sentence structures, and avoid personal opinions.'}
 - ${isGerman ? 'ABSOLUT UNEMOTIONAL: Der Text muss nüchtern, distanziert und analytisch sein. Keine Begeisterung, keine Dramatik, nur Fakten.' : 'ABSOLUTELY UNEMOTIONAL: The text must be cold, distant, and analytical. No excitement, no drama, only facts.'}
-- ${isGerman ? `FORSCHUNGSFRAGE UNANTASTBAR: Die Forschungsfrage ("${thesisData.researchQuestion}") darf NICHT verändert, umformuliert oder neu interpretiert werden. Sie steht absolut fest.` : `RESEARCH QUESTION IMMUTABLE: The research question ("${thesisData.researchQuestion}") must NOT be changed, rephrased, or reinterpreted. It is absolute.`}
+- ${isGerman ? `FORSCHUNGSFRAGE UNANTASTBAR: Die Forschungsfrage ("${thesisData.researchQuestion}") darf NICHT verändert, umformuliert oder neu interpretiert werden. Sie muss WORTWÖRTLICH exakt so behandelt werden.` : `RESEARCH QUESTION IMMUTABLE: The research question ("${thesisData.researchQuestion}") must NOT be changed, rephrased, or reinterpreted. Use exactly this wording.`}
 
 ${isGerman ? `
 **⚠️ ABSOLUT VERBOTEN (KILL LIST):**
