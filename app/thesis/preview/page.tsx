@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen, Download, Shield, Home, RefreshCw } from 'lucide-react'
+import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen, Download, Shield, Home, RefreshCw, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import { createSupabaseClient } from '@/lib/supabase/client'
 import { getThesisById } from '@/lib/supabase/theses'
 import Link from 'next/link'
@@ -59,6 +59,8 @@ export default function ThesisPreviewPage() {
   const [highlightedPassages, setHighlightedPassages] = useState<Array<{ text: string; paragraphId: string }>>([])
   const [selectionRange, setSelectionRange] = useState<Range | null>(null)
   const [bibliographySources, setBibliographySources] = useState<any[]>([])
+  const [mobileChatOpen, setMobileChatOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const chatEndRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
@@ -921,27 +923,29 @@ export default function ThesisPreviewPage() {
   return (
     <div className="h-screen bg-gray-50 dark:bg-gray-900 flex flex-col pt-16 overflow-hidden">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-4 relative z-30">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 overflow-hidden">
             <Link
               href="/"
-              className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+              className="hidden sm:inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors flex-shrink-0"
             >
               <Home className="w-4 h-4 mr-1" />
               Startseite
             </Link>
-            <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            <div className="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white truncate">
                 {thesis.topic || 'Thesis Preview'}
               </h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+              <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-0.5 sm:mt-1 truncate">
                 {thesis.field} • {thesis.thesis_type}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+
+          {/* Desktop Toolbar - Hidden on Mobile */}
+          <div className="hidden md:flex items-center gap-3 flex-shrink-0">
             {hasUnsavedChanges && (
               <span className="text-sm text-amber-600 dark:text-amber-400">
                 Ungespeicherte Änderungen
@@ -1042,13 +1046,133 @@ export default function ThesisPreviewPage() {
               Zurück
             </Link>
           </div>
+
+          {/* Mobile Menu Toggle Button */}
+          <div className="flex md:hidden items-center gap-2">
+            {hasUnsavedChanges && (
+              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                Ungespeichert
+              </span>
+            )}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
+
+        {/* Mobile Menu Dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden absolute top-full left-0 right-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-xl p-4 flex flex-col gap-3 rounded-b-xl animate-in slide-in-from-top-2">
+            {!isEditing ? (
+              <button
+                onClick={() => { handleManualEdit(); setMobileMenuOpen(false); }}
+                className="flex items-center w-full px-4 py-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Edit2 className="w-5 h-5 mr-3 text-gray-500" />
+                <span className="font-medium text-gray-900 dark:text-white">Bearbeiten</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => { handleCancelEdit(); setMobileMenuOpen(false); }}
+                className="flex items-center w-full px-4 py-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg"
+              >
+                <X className="w-5 h-5 mr-3" />
+                <span className="font-medium">Abbrechen</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => { handleSave(); setMobileMenuOpen(false); }}
+              disabled={!hasUnsavedChanges || isProcessing}
+              className="flex items-center w-full px-4 py-3 bg-black dark:bg-white text-white dark:text-black rounded-lg disabled:opacity-50"
+            >
+              {isProcessing ? <Loader2 className="w-5 h-5 mr-3 animate-spin" /> : <Save className="w-5 h-5 mr-3" />}
+              <span className="font-medium">Speichern</span>
+            </button>
+
+            <div className="h-px bg-gray-100 dark:bg-gray-700 my-1" />
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => { setShowSourcesModal(true); setMobileMenuOpen(false); }}
+                className="flex flex-col items-center justify-center p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100"
+              >
+                <BookOpen className="w-6 h-6 mb-2 text-gray-600 dark:text-gray-400" />
+                <span className="text-xs font-medium text-gray-900 dark:text-white">Quellen</span>
+              </button>
+
+              <button
+                onClick={() => { setShowVersionsModal(true); setMobileMenuOpen(false); }}
+                className="flex flex-col items-center justify-center p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100"
+              >
+                <FileText className="w-6 h-6 mb-2 text-blue-600" />
+                <span className="text-xs font-medium text-gray-900 dark:text-white">Versionen ({thesisVersions.length})</span>
+              </button>
+
+              <button
+                onClick={() => { setShowAIModal(true); setMobileMenuOpen(false); }}
+                className="flex flex-col items-center justify-center p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100"
+              >
+                <Shield className="w-6 h-6 mb-2 text-indigo-600" />
+                <span className="text-xs font-medium text-gray-900 dark:text-white">GPT-Check</span>
+              </button>
+
+              <button
+                onClick={() => { setShowPlagiarismModal(true); setMobileMenuOpen(false); }}
+                className="flex flex-col items-center justify-center p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg hover:bg-gray-100"
+              >
+                <FileText className="w-6 h-6 mb-2 text-purple-600" />
+                <span className="text-xs font-medium text-gray-900 dark:text-white">Plagiat</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => { handleExportDoc(); setMobileMenuOpen(false); }}
+                className="flex items-center justify-center px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                <Download className="w-4 h-4 mr-2 text-green-600" />
+                <span className="text-sm">Word</span>
+              </button>
+              <button
+                onClick={() => { handleExportLaTeX(); setMobileMenuOpen(false); }}
+                className="flex items-center justify-center px-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                <Download className="w-4 h-4 mr-2 text-blue-600" />
+                <span className="text-sm">LaTeX</span>
+              </button>
+            </div>
+
+            <Link href="/thesis" className="flex items-center justify-center px-4 py-3 mt-2 text-gray-500 hover:text-gray-900">
+              <Home className="w-4 h-4 mr-2" /> Zurück zur Übersicht
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Split View: Chat (Left) + Preview (Right) */}
-      <div className="flex-1 flex overflow-hidden h-full">
-        {/* Chat Panel (Left) - Fixed */}
-        <div className="w-96 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col h-full flex-shrink-0">
+      <div className="flex-1 flex overflow-hidden h-full relative">
+        {/* Mobile Chat Overlay */}
+        {mobileChatOpen && (
+          <div
+            className="md:hidden absolute inset-0 bg-black/50 z-30 backdrop-blur-sm transition-opacity"
+            onClick={() => setMobileChatOpen(false)}
+          />
+        )}
+
+        {/* Chat Panel (Left) - Responsive */}
+        <div className={`
+          absolute md:static inset-y-0 left-0 z-40
+          w-85 md:w-96 
+          bg-white dark:bg-gray-800 
+          border-r border-gray-200 dark:border-gray-700 
+          flex flex-col h-full flex-shrink-0
+          transition-transform duration-300 ease-in-out
+          ${mobileChatOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'}
+        `}>
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
               <MessageSquare className="w-5 h-5 mr-2" />
@@ -1160,7 +1284,14 @@ export default function ThesisPreviewPage() {
         </div>
 
         {/* Preview Panel (Right) - Scrollable Container */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-gray-100 dark:bg-gray-800">
+        <div className="flex-1 flex flex-col overflow-hidden bg-gray-100 dark:bg-gray-800 relative">
+          {/* Mobile Chat Toggle Button */}
+          <button
+            onClick={() => setMobileChatOpen(!mobileChatOpen)}
+            className="md:hidden absolute bottom-6 left-6 z-30 p-3 bg-black dark:bg-white text-white dark:text-black rounded-full shadow-xl hover:scale-105 transition-transform"
+          >
+            {mobileChatOpen ? <ChevronLeft className="w-6 h-6" /> : <MessageSquare className="w-6 h-6" />}
+          </button>
           {/* Scrollable Content Area */}
           <div className="flex-1 overflow-y-auto overflow-x-auto">
             {isEditing ? (

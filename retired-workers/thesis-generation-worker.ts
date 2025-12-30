@@ -2055,8 +2055,14 @@ async function generateChapterContent({
     const isExtension = currentChapterContext.length > 0
 
     const baseInstructions = isGerman
-      ? `Du schreibst das Kapitel "${chapterLabel}" einer akademischen Arbeit mit dem Thema "${thesisData.title}".${isExtension ? ' Du hast den ersten Teil des Kapitels bereits geschrieben. Deine Aufgabe ist es nun, das Kapitel FORTZUFÜHREN und zu beenden.' : ''}`
-      : `You are writing the chapter "${chapterLabel}" of an academic thesis titled "${thesisData.title}".${isExtension ? ' You have already written the first part of the chapter. Your task is now to CONTINUE and complete the chapter.' : ''}`
+      ? `Du schreibst das Kapitel "${chapterLabel}" einer akademischen Arbeit mit dem Thema "${thesisData.title}".${isExtension ? ' Du hast den ersten Teil des Kapitels bereits geschrieben. Deine Aufgabe ist es nun, das Kapitel FORTZUFÜHREN und zu beenden.' : ''}
+         \n**WICHTIG - FORSCHUNGSFRAGE (UNVERÄNDERLICH):**
+         Die zentrale Forschungsfrage lautet: "${thesisData.researchQuestion}"
+         Diese Frage muss EXAKT so verwendet werden. Formuliere sie niemals um. Sie ist die Basis der gesamten Arbeit.`
+      : `You are writing the chapter "${chapterLabel}" of an academic thesis titled "${thesisData.title}".${isExtension ? ' You have already written the first part of the chapter. Your task is now to CONTINUE and complete the chapter.' : ''}
+         \n**IMPORTANT - RESEARCH QUESTION (IMMUTABLE):**
+         The central research question is: "${thesisData.researchQuestion}"
+         This question must be used EXACTLY as provided. Never rephrase it. It is the foundation of the entire thesis.`
 
     const strictRules = isGerman
       ? `═══════════════════════════════════════════════════════════════════════════════
@@ -2281,8 +2287,8 @@ INSTEAD - Attribute research to REAL authors:
     const isIntroduction = chapter.number === '1' || chapter.number === '1.' || chapterLabel.toLowerCase().includes('einleitung') || chapterLabel.toLowerCase().includes('introduction');
     const structureInstruction = isIntroduction
       ? (isGerman
-        ? `\n**⚠️ WICHTIG - AUFBAU DER ARBEIT (Letzter Abschnitt):**\nWenn du den Aufbau der Arbeit beschreibst: Erwähne NIEMALS Kapitel 1 (dieses Kapitel). Beginne SOFORT mit Kapitel 2.\nFALSCH: "Kapitel 1 leitet ein..."\nRICHTIG: "Das zweite Kapitel beleuchtet..."`
-        : `\n**⚠️ IMPORTANT - STRUCTURE OF THE WORK (Last section):**\nWhen describing the thesis structure: NEVER mention Chapter 1 (this chapter). Start IMMEDIATELY with Chapter 2.\nWRONG: "Chapter 1 introduces..."\nCORRECT: "The second chapter examines..."`)
+        ? `\n**⚠️ WICHTIG - AUFBAU DER ARBEIT (Letzter Abschnitt):**\n1. Wenn du den Aufbau der Arbeit beschreibst: Erwähne NIEMALS Kapitel 1 (dieses Kapitel). Beginne SOFORT mit Kapitel 2.\n2. **KEINE ZITATIONEN** in diesem Abschnitt! Der Aufbau der Arbeit beschreibt nur deine eigene Struktur -> Zitationen machen hier KEINEN Sinn.\n3. **STOPP NACH DEM LETZTEN KAPITEL!** Schreibe nach der Beschreibung des Fazits KEIN weiteres Wort. Keine Definitionen, keine Zusammenfassungen, NICHTS.\n4. FALSCH: "Kapitel 1 leitet ein..."\n5. RICHTIG: "Das zweite Kapitel beleuchtet..."`
+        : `\n**⚠️ IMPORTANT - STRUCTURE OF THE WORK (Last section):**\n1. When describing the thesis structure: NEVER mention Chapter 1 (this chapter). Start IMMEDIATELY with Chapter 2.\n2. **NO CITATIONS** in this section! The structure description explains your own work -> citations make NO sense here.\n3. **STOP AFTER THE LAST CHAPTER!** Do not write a single word after describing the conclusion. No definitions, no summaries, NOTHING.\n4. WRONG: "Chapter 1 introduces..."\n5. CORRECT: "The second chapter examines..."`)
       : '';
 
     return `${baseInstructions}
