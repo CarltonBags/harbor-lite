@@ -904,31 +904,41 @@ export default function NewThesisPage() {
     }
   }
 
+  const ensureFileSearchStore = async (): Promise<string | null> => {
+    if (fileSearchStoreId) return fileSearchStoreId
+    if (!thesisId) return null
+
+    try {
+      const response = await fetch('/api/create-file-search-store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          thesisId,
+          displayName: `Thesis: ${formData.topic || 'Unbenannt'}`,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      if (data.fileSearchStoreId) {
+        setFileSearchStoreId(data.fileSearchStoreId)
+        fetchStoreInfo(data.fileSearchStoreId)
+        return data.fileSearchStoreId
+      }
+      return null
+    } catch (error) {
+      console.error('Error creating/fetching FileSearchStore:', error)
+      alert('Fehler beim Erstellen/Abrufen des File Search Stores. Bitte versuche es erneut.')
+      return null
+    }
+  }
+
   const handleFiles = async (files: File[]) => {
     // Ensure we have a FileSearchStore (will fetch existing or create new)
-    if (!fileSearchStoreId && thesisId) {
-      try {
-        const response = await fetch('/api/create-file-search-store', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            thesisId,
-            displayName: `Thesis: ${formData.topic || 'Unbenannt'}`,
-          }),
-        })
-        const data = await response.json()
-        if (data.fileSearchStoreId) {
-          setFileSearchStoreId(data.fileSearchStoreId)
-          // Note: FileSearchStore ID is already stored in DB by the API route
-          // Fetch store info
-          fetchStoreInfo(data.fileSearchStoreId)
-        }
-      } catch (error) {
-        console.error('Error creating/fetching FileSearchStore:', error)
-        alert('Fehler beim Erstellen/Abrufen des File Search Stores')
-        return
-      }
-    }
+    await ensureFileSearchStore()
 
     // Process each file
     for (const file of files) {
@@ -994,9 +1004,11 @@ export default function NewThesisPage() {
   }
 
   const handleFileUpload = async (uploadedFile: UploadedFile) => {
-    if (!fileSearchStoreId) {
-      alert('FileSearchStore nicht verfügbar')
-      return
+    // Ensure store exists before uploading
+    let storeId = fileSearchStoreId
+    if (!storeId) {
+      storeId = await ensureFileSearchStore()
+      if (!storeId) return // Already alerted in helper
     }
 
     setUploadedFiles(prev =>
@@ -1010,7 +1022,7 @@ export default function NewThesisPage() {
     try {
       const formData = new FormData()
       formData.append('file', uploadedFile.file)
-      formData.append('fileSearchStoreId', fileSearchStoreId)
+      formData.append('fileSearchStoreId', storeId)
       formData.append('thesisId', thesisId || '')
       formData.append('metadata', JSON.stringify(uploadedFile.metadata))
       formData.append('displayName', uploadedFile.metadata.title || uploadedFile.file.name)
@@ -1089,6 +1101,13 @@ export default function NewThesisPage() {
   }
 
   const handleUploadAll = async () => {
+    // Ensure store exists before uploading
+    let storeId = fileSearchStoreId
+    if (!storeId) {
+      storeId = await ensureFileSearchStore()
+      if (!storeId) return // Already alerted in helper
+    }
+
     const readyFiles = uploadedFiles.filter(f => f.uploadStatus === 'ready')
     for (const file of readyFiles) {
       await handleFileUpload(file)
@@ -1720,6 +1739,23 @@ export default function NewThesisPage() {
                 Thesis-Gliederung
               </h2>
             </div>
+
+            {/* Regeneration Button */}
+            {outline.length > 0 && !loadingOutline && (
+              <div className="mb-6 flex justify-end">
+                <button
+                  onClick={() => {
+                    if (window.confirm('Möchtest Du die Gliederung wirklich neu generieren? Alle aktuellen Änderungen gehen verloren.')) {
+                      generateOutline()
+                    }
+                  }}
+                  className="flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-yellow-600 dark:hover:text-yellow-500 transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Neu generieren
+                </button>
+              </div>
+            )}
 
             {!outline.length && !loadingOutline && (
               <div className="space-y-6 mb-6">

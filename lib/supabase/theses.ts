@@ -18,7 +18,7 @@ export async function createThesis(
   }
 ): Promise<Thesis> {
   const supabase = createSupabaseClient()
-  
+
   const { data, error } = await supabase
     .from('theses')
     .insert({
@@ -63,19 +63,22 @@ export async function updateThesis(
   }>
 ): Promise<Thesis> {
   const supabase = createSupabaseClient()
-  
+
   const { data, error } = await supabase
     .from('theses')
     .update(updates)
     .eq('id', thesisId)
     .select()
-    .single()
 
   if (error) {
     throw new Error(`Failed to update thesis: ${error.message}`)
   }
 
-  return data
+  if (!data || data.length === 0) {
+    throw new Error(`Thesis not found or not accessible for update (ID: ${thesisId})`)
+  }
+
+  return data[0]
 }
 
 /**
@@ -83,7 +86,7 @@ export async function updateThesis(
  */
 export async function getThesisById(thesisId: string): Promise<Thesis | null> {
   const supabase = createSupabaseClient()
-  
+
   const { data, error } = await supabase
     .from('theses')
     .select('*')
@@ -105,7 +108,7 @@ export async function getThesisById(thesisId: string): Promise<Thesis | null> {
  */
 export async function getUserTheses(userId: string): Promise<Thesis[]> {
   const supabase = createSupabaseClient()
-  
+
   const { data, error } = await supabase
     .from('theses')
     .select('*')
@@ -124,7 +127,7 @@ export async function getUserTheses(userId: string): Promise<Thesis[]> {
  */
 export async function deleteThesis(thesisId: string): Promise<void> {
   const supabase = createSupabaseClient()
-  
+
   const { error } = await supabase
     .from('theses')
     .delete()

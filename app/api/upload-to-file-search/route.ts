@@ -90,15 +90,9 @@ export async function POST(request: Request) {
       throw new Error('No file or URL provided')
     }
 
-    // Prepare config for upload with chunking configuration
+    // Prepare config for upload
     let config: any = {
       displayName: fileName,
-      chunkingConfig: {
-        whiteSpaceConfig: {
-          maxTokensPerChunk: 512, // Maximum allowed chunk size (in tokens) - API limit is 512
-          maxOverlapTokens: 50, // Overlap between chunks for better context preservation (should be less than chunk size)
-        },
-      },
     }
 
     if (parsedMetadata) {
