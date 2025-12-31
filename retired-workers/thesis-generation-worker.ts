@@ -2070,6 +2070,23 @@ async function generateChapterContent({
     return `[${i + 1}] ${authors} (${year}): "${s.title}". ${pageRangeInfo}`
   }).join('\n')
 
+  const mandatorySources = sources.filter(s => s.mandatory)
+  const mandatorySourcesSection = mandatorySources.length > 0 ? (
+    isGerman ? `
+**⚠️ PFLICHTQUELLEN - ZITIERTZWANG ⚠️**
+Der Nutzer hat folgende Quellen als ESSENTIELL markiert.
+Prüfe dringend, ob sie thematisch zu diesem Kapitel passen.
+FALLS JA: Du MUSST diese Quellen zitieren! Ignoriere sie auf keinen Fall, wenn sie relevant sind.
+${mandatorySources.map((s, i) => `[MANDATORY] "${s.title}" (${s.authors.slice(0, 2).join(', ')})`).join('\n')}
+` : `
+**⚠️ MANDATORY SOURCES - MUST CITE ⚠️**
+The user has marked the following sources as ESSENTIAL.
+Check urgently if they fit strictly into this chapter's topic.
+IF YES: You MUST cite these sources! Do not ignore them if they are relevant.
+${mandatorySources.map((s, i) => `[MANDATORY] "${s.title}" (${s.authors.slice(0, 2).join(', ')})`).join('\n')}
+`
+  ) : ''
+
   const buildChapterPrompt = (remainingWords: number, currentChapterContext: string = '') => {
     // If we have current chapter context (extension mode), modify instructions
     const isExtension = currentChapterContext.length > 0
@@ -2327,7 +2344,7 @@ INSTEAD - Attribute research to REAL authors:
 
     return `${promptIntro}
 
-${sectionInstructions}${planInstructions}${contextInstruction}${futureContextInstruction}${lengthInstruction}
+${sectionInstructions}${planInstructions}${contextInstruction}${futureContextInstruction}${mandatorySourcesSection}${lengthInstruction}
 
 ${strictRules}
 ${structureInstruction}
