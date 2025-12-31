@@ -1855,43 +1855,50 @@ async function generateChapterContent({
   let attempts = 0
 
   const buildChapterPrompt = (remainingWords: number) => {
-    const baseInstructions = isGerman
-      ? `Du schreibst das Kapitel "${chapterLabel}" einer akademischen Arbeit mit dem Thema "${thesisData.title}".
+      ?`Du schreibst das Kapitel "${chapterLabel}" einer akademischen Arbeit mit dem Thema "${thesisData.title}".
          \n**WICHTIG - FORSCHUNGSFRAGE (UNVERÄNDERLICH):**
          Die zentrale Forschungsfrage lautet: "${thesisData.researchQuestion}"
-         Diese Frage muss EXAKT so verwendet werden. Formuliere sie niemals um. Sie ist die Basis der gesamten Arbeit.`
+         Diese Frage muss EXAKT so verwendet werden. Formuliere sie niemals um.
+         **REGEL:** Beantworte diese Frage in DIESEM Kapitel NICHT endgültig (außer es ist das Fazit). Deine Aufgabe ist Analyse und Exploration. Die Antwort gehört ins Fazit.
+
+         **WICHTIG - KEINE REDUNDANZ:**
+         Prüfe den "Vorherigen Textausschnitt". Wenn ein Begriff (z.B. "KI" oder "Interdependenz") bereits definiert wurde, definieren ihn NICHT erneut. Setze das Wissen beim Leser voraus.`
       : `You are writing the chapter "${chapterLabel}" of an academic thesis titled "${thesisData.title}".
          \n**IMPORTANT - RESEARCH QUESTION (IMMUTABLE):**
          The central research question is: "${thesisData.researchQuestion}"
-         This question must be used EXACTLY as provided. Never rephrase it. It is the foundation of the entire thesis.`
+         This question must be used EXACTLY as provided. Never rephrase it.
+         **RULE:** DO NOT strictly answer this question in THIS chapter (unless it is the Conclusion). Your job is analysis and exploration. The answer belongs in the Conclusion.
 
-    const sectionInstructions = sectionsSummary
-      ? (isGerman
-        ? `Die Gliederung dieses Kapitels lautet:\n${sectionsSummary}\n`
-        : `The structure of this chapter is:\n${sectionsSummary}\n`)
-      : ''
+         **IMPORTANT - NO REDUNDANCY:**
+         Check the "Previous text excerpt". If a term has already been defined, DO NOT define it again. Assume reader knowledge.`
 
-    const planInstructions = chapterPlan
-      ? (isGerman
-        ? `Blueprint-Ausschnitt:\n${chapterPlan}\n`
-        : `Blueprint excerpt:\n${chapterPlan}\n`)
-      : ''
+  const sectionInstructions = sectionsSummary
+    ? (isGerman
+      ? `Die Gliederung dieses Kapitels lautet:\n${sectionsSummary}\n`
+      : `The structure of this chapter is:\n${sectionsSummary}\n`)
+    : ''
 
-    const previousContext = previousContent
-      ? (isGerman
-        ? `Vorheriger Textausschnitt (Kontext, NICHT wiederholen, nur für Übergänge verwenden):\n<<<\n${previousExcerpt}\n>>>\n`
-        : `Previous text excerpt (context only, DO NOT repeat, use only for transitions):\n<<<\n${previousExcerpt}\n>>>\n`)
-      : ''
+  const planInstructions = chapterPlan
+    ? (isGerman
+      ? `Blueprint-Ausschnitt:\n${chapterPlan}\n`
+      : `Blueprint excerpt:\n${chapterPlan}\n`)
+    : ''
 
-    const lengthInstruction = isGerman
-      ? `Schreibe MINDESTENS ${remainingWords} neue Wörter für dieses Kapitel (gern mehr).`
-      : `Write AT LEAST ${remainingWords} new words for this chapter (more is welcome).`
+  const previousContext = previousContent
+    ? (isGerman
+      ? `Vorheriger Textausschnitt (Kontext, NICHT wiederholen, nur für Übergänge verwenden):\n<<<\n${previousExcerpt}\n>>>\n`
+      : `Previous text excerpt (context only, DO NOT repeat, use only for transitions):\n<<<\n${previousExcerpt}\n>>>\n`)
+    : ''
 
-    const startInstruction = isGerman
-      ? `Beginne DIREKT mit dem Einleitungstext oder dem ersten Unterkapitel.
+  const lengthInstruction = isGerman
+    ? `Schreibe MINDESTENS ${remainingWords} neue Wörter für dieses Kapitel (gern mehr).`
+    : `Write AT LEAST ${remainingWords} new words for this chapter (more is welcome).`
+
+  const startInstruction = isGerman
+    ? `Beginne DIREKT mit dem Einleitungstext oder dem ersten Unterkapitel.
          SCHREIBE NICHT DIE HAUPT-KAPITELÜBERSCHRIFT ("## ${chapterLabel}").
          Diese wird automatisch hinzugefügt. Schreibe NUR den Inhalt.`
-      : `START directly with the introduction text or the first subchapter.
+    : `START directly with the introduction text or the first subchapter.
          SUPREME RULE: NEVER EDIT THE CHAPTER HEADING (Line 1). IT MUST REMAIN EXACTLY AS IS.
     SUPREME RULE: DO NOT CHANGE HEADING LEVELS (## stays ##, ### stays ###).
     SUPREME RULE: NO "Topic? Statement." rhetorical patterns. "Global Crisis? Huge." -> BANNED.
@@ -1899,14 +1906,14 @@ async function generateChapterContent({
          DO NOT WRITE THE MAIN CHAPTER HEADING ("## ${chapterLabel}").
          It will be added automatically. Write ONLY the content.`
 
-    const isIntroduction = chapter.number === '1' || chapter.number === '1.' || chapterLabel.toLowerCase().includes('einleitung') || chapterLabel.toLowerCase().includes('introduction');
-    const structureInstruction = isIntroduction
-      ? (isGerman
-        ? `\n**⚠️ WICHTIG - AUFBAU DER ARBEIT (Letzter Abschnitt):**\n1. Wenn du den Aufbau der Arbeit beschreibst: Erwähne NIEMALS Kapitel 1 (dieses Kapitel). Beginne SOFORT mit Kapitel 2.\n2. **KEINE ZITATIONEN** in diesem Abschnitt! Der Aufbau der Arbeit beschreibt nur deine eigene Struktur -> Zitationen machen hier KEINEN Sinn.\n3. **STOPP NACH DEM LETZTEN KAPITEL!** Schreibe nach der Beschreibung des Fazits KEIN weiteres Wort. Keine Definitionen, keine Zusammenfassungen, NICHTS.\n4. FALSCH: "Kapitel 1 leitet ein..."\n5. RICHTIG: "Das zweite Kapitel beleuchtet..."`
-        : `\n**⚠️ IMPORTANT - STRUCTURE OF THE WORK (Last section):**\n1. When describing the thesis structure: NEVER mention Chapter 1 (this chapter). Start IMMEDIATELY with Chapter 2.\n2. **NO CITATIONS** in this section! The structure description explains your own work -> citations make NO sense here.\n3. **STOP AFTER THE LAST CHAPTER!** Do not write a single word after describing the conclusion. No definitions, no summaries, NOTHING.\n4. WRONG: "Chapter 1 introduces..."\n5. CORRECT: "The second chapter examines..."`)
-      : '';
+  const isIntroduction = chapter.number === '1' || chapter.number === '1.' || chapterLabel.toLowerCase().includes('einleitung') || chapterLabel.toLowerCase().includes('introduction');
+  const structureInstruction = isIntroduction
+    ? (isGerman
+      ? `\n**⚠️ WICHTIG - AUFBAU DER ARBEIT (Letzter Abschnitt):**\n1. Wenn du den Aufbau der Arbeit beschreibst: Erwähne NIEMALS Kapitel 1 (dieses Kapitel). Beginne SOFORT mit Kapitel 2.\n2. **KEINE ZITATIONEN** in diesem Abschnitt! Der Aufbau der Arbeit beschreibt nur deine eigene Struktur -> Zitationen machen hier KEINEN Sinn.\n3. **STOPP NACH DEM LETZTEN KAPITEL!** Schreibe nach der Beschreibung des Fazits KEIN weiteres Wort. Keine Definitionen, keine Zusammenfassungen, NICHTS.\n4. **KEINE INHALTSDEFINITIONEN:** Schreibe NICHT "In Kapitel 2 wird KI definiert als...". Schreibe NUR "Kapitel 2 definiert die Grundlagen der KI." - Rein strukturell!\n5. FALSCH: "Kapitel 1 leitet ein..."\n6. RICHTIG: "Das zweite Kapitel beleuchtet..."`
+      : `\n**⚠️ IMPORTANT - STRUCTURE OF THE WORK (Last section):**\n1. When describing the thesis structure: NEVER mention Chapter 1 (this chapter). Start IMMEDIATELY with Chapter 2.\n2. **NO CITATIONS** in this section! The structure description explains your own work -> citations make NO sense here.\n3. **STOP AFTER THE LAST CHAPTER!** Do not write a single word after describing the conclusion. No definitions, no summaries, NOTHING.\n4. **NO DEFINITIONS:** Do not write "In Chapter 2, AI is defined as...". Write ONLY "Chapter 2 defines the basics of AI." - Purely structural!\n5. WRONG: "Chapter 1 introduces..."\n6. CORRECT: "The second chapter examines..."`)
+    : '';
 
-    return `${baseInstructions}
+  return `${baseInstructions}
 
 ${sectionInstructions}${planInstructions}${previousContext}${lengthInstruction}
 ${structureInstruction}
@@ -1941,68 +1948,68 @@ ${isGerman ? `
 - ✗ "Our analysis..." -> FORBIDDEN! -> ✓ "The analysis..."`}
 
 ${startInstruction}`
+}
+
+while (attempts < 3) {
+  attempts += 1
+  const remainingWords = Math.max(minChapterWords, chapterTargetWords - chapterContent.split(/\s+/).length)
+  const prompt = buildChapterPrompt(Math.min(remainingWords, chapterTargetWords))
+
+  const response = await retryApiCall(
+    () => ai.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: prompt,
+      config: {
+        maxOutputTokens: Math.min(400000, Math.ceil(Math.max(chapterTargetWords * 2, 6000) / 0.75)),
+        tools: [{
+          fileSearch: {
+            fileSearchStoreNames: [thesisData.fileSearchStoreId],
+          },
+        }],
+      },
+    }),
+    `Generate chapter ${chapterLabel} (attempt ${attempts})`,
+    1,
+    2000
+  )
+
+  const newText = response.text?.trim()
+  if (!newText || newText.length < 200) {
+    console.warn(`[ThesisGeneration] Chapter ${chapterLabel} attempt ${attempts} returned insufficient text.`)
+    continue
   }
 
-  while (attempts < 3) {
-    attempts += 1
-    const remainingWords = Math.max(minChapterWords, chapterTargetWords - chapterContent.split(/\s+/).length)
-    const prompt = buildChapterPrompt(Math.min(remainingWords, chapterTargetWords))
-
-    const response = await retryApiCall(
-      () => ai.models.generateContent({
-        model: 'gemini-2.5-pro',
-        contents: prompt,
-        config: {
-          maxOutputTokens: Math.min(400000, Math.ceil(Math.max(chapterTargetWords * 2, 6000) / 0.75)),
-          tools: [{
-            fileSearch: {
-              fileSearchStoreNames: [thesisData.fileSearchStoreId],
-            },
-          }],
-        },
-      }),
-      `Generate chapter ${chapterLabel} (attempt ${attempts})`,
-      1,
-      2000
-    )
-
-    const newText = response.text?.trim()
-    if (!newText || newText.length < 200) {
-      console.warn(`[ThesisGeneration] Chapter ${chapterLabel} attempt ${attempts} returned insufficient text.`)
-      continue
-    }
-
-    if (attempts === 1 || !chapterContent) {
-      chapterContent = newText
-    } else {
-      chapterContent += `\n\n${newText}`
-    }
-
-    const currentWords = chapterContent.split(/\s+/).length
-    if (currentWords >= minChapterWords) {
-      break
-    } else {
-      console.warn(`[ThesisGeneration] Chapter ${chapterLabel} still short (${currentWords}/${minChapterWords} words), extending...`)
-    }
+  if (attempts === 1 || !chapterContent) {
+    chapterContent = newText
+  } else {
+    chapterContent += `\n\n${newText}`
   }
 
-  const finalWordCount = chapterContent.split(/\s+/).length
-  if (finalWordCount < minChapterWords) {
-    console.warn(`[ThesisGeneration] WARNING: Chapter ${chapterLabel} is below target (${finalWordCount}/${minChapterWords} words)`)
-    console.warn(`[ThesisGeneration] → GOAL: Meet word count targets. PRIORITY: Always deliver a complete thesis.`)
-    console.warn(`[ThesisGeneration] → Continuing generation - content will be extended if needed in later steps.`)
-    // Don't throw error - generation must ALWAYS succeed and deliver a thesis
+  const currentWords = chapterContent.split(/\s+/).length
+  if (currentWords >= minChapterWords) {
+    break
+  } else {
+    console.warn(`[ThesisGeneration] Chapter ${chapterLabel} still short (${currentWords}/${minChapterWords} words), extending...`)
   }
+}
 
-  // Force exact chapter heading from outline to prevent hallucinations/changes
-  // We explicitly told AI NOT to write it, so we prepend it here safely.
-  // Also strip any potential AI-generated heading if it ignored instructions (safety check)
-  const cleanContent = chapterContent.replace(/^\s*##\s+.*?\n/, '').trim()
+const finalWordCount = chapterContent.split(/\s+/).length
+if (finalWordCount < minChapterWords) {
+  console.warn(`[ThesisGeneration] WARNING: Chapter ${chapterLabel} is below target (${finalWordCount}/${minChapterWords} words)`)
+  console.warn(`[ThesisGeneration] → GOAL: Meet word count targets. PRIORITY: Always deliver a complete thesis.`)
+  console.warn(`[ThesisGeneration] → Continuing generation - content will be extended if needed in later steps.`)
+  // Don't throw error - generation must ALWAYS succeed and deliver a thesis
+}
 
-  const finalContent = `## ${chapterLabel}\n\n${cleanContent}`
-  const totalWordCount = finalContent.split(/\s+/).length
+// Force exact chapter heading from outline to prevent hallucinations/changes
+// We explicitly told AI NOT to write it, so we prepend it here safely.
+// Also strip any potential AI-generated heading if it ignored instructions (safety check)
+const cleanContent = chapterContent.replace(/^\s*##\s+.*?\n/, '').trim()
 
-  return { content: finalContent, wordCount: totalWordCount }
+const finalContent = `## ${chapterLabel}\n\n${cleanContent}`
+const totalWordCount = finalContent.split(/\s+/).length
+
+return { content: finalContent, wordCount: totalWordCount }
 }
 
 

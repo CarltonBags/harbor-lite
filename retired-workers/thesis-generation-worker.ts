@@ -1691,6 +1691,24 @@ function extractChapterPlan(thesisPlan: string, chapter: OutlineChapterInfo, lan
   return match ? match[1].trim() : ''
 }
 
+function extractFuturePlan(thesisPlan: string, currentChapterNumber: string, language: 'german' | 'english'): string {
+  if (!thesisPlan) return ''
+  // Find where the current chapter ends in the plan and return the rest
+  const currentChapterRegex = language === 'german'
+    ? new RegExp(`##\\s+Kapitel\\s+${currentChapterNumber.split('.')[0]}[^\\n]*\\n[\\s\\S]*?(?=\\n##\\s+(?:Kapitel|Chapter)\\s+|$)`, 'i')
+    : new RegExp(`##\\s+Chapter\\s+${currentChapterNumber.split('.')[0]}[^\\n]*\\n[\\s\\S]*?(?=\\n##\\s+(?:Chapter|Kapitel)\\s+|$)`, 'i')
+
+  const match = thesisPlan.match(currentChapterRegex)
+  if (!match) return '' // Current chapter not found in plan
+
+  const currentIndex = match.index! + match[0].length
+  const futureContent = thesisPlan.substring(currentIndex).trim()
+
+  // Clean up to just show headings/summaries effectively
+  // We want to pass a concise overview, not the full text if it's huge
+  return futureContent.length > 5000 ? futureContent.substring(0, 5000) + '...' : futureContent
+}
+
 function extractChapterWordTargets(thesisPlan: string, outlineChapters: OutlineChapterInfo[], totalWordTarget: number, language: 'german' | 'english'): number[] {
   if (!outlineChapters.length) return []
 
@@ -1771,6 +1789,7 @@ interface GenerateChapterParams {
   thesisPlan: string
   previousContent: string
   previousChapterSummaries: string[]
+  futureChaptersOverview?: string
   isGerman: boolean
   sources: Source[]
   citationStyle: string
@@ -2003,6 +2022,7 @@ async function generateChapterContent({
   thesisPlan,
   previousContent,
   previousChapterSummaries,
+  futureChaptersOverview,
   isGerman,
   sources,
   citationStyle,
@@ -2054,15 +2074,23 @@ async function generateChapterContent({
     // If we have current chapter context (extension mode), modify instructions
     const isExtension = currentChapterContext.length > 0
 
-    const baseInstructions = isGerman
+    const promptIntro = isGerman
       ? `Du schreibst das Kapitel "${chapterLabel}" einer akademischen Arbeit mit dem Thema "${thesisData.title}".${isExtension ? ' Du hast den ersten Teil des Kapitels bereits geschrieben. Deine Aufgabe ist es nun, das Kapitel FORTZUFÜHREN und zu beenden.' : ''}
          \n**WICHTIG - FORSCHUNGSFRAGE (UNVERÄNDERLICH):**
          Die zentrale Forschungsfrage lautet: "${thesisData.researchQuestion}"
-         Diese Frage muss EXAKT so verwendet werden. Formuliere sie niemals um. Sie ist die Basis der gesamten Arbeit.`
+         Diese Frage muss EXAKT so verwendet werden. Formuliere sie niemals um.
+         **REGEL:** Beantworte diese Frage in DIESEM Kapitel NICHT endgültig (außer es ist das Fazit). Deine Aufgabe ist Analyse und Exploration. Die Antwort gehört ins Fazit.
+
+         **WICHTIG - KEINE REDUNDANZ:**
+         Prüfe die "Zusammenfassung der vorherigen Kapitel" oder den "Vorherigen Textausschnitt". Wenn ein Begriff (z.B. "KI") bereits definiert wurde, definieren ihn NICHT erneut. Setze das Wissen beim Leser voraus.`
       : `You are writing the chapter "${chapterLabel}" of an academic thesis titled "${thesisData.title}".${isExtension ? ' You have already written the first part of the chapter. Your task is now to CONTINUE and complete the chapter.' : ''}
          \n**IMPORTANT - RESEARCH QUESTION (IMMUTABLE):**
          The central research question is: "${thesisData.researchQuestion}"
-         This question must be used EXACTLY as provided. Never rephrase it. It is the foundation of the entire thesis.`
+         This question must be used EXACTLY as provided. Never rephrase it.
+         **RULE:** DO NOT strictly answer this question in THIS chapter (unless it is the Conclusion). Your job is analysis and exploration. The answer belongs in the Conclusion.
+
+         **IMPORTANT - NO REDUNDANCY:**
+         Check the "Summary of previous chapters" or "Previous text excerpt". If a term has already been defined, DO NOT define it again. Assume reader knowledge.`
 
     const strictRules = isGerman
       ? `═══════════════════════════════════════════════════════════════════════════════
@@ -2238,6 +2266,12 @@ INSTEAD - Attribute research to REAL authors:
         : `Blueprint excerpt:\n${chapterPlan}\n`)
       : ''
 
+    const futureContextInstruction = futureChaptersOverview
+      ? (isGerman
+        ? `**AUSBLICK AUF KOMMENDE KAPITEL (NICHT VORWEGREIFEN):**\nDie folgenden Themen werden in SPÄTEREN Kapiteln behandelt. Behandle sie hier NICHT im Detail. Erwähne sie höchstens als Ausblick.\n<<<\n${futureChaptersOverview}\n>>>\n`
+        : `**FUTURE CHAPTERS OUTLOOK (DO NOT PRE-EMPT):**\nThe following topics will be covered in LATER chapters. DO NOT cover them in detail here. Only mention them as a transition/outlook.\n<<<\n${futureChaptersOverview}\n>>>\n`)
+      : ''
+
     let contextInstruction = ''
 
     if (isExtension) {
@@ -2287,13 +2321,13 @@ INSTEAD - Attribute research to REAL authors:
     const isIntroduction = chapter.number === '1' || chapter.number === '1.' || chapterLabel.toLowerCase().includes('einleitung') || chapterLabel.toLowerCase().includes('introduction');
     const structureInstruction = isIntroduction
       ? (isGerman
-        ? `\n**⚠️ WICHTIG - AUFBAU DER ARBEIT (Letzter Abschnitt):**\n1. Wenn du den Aufbau der Arbeit beschreibst: Erwähne NIEMALS Kapitel 1 (dieses Kapitel). Beginne SOFORT mit Kapitel 2.\n2. **KEINE ZITATIONEN** in diesem Abschnitt! Der Aufbau der Arbeit beschreibt nur deine eigene Struktur -> Zitationen machen hier KEINEN Sinn.\n3. **STOPP NACH DEM LETZTEN KAPITEL!** Schreibe nach der Beschreibung des Fazits KEIN weiteres Wort. Keine Definitionen, keine Zusammenfassungen, NICHTS.\n4. FALSCH: "Kapitel 1 leitet ein..."\n5. RICHTIG: "Das zweite Kapitel beleuchtet..."`
-        : `\n**⚠️ IMPORTANT - STRUCTURE OF THE WORK (Last section):**\n1. When describing the thesis structure: NEVER mention Chapter 1 (this chapter). Start IMMEDIATELY with Chapter 2.\n2. **NO CITATIONS** in this section! The structure description explains your own work -> citations make NO sense here.\n3. **STOP AFTER THE LAST CHAPTER!** Do not write a single word after describing the conclusion. No definitions, no summaries, NOTHING.\n4. WRONG: "Chapter 1 introduces..."\n5. CORRECT: "The second chapter examines..."`)
+        ? `\n**⚠️ WICHTIG - AUFBAU DER ARBEIT (Letzter Abschnitt):**\n1. Wenn du den Aufbau der Arbeit beschreibst: Erwähne NIEMALS Kapitel 1 (dieses Kapitel). Beginne SOFORT mit Kapitel 2.\n2. **KEINE ZITATIONEN** in diesem Abschnitt! Der Aufbau der Arbeit beschreibt nur deine eigene Struktur -> Zitationen machen hier KEINEN Sinn.\n3. **STOPP NACH DEM LETZTEN KAPITEL!** Schreibe nach der Beschreibung des Fazits KEIN weiteres Wort. Keine Definitionen, keine Zusammenfassungen, NICHTS.\n4. **KEINE INHALTSDEFINITIONEN:** Schreibe NICHT "In Kapitel 2 wird KI definiert als...". Schreibe NUR "Kapitel 2 definiert die Grundlagen der KI." - Rein strukturell!\n5. FALSCH: "Kapitel 1 leitet ein..."\n6. RICHTIG: "Das zweite Kapitel beleuchtet..."`
+        : `\n**⚠️ IMPORTANT - STRUCTURE OF THE WORK (Last section):**\n1. When describing the thesis structure: NEVER mention Chapter 1 (this chapter). Start IMMEDIATELY with Chapter 2.\n2. **NO CITATIONS** in this section! The structure description explains your own work -> citations make NO sense here.\n3. **STOP AFTER THE LAST CHAPTER!** Do not write a single word after describing the conclusion. No definitions, no summaries, NOTHING.\n4. **NO DEFINITIONS:** Do not write "In Chapter 2, AI is defined as...". Write ONLY "Chapter 2 defines the basics of AI." - Purely structural!\n5. WRONG: "Chapter 1 introduces..."\n6. CORRECT: "The second chapter examines..."`)
       : '';
 
-    return `${baseInstructions}
+    return `${promptIntro}
 
-${sectionInstructions}${planInstructions}${contextInstruction}${lengthInstruction}
+${sectionInstructions}${planInstructions}${contextInstruction}${futureContextInstruction}${lengthInstruction}
 
 ${strictRules}
 ${structureInstruction}
@@ -2756,6 +2790,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
         thesisPlan: thesisPlan || '',
         previousContent: chapterContents.join('\n\n'),
         previousChapterSummaries: chapterSummaries, // Pass the rolling summaries
+        futureChaptersOverview: extractFuturePlan(thesisPlan || '', chapter.number, isGerman ? 'german' : 'english'),
         isGerman,
         sources: rankedSources,
         citationStyle: thesisData.citationStyle,
