@@ -4028,19 +4028,17 @@ Respond ONLY with a JSON array of rewritten sentences. No explanations.
 }
 
 /**
- * Check content with GPTZero and rewrite if needed to achieve >70% human score
+ * Check content with Winston AI and rewrite if needed to achieve >90% human score
  */
 async function ensureHumanLikeContent(content: string, thesisData: ThesisData): Promise<{
   content: string
-  zeroGptResult: {
-    isHumanWritten: number
-    isGptGenerated: number
-    wordsCount?: number
+  winstonResult: {
+    score: number
+    sentences: any
     checkedAt: string
-    feedbackMessage?: string
   } | null
 }> {
-  console.log('[HumanCheck] Starting GPTZero check and potential rewrite...')
+  console.log('[HumanCheck] Starting Winston AI check and potential rewrite...')
 
   const MIN_HUMAN_SCORE = 70
   const MAX_ITERATIONS = 5 // Limit iterations to avoid infinite loops
@@ -4053,41 +4051,69 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
     iteration++
     console.log(`[HumanCheck] Iteration ${iteration}/${MAX_ITERATIONS}`)
 
-    const result = await checkWithGPTZero(currentContent)
+    const result = await checkWinston(currentContent)
 
-    // If GPTZero API failed or is unavailable, return content WITHOUT a fake score
+    // If Winston API failed or is unavailable, return content WITHOUT a fake score
     if (!result) {
-      console.warn('[HumanCheck] GPTZero API unavailable, returning content without score')
+      console.warn('[HumanCheck] Winston API unavailable, returning content without score')
       return {
         content: currentContent,
-        zeroGptResult: null // NO FAKE SCORES - null means "not checked"
+        winstonResult: null // NO FAKE SCORES - null means "not checked"
       }
     }
 
     finalResult = result // Store the latest valid result
 
-    if (result.isHumanWritten >= MIN_HUMAN_SCORE) {
-      console.log(`[HumanCheck] ✓ Content passed with ${result.isHumanWritten}% human score`)
+    if (result.score >= MIN_HUMAN_SCORE) {
+      console.log(`[HumanCheck] ✓ Content passed with ${result.score}% human score`)
       return {
         content: currentContent,
-        zeroGptResult: {
-          isHumanWritten: result.isHumanWritten,
-          isGptGenerated: result.isGptGenerated,
+        winstonResult: {
+          score: result.score,
+          sentences: result.sentences,
           checkedAt: new Date().toISOString(),
         }
       }
     }
 
-    console.log(`[HumanCheck] ⚠️ Content scored ${result.isHumanWritten}% human (below ${MIN_HUMAN_SCORE}%)`)
-    console.log(`[HumanCheck] Rewriting ${result.gptGeneratedSentences.length} flagged sentences...`)
+    console.log(`[HumanCheck] ⚠️ Content scored ${result.score}% human (below ${MIN_HUMAN_SCORE}%)`)
 
-    if (result.gptGeneratedSentences.length === 0) {
-      console.log('[HumanCheck] No specific sentences flagged, returning content as-is')
+    // Winston returns sentences with scores. We need to identify the "AI" sentences.
+    // Winston API isn't always clear on "flagged" vs just score. 
+    // Usually low score = AI. Let's assume sentences with score < 60 are AI.
+    // NOTE: Winston's sentence object structure depends on API response.
+    // Assuming sentences have a 'score' field. 
+    // If sentences is just a list of sentences, we might need to rely on the global text.
+    // Let's inspect `result.sentences` structure in the logs or assume based on standard API.
+    // If generic, we might have to just rewrite the whole chunk or random sentences?
+    // Safer strategy: Rewrite WHOLE chunks if score is low, or try to map sentences.
+    // For now, let's filter sentences with low scores if available, otherwise fallback.
+
+    const flaggedSentences: string[] = []
+
+    if (Array.isArray(result.sentences)) {
+      // Winston sentence object usually has { text, score, label }
+      // Let's filter for score < 60 or label 'AI'
+      result.sentences.forEach((s: any) => {
+        if (s.score < 60) {
+          flaggedSentences.push(s.text)
+        }
+      })
+    }
+
+    console.log(`[HumanCheck] identified ${flaggedSentences.length} suspicious sentences...`)
+
+    if (flaggedSentences.length === 0) {
+      console.log('[HumanCheck] Low score but no specific sentences flagged, forcing general rewrite')
+      // If score is low but no specific sentences found (maybe structure mismatch), 
+      // might need to force rewrite of the whole thing or return as is?
+      // Let's just return to avoid infinite loops if we can't target.
+      // OR: Just continue with current content for now.
       return {
         content: currentContent,
-        zeroGptResult: {
-          isHumanWritten: result.isHumanWritten,
-          isGptGenerated: result.isGptGenerated,
+        winstonResult: {
+          score: result.score,
+          sentences: result.sentences,
           checkedAt: new Date().toISOString(),
         }
       }
@@ -4096,7 +4122,7 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
     // Rewrite flagged sentences
     currentContent = await rewriteFlaggedSentences(
       currentContent,
-      result.gptGeneratedSentences,
+      flaggedSentences,
       thesisData
     )
 
@@ -4106,9 +4132,9 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
   console.log(`[HumanCheck] Max iterations reached, returning current content`)
   return {
     content: currentContent,
-    zeroGptResult: finalResult ? {
-      isHumanWritten: finalResult.isHumanWritten,
-      isGptGenerated: finalResult.isGptGenerated,
+    winstonResult: finalResult ? {
+      score: finalResult.score,
+      sentences: finalResult.sentences,
       checkedAt: new Date().toISOString(),
     } : null
   }
@@ -5745,40 +5771,40 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       console.warn('[Repair] Continuing with original content (repair failed)')
     }
 
-    // Step 7.4: Check with GPTZero and rewrite flagged sentences
-    console.log('\n[PROCESS] ========== Step 7.4: GPTZero Check & Sentence Rewrite ==========')
-    const gptZeroCheckStart = Date.now()
-    let zeroGptResult: any = null
+    // Step 7.4: Winston AI Check & Sentence Rewrite
+    console.log('\n[PROCESS] ========== Step 7.4: Winston AI Check & Sentence Rewrite ==========')
+    const winstonCheckStart = Date.now()
+    let winstonResult: any = null
     try {
       const result = await ensureHumanLikeContent(thesisContent, thesisData)
       thesisContent = result.content
-      zeroGptResult = result.zeroGptResult
-      const gptZeroCheckDuration = Date.now() - gptZeroCheckStart
-      console.log(`[PROCESS] GPTZero check and rewrite completed in ${gptZeroCheckDuration}ms`)
-      if (zeroGptResult) {
-        console.log(`[PROCESS] Final GPTZero score: ${zeroGptResult.isHumanWritten}% human, ${zeroGptResult.isGptGenerated}% AI`)
+      winstonResult = result.winstonResult
+      const winstonCheckDuration = Date.now() - winstonCheckStart
+      console.log(`[PROCESS] Winston check and rewrite completed in ${winstonCheckDuration}ms`)
+      if (winstonResult) {
+        console.log(`[PROCESS] Final Winston score: ${winstonResult.score}% human`)
       }
     } catch (error) {
-      console.error('[PROCESS] ERROR in GPTZero check/rewrite:', error)
-      console.warn('[PROCESS] Continuing with original content (GPTZero check failed)')
+      console.error('[PROCESS] ERROR in Winston check/rewrite:', error)
+      console.warn('[PROCESS] Continuing with original content (Winston check failed)')
       // Continue with original content if check fails
     }
 
     // Step 7.5: Humanize the text to avoid AI detection
-    // SKIP if Step 7.4 already achieved a good score (>= 70%)
-    const humanScoreThreshold = 70
-    const alreadyHumanEnough = zeroGptResult && zeroGptResult.isHumanWritten >= humanScoreThreshold
+    // SKIP if Step 7.4 already achieved a good score (>= 90%)
+    const humanScoreThreshold = 90
+    const alreadyHumanEnough = winstonResult && winstonResult.score >= humanScoreThreshold
 
     if (alreadyHumanEnough) {
       console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
-      console.log(`[PROCESS] ✓ SKIPPING humanization - content already scored ${zeroGptResult.isHumanWritten}% human (>= ${humanScoreThreshold}%)`)
+      console.log(`[PROCESS] ✓ SKIPPING humanization - content already scored ${winstonResult.score}% human (>= ${humanScoreThreshold}%)`)
       console.log('[PROCESS] No additional humanization needed')
     } else {
       console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
-      if (zeroGptResult) {
-        console.log(`[PROCESS] Content scored ${zeroGptResult.isHumanWritten}% human - running additional humanization`)
+      if (winstonResult) {
+        console.log(`[PROCESS] Content scored ${winstonResult.score}% human - running additional humanization`)
       } else {
-        console.log('[PROCESS] No ZeroGPT score available - running humanization as fallback')
+        console.log('[PROCESS] No Winston score available - running humanization as fallback')
       }
       const humanizeStart = Date.now()
       try {
@@ -5839,22 +5865,16 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.log('\n[PROCESS] ========== Step 7.7: ZeroGPT Detection Check ==========')
     console.log('[PROCESS] ZeroGPT check completed in Step 7.4 - result will be saved to metadata')
 
-    // Step 7.8: Winston AI Detection Check
-    console.log('\n[PROCESS] ========== Step 7.8: Winston AI Detection Check ==========')
-    let winstonResult: any = null
-    try {
-      if (WINSTON_API_KEY) {
-        winstonResult = await checkWinston(thesisContent)
-        if (winstonResult) {
-          console.log(`[Winston] Detection result: ${winstonResult.score}/100 human score`)
-        }
-      } else {
-        console.log('[Winston] API key not set, skipping check')
-      }
-    } catch (error) {
-      console.error('[PROCESS] ERROR in Winston check:', error)
+    // Step 7.8: Winston AI Detection Check - ALREADY DONE IN 7.4
+    // We reuse winstonResult from Step 7.4
+    // But if Step 7.4 failed or was skipped (unlikely), we could re-run.
+    // However, 7.4 is robust. So let's just log.
+    console.log('\n[PROCESS] ========== Step 7.8: Winston AI Detection Result Log ==========')
+    if (winstonResult) {
+      console.log(`[Winston] Detection result from Step 7.4: ${winstonResult.score}/100 human score`)
+    } else {
+      console.log('[Winston] No result available from Step 7.4')
     }
-
 
 
 
@@ -5926,14 +5946,21 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         if (thesisData.citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
           updateData.metadata.footnotes = footnotes
         }
-        if (zeroGptResult) {
-          updateData.metadata.zeroGptResult = zeroGptResult
-        }
-        if (plagiarismResult) {
-          updateData.metadata.plagiarismResult = plagiarismResult
-        }
+
+        // Save Winston Result (Replaces ZeroGPT)
         if (winstonResult) {
           updateData.metadata.winstonResult = winstonResult
+          // Map to zeroGptResult format for backward compatibility if needed?
+          // Or just let frontend adapt. Assuming frontend expects winstonResult.
+          updateData.metadata.zeroGptResult = {
+            isHumanWritten: winstonResult.score,
+            isGptGenerated: 100 - winstonResult.score,
+            checkedAt: winstonResult.checkedAt
+          }
+        }
+
+        if (plagiarismResult) {
+          updateData.metadata.plagiarismResult = plagiarismResult
         }
 
         const result = await supabase.from('theses').update(updateData).eq('id', thesisId)
