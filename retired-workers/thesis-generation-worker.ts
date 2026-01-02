@@ -2111,6 +2111,14 @@ ${mandatorySources.map((s, i) => `[MANDATORY] "${s.title}" (${s.authors.slice(0,
 
     const strictRules = isGerman
       ? `═══════════════════════════════════════════════════════════════════════════════
+FORMATIERUNG & REGELN
+═══════════════════════════════════════════════════════════════════════════════
+**⚠️ WICHTIG - FORMATIERUNG ⚠️**
+- Neue Überschriften (##, ###) MÜSSEN immer auf einer neuen Zeile beginnen, mit einer Leerzeile davor.
+- 🚫 FALSCH: "Text.## Überschrift"
+- ✅ RICHTIG: "Text.\n\n## Überschrift"
+- Markdown muss sauber sein.
+
 QUELLENNUTZUNG & STIL - ABSOLUT KRITISCH
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2186,6 +2194,14 @@ STATTDESSEN - Forschung den ECHTEN Autoren zuschreiben:
 - Forschungsergebnisse → IMMER zitieren
 - Behauptungen über den Stand der Forschung → IMMER zitieren`
       : `═══════════════════════════════════════════════════════════════════════════════
+FORMATTING & RULES
+═══════════════════════════════════════════════════════════════════════════════
+**⚠️ IMPORTANT - FORMATTING ⚠️**
+- New headings (##, ###) MUST always start on a new line, preceded by a blank line.
+- 🚫 WRONG: "Text.## Heading"
+- ✅ CORRECT: "Text.\n\n## Heading"
+- Markdown must be clean.
+
 SOURCE USAGE & STYLE - ABSOLUTELY CRITICAL
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2456,7 +2472,7 @@ ${startInstruction}`
   if (thesisData.fileSearchStoreId) {
     console.log(`[ThesisGeneration] Verifying citations for chapter ${chapterLabel}...`)
     try {
-      const verifiedContent = await verifyCitationsWithFileSearch(chapterContent, thesisData.fileSearchStoreId)
+      const verifiedContent = await verifyCitationsWithFileSearch(chapterContent, thesisData.fileSearchStoreId, isGerman)
       if (verifiedContent && verifiedContent.length > 0.8 * chapterContent.length) {
         chapterContent = verifiedContent
         console.log(`[ThesisGeneration] Chapter ${chapterLabel} citations verified and updated.`)
@@ -2473,7 +2489,11 @@ ${startInstruction}`
   // Also strip any potential AI-generated heading if it ignored instructions (safety check)
   const cleanContent = chapterContent.replace(/^\s*##\s+.*?\n/, '').trim()
 
-  const finalContent = `## ${chapterLabel}\n\n${cleanContent}`
+  // FINAL SAFETY FIX: Ensure no inline headers exist in the generated text
+  // e.g. "some text## 3.1 Subchapter" -> "some text\n\n## 3.1 Subchapter"
+  const polishedContent = cleanContent.replace(/([^\n])\s*(#{1,6}\s+)/g, '$1\n\n$2')
+
+  const finalContent = `## ${chapterLabel}\n\n${polishedContent}`
   const totalWordCount = finalContent.split(/\s+/).length
 
   return { content: finalContent, wordCount: totalWordCount }
@@ -6446,27 +6466,43 @@ function generateBibliography(
 /**
  * Verifies and corrects citation page numbers using Google FileSearch
  */
-async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId: string): Promise<string> {
+async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId: string, isGerman: boolean = false): Promise<string> {
+  const pagePrefix = isGerman ? 'S.' : 'p.'
+  const pagesPrefix = isGerman ? 'S.' : 'pp.'
+  const defaultPage = `${pagePrefix} 1`
+
   // Ultra-strict prompt for citation verification
   const prompt = `
   You are a strict academic citation verifier. Your SINGLE GOAL is to correct the PAGE NUMBERS in the citations of the provided text.
   
-  CONTEXT: The provided text contains citations (APA, Harvard, etc.) like "(Müller, 2023, p. 1)" or "(Smith, 2022)".
-  PROBLEM: Some page numbers might be "hallucinated" (e.g. always "p. 1" or random numbers) or missing.
+  CONTEXT: The provided text contains citations like "(Müller, 2023, ${pagePrefix} 1)" or "(Smith, 2022)".
+  PROBLEM: Some page numbers might be hallucinated, random, or incorrectly using Article IDs.
   
   YOUR TASK:
   1. Read the provided text.
   2. For EVERY citation, use the FileSearch tool to lookup the ACTUAL source document.
-  3. Find the specific claim/quote in the source document.
-  4. CORRECT the page number in the citation to match the actual location in the source PDF.
-  5. If a citation has NO page number, ADD one based on where you found the information.
-  6. If you CANNOT find the source or the information, keep the citation mostly as is, but ensure format is correct.
+  3. **STRENGTHENED EXTRACTION STRATEGY:**
+     - Look for VISUAL page numbers in the corners/bottom of the PDF pages.
+     - Distinguish between "internal" PDF page count (1 of 30) and "printed" page numbers (e.g. 452). ALWAYS use the PRINTED page number if available.
+     - Locate the specific quote/claim in the text and identify the page it appears on.
+  4. VALIDATE & CORRECT the page number:
+     - MUST be a visual page number on the PDF.
+     - ALLOWED formats: Integers (12), Ranges (12-15), or "ff" suffix (12ff, 12f).
+     - MUST NOT be an Article ID (strings like "e24234", "e0343", "Art. 3").
+     - MUST NOT be a DOI fragment.
+  5. If the source uses standard pagination, use the correct number.
+  6. If the source has NO visual page numbers (e.g. HTML/Online source) or you cannot determine it, ALWAYS default to "${defaultPage}".
+  7. If you CANNOT find the source, keep the existing page number or default to "${defaultPage}".
   
-  CRITICAL RULES:
-  - DO NOT change the text content (sentences, arguments, facts). ONLY touch the parentheses/citations.
-  - DO NOT rewrite the text. Output the EXACT text structure, but with corrected citations.
-  - ENSURE every citation has a plausible page number (e.g. if it was "p. 1" and you find it on page 45, change it to "p. 45").
-  - FORMAT: Follow the existing citation style in the text (don't switch from APA to MLA).
+  CRITICAL RULES (STRICT COMPLIANCE REQUIRED):
+  - 🚫 NEVER use "e-numbers" (e.g. "${pagePrefix} e123456" is FORBIDDEN).
+  - 🚫 NEVER use "Article X" as a page number.
+  - 🚫 NEVER use "n.pag." -> Use "${defaultPage}" instead.
+  - 🚫 NEVER put text/sentences inside the page number spot. "(Smith, 2020, ${pagePrefix} finding shows...)" is WRONG.
+  - ✅ ALLOWED: "${pagePrefix} 312ff", "${pagePrefix} 15f", "${pagePrefix} 100", "${pagesPrefix} 10-12".
+  - DO NOT change text content. ONLY fix the numbers inside the parentheses.
+  - Language is ${isGerman ? 'GERMAN' : 'ENGLISH'}. Use "${pagePrefix}" for single pages and "${pagesPrefix}" for ranges.
+  - KEEP THE CITATION CLEAN: "(Author, Year, ${pagePrefix} Number)". NO EXTRA TEXT.
   
   INPUT TEXT:
   """

@@ -413,12 +413,12 @@ const ThesisPreviewContent = () => {
     if (!text) return ''
     // Look for:
     // 1. Non-newline character
-    // 2. Optional whitespace
+    // 2. Optional whitespace (including none!)
     // 3. One to six hashes
     // 4. Space
     // 5. Text
     // Replace with: char + \n\n + hashes + space + text
-    return text.replace(/([^\n])\s+(#{1,6}\s+)/g, '$1\n\n$2')
+    return text.replace(/([^\n])\s*(#{1,6}\s+)/g, '$1\n\n$2')
   }
 
   const loadThesis = async () => {
