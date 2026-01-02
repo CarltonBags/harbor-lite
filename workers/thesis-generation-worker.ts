@@ -4447,6 +4447,34 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.log('[PROCESS] Email will be sent automatically via database trigger')
     // No action needed - the status update above triggers the email automatically
 
+    // Step 10: Cleanup FileSearchStore to save quota
+    console.log('\n[PROCESS] ========== Step 10: Cleanup FileSearchStore ==========')
+    if (thesisData.fileSearchStoreId) {
+      try {
+        console.log(`[PROCESS] Deleting FileSearchStore: ${thesisData.fileSearchStoreId}`)
+        const ai = new GoogleGenAI({ apiKey: GEMINI_KEY })
+        await ai.fileSearchStores.delete({ name: thesisData.fileSearchStoreId })
+        console.log('[PROCESS] FileSearchStore deleted successfully')
+
+        // Update DB to reflect deletion
+        await retryApiCall(
+          async () => {
+            const result = await supabase
+              .from('theses')
+              .update({ file_search_store_id: null })
+              .eq('id', thesisId)
+            if (result.error) throw result.error
+            return result
+          },
+          `Remove FileSearchStore ID from DB: ${thesisId}`
+        )
+      } catch (error) {
+        console.warn('[PROCESS] Failed to delete FileSearchStore (non-fatal):', error)
+      }
+    } else {
+      console.log('[PROCESS] No FileSearchStore ID to delete.')
+    }
+
     const processDuration = Date.now() - processStartTime
     console.log('\n[PROCESS] ========== Thesis Generation Complete ==========')
     console.log(`[PROCESS] Total processing time: ${Math.round(processDuration / 1000)}s (${processDuration}ms)`)

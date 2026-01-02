@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { ArrowLeft, ArrowRight, Loader2, FileText, BookOpen, Target, CheckCircle, RefreshCw, List, Plus, Trash2, Save, Upload, Search, X, Download, ExternalLink, ChevronDown, ChevronUp, Mail } from 'lucide-react'
 import { FileMetadataCard } from '@/components/file-metadata-card'
 import Link from 'next/link'
@@ -138,7 +138,7 @@ const academicFields = [
   'Andere',
 ].sort()
 
-export default function NewThesisPage() {
+const NewThesisContent = () => {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [step, setStep] = useState(1)
@@ -2430,3 +2430,18 @@ async function fetchThesisOutline(params: {
   return data.outline
 }
 
+
+export default function NewThesisPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-purple-600 mx-auto mb-4" />
+          <p className="text-gray-500">Lade...</p>
+        </div>
+      </div>
+    }>
+      <NewThesisContent />
+    </Suspense>
+  )
+}

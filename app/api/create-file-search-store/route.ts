@@ -21,8 +21,21 @@ export async function POST(request: Request) {
       )
     }
 
+    // Use server client to bypass RLS
+    const { createSupabaseServerClient } = await import('@/lib/supabase/client')
+    const supabase = createSupabaseServerClient()
+
     // Check if thesis already has a FileSearchStore
-    const existingThesis = await getThesisById(thesisId)
+    const { data: existingThesis, error: fetchError } = await supabase
+      .from('theses')
+      .select('file_search_store_id')
+      .eq('id', thesisId)
+      .single()
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      throw fetchError
+    }
+
     if (existingThesis?.file_search_store_id) {
       return NextResponse.json({
         fileSearchStoreId: existingThesis.file_search_store_id,
@@ -40,9 +53,16 @@ export async function POST(request: Request) {
     })
 
     // Store the FileSearchStore ID in the database
-    await updateThesis(thesisId, {
-      file_search_store_id: fileSearchStore.name,
-    } as any)
+    const { error: updateError } = await supabase
+      .from('theses')
+      .update({
+        file_search_store_id: fileSearchStore.name,
+      })
+      .eq('id', thesisId)
+
+    if (updateError) {
+      throw createError(`Failed to update thesis: ${updateError.message}`)
+    }
 
     return NextResponse.json({
       fileSearchStoreId: fileSearchStore.name,
@@ -56,5 +76,9 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
+}
+
+function createError(message: string) {
+  return new Error(message)
 }
 

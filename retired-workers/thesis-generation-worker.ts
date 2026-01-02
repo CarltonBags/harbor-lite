@@ -2451,6 +2451,23 @@ ${startInstruction}`
     // Don't throw error - generation must ALWAYS succeed and deliver a thesis
   }
 
+  // Step 7.1: Verify Citations with FileSearch (Page Number Check)
+  // This is critical for ensuring page numbers are accurate
+  if (thesisData.fileSearchStoreId) {
+    console.log(`[ThesisGeneration] Verifying citations for chapter ${chapterLabel}...`)
+    try {
+      const verifiedContent = await verifyCitationsWithFileSearch(chapterContent, thesisData.fileSearchStoreId)
+      if (verifiedContent && verifiedContent.length > 0.8 * chapterContent.length) {
+        chapterContent = verifiedContent
+        console.log(`[ThesisGeneration] Chapter ${chapterLabel} citations verified and updated.`)
+      } else {
+        console.warn(`[ThesisGeneration] Verification returned suspiciously short content, keeping original.`)
+      }
+    } catch (error) {
+      console.error(`[ThesisGeneration] Citation verification failed for ${chapterLabel}, keeping original:`, error)
+    }
+  }
+
   // Force exact chapter heading from outline to prevent hallucinations/changes
   // We explicitly told AI NOT to write it, so we prepend it here safely.
   // Also strip any potential AI-generated heading if it ignored instructions (safety check)
@@ -4296,6 +4313,7 @@ M. **VERBOTENE WÖRTER UND FORMULIERUNGEN (ABSOLUT KRITISCH):**
      - Prüfe auf doppelte Wörter: "Jahrhunderts. Jahrhunderts." -> Korrigiere zu "Jahrhunderts."
      - Prüfe auf doppelte Satzzeichen: ".." -> Korrigiere zu "."
      - Prüfe auf "Deppenleerzeichen" vor Satzzeichen: " ." -> Korrigiere zu "."
+
 
 OUTPUT-REGELN:
 
@@ -6395,5 +6413,74 @@ function generateBibliography(
     text: bibText,
     usedSourceIds: Array.from(usedSourceIds),
     usedSources: usedSources
+  }
+}
+
+/**
+ * Verifies and corrects citation page numbers using Google FileSearch
+ */
+async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId: string): Promise<string> {
+  // Ultra-strict prompt for citation verification
+  const prompt = `
+  You are a strict academic citation verifier. Your SINGLE GOAL is to correct the PAGE NUMBERS in the citations of the provided text.
+  
+  CONTEXT: The provided text contains citations (APA, Harvard, etc.) like "(Müller, 2023, p. 1)" or "(Smith, 2022)".
+  PROBLEM: Some page numbers might be "hallucinated" (e.g. always "p. 1" or random numbers) or missing.
+  
+  YOUR TASK:
+  1. Read the provided text.
+  2. For EVERY citation, use the FileSearch tool to lookup the ACTUAL source document.
+  3. Find the specific claim/quote in the source document.
+  4. CORRECT the page number in the citation to match the actual location in the source PDF.
+  5. If a citation has NO page number, ADD one based on where you found the information.
+  6. If you CANNOT find the source or the information, keep the citation mostly as is, but ensure format is correct.
+  
+  CRITICAL RULES:
+  - DO NOT change the text content (sentences, arguments, facts). ONLY touch the parentheses/citations.
+  - DO NOT rewrite the text. Output the EXACT text structure, but with corrected citations.
+  - ENSURE every citation has a plausible page number (e.g. if it was "p. 1" and you find it on page 45, change it to "p. 45").
+  - FORMAT: Follow the existing citation style in the text (don't switch from APA to MLA).
+  
+  INPUT TEXT:
+  """
+  ${content}
+  """
+  
+  OUTPUT:
+  Return the FULL text with corrected citations. No markdown blocks, no "Here is the text", just the text.
+  `
+
+  try {
+    const response = await retryApiCall(
+      () => ai.models.generateContent({
+        model: 'gemini-2.5-flash', // Fast and effective for this
+        contents: prompt,
+        config: {
+          maxOutputTokens: Math.ceil(content.split(' ').length * 2), // Ensure enough space for full text
+          temperature: 0.1, // Very low temperature for high precision
+          tools: [{
+            fileSearch: {
+              fileSearchStoreNames: [fileSearchStoreId],
+            },
+          }],
+        },
+      }),
+      'Verify citations',
+      2, // 2 Retries
+      1000
+    )
+
+    const verifiedText = response.text?.trim()
+
+    // Safety check: if result is empty or vastly different in length, return original
+    if (!verifiedText || Math.abs(verifiedText.length - content.length) > content.length * 0.5) {
+      console.warn('[CitationVerifier] Verified text length mismatch or empty, rejecting.')
+      return content
+    }
+
+    return verifiedText
+  } catch (error) {
+    console.error('[CitationVerifier] Error:', error)
+    return content // Fallback to original
   }
 }    

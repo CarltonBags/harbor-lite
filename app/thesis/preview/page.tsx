@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen, Download, Shield, Home, RefreshCw, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
 import { createSupabaseClient } from '@/lib/supabase/client'
@@ -23,7 +23,7 @@ interface ChatMessage {
   timestamp: Date
 }
 
-export default function ThesisPreviewPage() {
+const ThesisPreviewContent = () => {
   const searchParams = useSearchParams()
   const router = useRouter()
   const thesisId = searchParams.get('id')
@@ -2873,6 +2873,22 @@ export default function ThesisPreviewPage() {
         )
       }
     </div >
+  )
+
+}
+
+export default function ThesisPreviewPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-purple-600 mx-auto mb-4" />
+          <p className="text-gray-500 dark:text-gray-400">Lade Dokument...</p>
+        </div>
+      </div>
+    }>
+      <ThesisPreviewContent />
+    </Suspense>
   )
 }
 
