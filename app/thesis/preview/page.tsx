@@ -407,6 +407,20 @@ const ThesisPreviewContent = () => {
     }
   }
 
+  // Helper to fix inline headings (e.g. "Sentence. ## Heading")
+  // This ensures they render as proper Markdown headings
+  const ensureHeadingsOnNewLines = (text: string): string => {
+    if (!text) return ''
+    // Look for:
+    // 1. Non-newline character
+    // 2. Optional whitespace
+    // 3. One to six hashes
+    // 4. Space
+    // 5. Text
+    // Replace with: char + \n\n + hashes + space + text
+    return text.replace(/([^\n])\s+(#{1,6}\s+)/g, '$1\n\n$2')
+  }
+
   const loadThesis = async () => {
     if (!thesisId) return
 
@@ -420,7 +434,11 @@ const ThesisPreviewContent = () => {
       }
 
       setThesis(thesisData)
-      const thesisContent = thesisData.latex_content || ''
+      let thesisContent = thesisData.latex_content || ''
+
+      // Fix formatting issues immediately on load
+      thesisContent = ensureHeadingsOnNewLines(thesisContent)
+
       setContent(thesisContent)
       setOriginalContent(thesisContent)
 
