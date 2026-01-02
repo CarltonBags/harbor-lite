@@ -46,6 +46,8 @@ Die Forschungsfragen sollten:
 - Zum Thema und Fachbereich passen
 - Für eine ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'} angemessen sein
 - Verschiedene Aspekte des Themas abdecken
+- **Allgemein genug sein, um durch Standardliteratur beantwortbar zu sein** (Vermeide extrem spezifische Messgrößen oder Nischen-Szenarien ohne Literatur, z.B. "Muskelwachstum nach exakt 16 Tagen")
+- **Fokussiere auf Konzepte und Zusammenhänge**, nicht auf anekdotische Details
 
 Antworte NUR mit einer JSON-Liste von genau 5 Forschungsfragen, ohne zusätzlichen Text. Format:
 ["Frage 1", "Frage 2", "Frage 3", "Frage 4", "Frage 5"]`
