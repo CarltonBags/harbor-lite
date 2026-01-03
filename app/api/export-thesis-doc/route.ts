@@ -70,10 +70,24 @@ toc-title: "Inhaltsverzeichnis"
     const timestamp = Date.now()
     const inputPath = path.join(tmpDir, `thesis-${thesisId}-${timestamp}.md`)
     const outputPath = path.join(tmpDir, `thesis-${thesisId}-${timestamp}.docx`)
-    const referenceDocPath = path.join(tmpDir, `reference-${timestamp}.docx`)
+
+    // Check for custom reference.docx in project root
+    const customReferencePath = path.join(process.cwd(), 'reference.docx')
+    const hasCustomReference = fs.existsSync(customReferencePath)
+
+    const referenceDocPath = hasCustomReference
+      ? customReferencePath
+      : path.join(tmpDir, `reference-${timestamp}.docx`)
 
     try {
-      await createReferenceDocument(referenceDocPath)
+      // Only create default reference doc if we don't have a custom one
+      if (!hasCustomReference) {
+        console.log('[ExportDOCX] Generating default reference document...')
+        await createReferenceDocument(referenceDocPath)
+      } else {
+        console.log('[ExportDOCX] Using custom reference.docx from project root')
+      }
+
       await writeFile(inputPath, pandocContent, 'utf8')
 
       // 4. Run Pandoc (Markdown -> DOCX)
@@ -118,7 +132,8 @@ toc-title: "Inhaltsverzeichnis"
       try {
         if (fs.existsSync(inputPath)) await unlink(inputPath)
         if (fs.existsSync(outputPath)) await unlink(outputPath)
-        if (fs.existsSync(referenceDocPath)) await unlink(referenceDocPath)
+        // Only delete reference doc if it's the temp one
+        if (!hasCustomReference && fs.existsSync(referenceDocPath)) await unlink(referenceDocPath)
       } catch (e) {
         console.error('Cleanup error:', e)
       }

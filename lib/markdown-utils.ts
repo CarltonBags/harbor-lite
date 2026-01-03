@@ -133,12 +133,12 @@ export function convertToCleanMarkdown(content: string): string {
             else if (level > 0) {
                 isHeading = true
             }
-            // RULE 3: Bold Level 0 (**1. Title**) is a heading unless it has a colon
-            else if (isBold) {
+            // RULE 3: Bold Level 0 (**1. Title**) is a heading unless it has a colon AND is short
+            else if (isBold && title.length < 100) {
                 isHeading = true
             }
             // RULE 4: Plain Level 0 (1. Title) - strict checks
-            else {
+            else if (!isBold) {
                 // Only treat as heading if short and no ending punctuation
                 const isShort = title.length < 100
                 const hasPunctuation = /[.,;]$/.test(title) // Colon handled above

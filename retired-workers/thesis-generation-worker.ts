@@ -2040,22 +2040,18 @@ async function generateChapterContent({
 
   // Format Citation Style Label
   const citationStyleLabels: Record<string, string> = {
-    'apa': 'APA (7th Edition)',
-    'oa': 'APA (7th Edition)',
-    'mla': 'MLA (9th Edition)',
     'harvard': 'Harvard Style',
-    'chicago': 'Chicago Manual of Style (17th Edition)',
-    'ieee': 'IEEE',
-    'deutsche-zitierweise': 'Deutsche Zitierweise (Fußnoten)',
-    'fussnoten': 'Deutsche Zitierweise (Fußnoten)'
+    'apa': 'APA Style',
+    'mla': 'MLA Style',
+    'chicago': 'Chicago Style'
   }
-  const citationStyleLabel = citationStyleLabels[citationStyle] || citationStyle || 'Harvard Style'
+  const citationStyleLabel = citationStyleLabels[citationStyle] || 'Harvard Style'
 
   // Build comprehensive source list for the prompt - CRITICAL FOR CITATIONS
   const availableSourcesList = sources.map((s, i) => {
     const authors = s.authors && s.authors.length > 0
       ? s.authors.slice(0, 3).join(', ') + (s.authors.length > 3 ? ' et al.' : '')
-      : 'Unbekannt'
+      : (s.publisher || s.title || 'Source') // STRICT: Never use Unbekannt/o.V., use Publisher or Title
     const year = s.year || 'o.J.'
     const pageStart = s.pageStart ? String(s.pageStart) : null
     const pageEnd = s.pageEnd ? String(s.pageEnd) : null
@@ -2130,10 +2126,7 @@ Erfundene Quellen sind STRENG VERBOTEN.
 ${availableSourcesList}
 
 **ZITATIONSSTIL: ${citationStyleLabel}**
-${citationStyle === 'deutsche-zitierweise' || citationStyle === 'fussnoten' ? `**Deutsche Zitierweise (Fußnoten):**
-- Im Text: Verwende "^N" direkt nach dem zitierten Inhalt (z.B. "...wurde belegt.^1")
-- Fortlaufende Nummerierung (^1, ^2, ^3...)
-- KEINE Fußnoten-Definitionen am Ende schreiben (diese werden automatisch generiert)` : `**${citationStyleLabel} (STRENG):**
+**${citationStyleLabel} (STRENG):**
 - Zitiere im Fließtext: (Autor, Jahr, S. XX)
 - **REGEL 1: KEINE strukturellen Zitationen.**
   - FALSCH: "Dieses Kapitel diskutiert (Müller, 2020)..." oder "Wie bei (Schmidt, 2019) gesehen..."
@@ -2144,7 +2137,11 @@ ${citationStyle === 'deutsche-zitierweise' || citationStyle === 'fussnoten' ? `*
 - **REGEL 3: Seitenzahlen (f./ff.):**
   - Eine Seite: "S. 324"
   - Zwei Seiten: "S. 324f." (NICHT 324-325)
-  - Mehrere Seiten: "S. 324ff." (NICHT 324-330)`}
+  - Mehrere Seiten: "S. 324ff." (NICHT 324-330)
+- **REGEL 4: ZWINGEND SEITENZAHLEN**
+  - JEDE Zitation MUSS eine Seitenzahl haben.
+  - Wenn MLA: (Autor S. 12).
+  - Wenn Harvard/APA: (Autor, Jahr, S. 12).
 
 **🚫 ABSOLUT VERBOTEN: FRAGEN & FRAGE-ANTWORT-MUSTER 🚫**
 - NIEMALS Konstruktionen wie "Begriff? Definition." verwenden!
@@ -2174,6 +2171,12 @@ NIEMALS behaupten:
 - ✗ "Die vorliegende Studie belegt..." → Es gibt KEINE "vorliegende Studie"!
 - ✗ "Im Rahmen dieser Arbeit wurden X Teilnehmer befragt..." → LÜGE!
 - ✗ "Die Datenanalyse ergab..." → Du hast KEINE Daten analysiert!
+
+**🚫 ABSOLUT VERBOTEN: "Unbekannt" / "o.V." ZITIEREN 🚫**
+- Zitiere NIEMALS "(Unbekannt, ...)" oder "(o.V., ...)"!
+- Wenn kein Autor bekannt ist: Zitiere den HERAUSGEBER oder den TITEL des Werkes.
+- Beispiel: Statt "(o.V., 2020)" schreibe "(Bundesministerium für Bildung, 2020)" oder "(Studie zur Digitalisierung, 2020)".
+- ERFINDE KEINEN PLATZHALTER-NAMEN. Verwende die echte Quelle (Institution/Titel).
 
 STATTDESSEN - Forschung den ECHTEN Autoren zuschreiben:
 - ✓ "Müller (2021) zeigt in seiner Studie, dass..."
@@ -2212,10 +2215,7 @@ You must ONLY cite the provided sources listed below. NO others.
 ${availableSourcesList}
 
 **CITATION STYLE: ${citationStyleLabel}**
-${citationStyle === 'deutsche-zitierweise' || citationStyle === 'fussnoten' ? `**German Citation (Footnotes):**
-- In text: Use "^N" directly after content (e.g. "...was proven.^1")
-- Continuous numbering (^1, ^2, ^3...)
-- DO NOT write footnote definitions at the end` : `**${citationStyleLabel} (STRICT):**
+**${citationStyleLabel} (STRICT):**
 - Cite in text: (Author, Year, p. XX)
 - **RULE 1: NO Structural Citations.**
   - WRONG: "This chapter discusses (Miller, 2021)..."
@@ -2226,7 +2226,11 @@ ${citationStyle === 'deutsche-zitierweise' || citationStyle === 'fussnoten' ? `*
 - **RULE 3: Page Numbers (f./ff.):**
   - One page: "p. 324"
   - Two pages: "p. 324f." (NOT 324-325)
-  - Multiple pages: "p. 324ff." (NOT 324-330)`}
+  - Multiple pages: "p. 324ff." (NOT 324-330)
+- **RULE 4: MANDATORY PAGE NUMBERS**
+  - EVERY citation MUST have a page number.
+  - If MLA: (Author 12).
+  - If Harvard/APA: (Author, Year, p. 12).
 
 **🚫 ABSOLUTELY FORBIDDEN: QUESTIONS & Q&A PATTERNS 🚫**
 - NEVER use constructions like "Term? Definition."!
@@ -2256,6 +2260,12 @@ NEVER claim:
 - ✗ "The present study proves..." → There is NO "present study"!
 - ✗ "In the context of this work, X participants were interviewed..." → LIE!
 - ✗ "Data analysis revealed..." → You analyzed NO data!
+
+**🚫 ABSOLUTELY FORBIDDEN: CITING "Unknown" / "Anon" 🚫**
+- NEVER cite "(Unknown, ...)" or "(Anon., ...)"!
+- If author is missing: Cite the PUBLISHER or the TITLE.
+- Example: Instead of "(Unknown, 2020)" write "(Dept. of Education, 2020)" or "(Study on AI, 2020)".
+- DO NOT use placeholders. Use the actual entity/title.
 
 INSTEAD - Attribute research to REAL authors:
 - ✓ "Müller (2021) shows in his study that..."
@@ -2472,7 +2482,8 @@ ${startInstruction}`
   if (thesisData.fileSearchStoreId) {
     console.log(`[ThesisGeneration] Verifying citations for chapter ${chapterLabel}...`)
     try {
-      const verifiedContent = await verifyCitationsWithFileSearch(chapterContent, thesisData.fileSearchStoreId, isGerman)
+      // Pass 'sources' for smart page calculation
+      const verifiedContent = await verifyCitationsWithFileSearch(chapterContent, thesisData.fileSearchStoreId, isGerman, sources)
       if (verifiedContent && verifiedContent.length > 0.8 * chapterContent.length) {
         chapterContent = verifiedContent
         console.log(`[ThesisGeneration] Chapter ${chapterLabel} citations verified and updated.`)
@@ -2745,7 +2756,6 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     apa: 'APA',
     mla: 'MLA',
     harvard: 'Harvard',
-    'deutsche-zitierweise': 'Deutsche Zitierweise',
   }
 
   const citationStyleLabel = citationStyleLabels[thesisData.citationStyle] || thesisData.citationStyle
@@ -2932,7 +2942,8 @@ Erstelle den vollständigen Fließtext für alle Kapitel der Thesis. Du erstells
 **Was du erstellst:**
 - Vollständiger wissenschaftlicher Text für ALLE Kapitel aus der Gliederung
 - Zitationen im korrekten Stil (${citationStyleLabel})
-- ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'Fußnoten-Definitionen am Ende (Format: [^1]: Autor, Titel, Jahr, S. XX)' : 'In-Text-Zitationen im korrekten Format'}
+- Zitationen im korrekten Stil (${citationStyleLabel})
+- In-Text-Zitationen im korrekten Format (MANDATORY PAGE NUMBERS)
 
 **Was du NICHT erstellst:**
 - KEIN Inhaltsverzeichnis (wird automatisch generiert)
@@ -3532,11 +3543,11 @@ ${thesisData.lengthUnit === 'words' ? `- For word-based length, you can be up to
 - The work is only complete when:
   * ALL chapters from the outline are complete (including Conclusion)
   * The target length is reached (${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words${thesisData.lengthUnit === 'words' ? `, can be up to ${Math.ceil(thesisData.targetLength * 1.05)} words` : ''})
-  * ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'All footnotes are present in text (^1, ^2, etc.)' : 'All citations are correct'}
+  * All citations are correct and include page numbers
 
 **3. NO EARLY STOPPING - ABSOLUTELY CRITICAL:**
 - The work must NOT end in the middle of a chapter.
-- The work must NOT end without ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'footnotes in the text' : 'citations'}.
+- The work must NOT end without citations.
 - You MUST write until you reach the target length - do NOT stop early.
 - If you notice you haven't reached the target length yet, develop the chapters in more detail, add more details, expand the discussion.
 - Each chapter should be proportionally detailed relative to the total length.
@@ -3553,7 +3564,7 @@ ${thesisData.lengthUnit === 'words' ? `- For word-based length, you can be up to
   - Begin the description with the second chapter, since Chapter 1 is already present.
 - Main chapters: Each chapter fully developed with citations throughout
 - Discussion/Conclusion: Complete with summary, answer to research question, outlook
-${thesisData.citationStyle === 'deutsche-zitierweise' ? '- Footnotes: Marked with ^1, ^2, etc. throughout the text\n' : ''}
+
 
 **5. QUALITY WITH COMPLETENESS:**
 - The work must be complete, but also of high quality.
@@ -3568,7 +3579,7 @@ ${thesisData.citationStyle === 'deutsche-zitierweise' ? '- Footnotes: Marked wit
 Create a COMPLETE, FULL-LENGTH, citable, scientifically sound thesis that:
 1. Implements ALL chapters from the outline completely
 2. Reaches the target length of ${thesisData.targetLength} ${thesisData.lengthUnit} (${targetPages} pages, ~${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words)
-3. ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'Includes footnote markers (^1, ^2, etc.) throughout' : 'Includes proper citations throughout'}
+3. Includes proper citations throughout (with page numbers)
 4. Is logically structured and correctly implements the citation style
 5. Uses exclusively validated sources from the provided list
 6. Sounds natural and human from the start, not like AI-generated
@@ -5900,17 +5911,11 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
 
 
 
-    // Process footnotes for German citation style
+    // Process footnotes for German citation style - REMOVED
     let processedContent = thesisContent
     let footnotes: Record<number, string> = {}
 
-    if (thesisData.citationStyle === 'deutsche-zitierweise') {
-      console.log('[PROCESS] Processing German footnotes...')
-      const footnoteResult = extractAndProcessFootnotes(thesisContent)
-      processedContent = footnoteResult.content
-      footnotes = footnoteResult.footnotes
-      console.log(`[PROCESS] Extracted ${Object.keys(footnotes).length} footnotes`)
-    }
+    // Footnote extraction removed. Standard citations only.
 
     // Update thesis in database
     console.log('[PROCESS] Updating thesis in database with generated content...')
@@ -5963,9 +5968,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         updateData.metadata.bibliography_sources = bibResult.usedSourceIds
 
 
-        if (thesisData.citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
-          updateData.metadata.footnotes = footnotes
-        }
+        // Footnote metadata saving removed
 
         // Save Winston Result (Replaces ZeroGPT)
         if (winstonResult) {
@@ -6466,16 +6469,30 @@ function generateBibliography(
 /**
  * Verifies and corrects citation page numbers using Google FileSearch
  */
-async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId: string, isGerman: boolean = false): Promise<string> {
+async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId: string, isGerman: boolean = false, sources: any[] = []): Promise<string> {
   const pagePrefix = isGerman ? 'S.' : 'p.'
   const pagesPrefix = isGerman ? 'S.' : 'pp.'
   const defaultPage = `${pagePrefix} 1`
+
+  // Build Context for Page Calculation
+  const sourceContext = sources.map((s, i) => {
+    const author = s.authors && s.authors.length > 0 ? s.authors[0] : (s.publisher || s.title || 'Source')
+    const start = s.pageStart ? parseInt(s.pageStart) : null
+    const end = s.pageEnd ? parseInt(s.pageEnd) : null
+    if (start) {
+      return `- Source "${author}" starts at PDF-Page 1 = Real Page ${start}. (Add ${start - 1} to PDF page index).`
+    }
+    return `- Source "${author}": No offset known.`
+  }).join('\n')
 
   // Ultra-strict prompt for citation verification
   const prompt = `
   You are a strict academic citation verifier. Your SINGLE GOAL is to correct the PAGE NUMBERS in the citations of the provided text.
   
   CONTEXT: The provided text contains citations like "(Müller, 2023, ${pagePrefix} 1)" or "(Smith, 2022)".
+  SOURCE METADATA (Use for Page Calculation):
+  ${sourceContext}
+  
   PROBLEM: Some page numbers might be hallucinated, random, or incorrectly using Article IDs.
   
   YOUR TASK:
@@ -6483,19 +6500,27 @@ async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId:
   2. For EVERY citation, use the FileSearch tool to lookup the ACTUAL source document.
   3. **STRENGTHENED EXTRACTION STRATEGY:**
      - Look for VISUAL page numbers in the corners/bottom of the PDF pages.
-     - Distinguish between "internal" PDF page count (1 of 30) and "printed" page numbers (e.g. 452). ALWAYS use the PRINTED page number if available.
-     - Locate the specific quote/claim in the text and identify the page it appears on.
+     - Distinguish between "internal" PDF page count (1 of 30) and "printed" page numbers (e.g. 452). ALWAYS use the PRINTED page number.
+     - **SMART CALCULATION FALLBACK:**
+       - If you find the text on "Page 5 of the PDF" but there is no printed number:
+       - Check SOURCE METADATA above. If "starts at Real Page 401", then Page 5 = 401 + 4 = 405. Use 405.
+       - If you are UNSURE, default to the "Real Start Page" (e.g. 401) rather than 1.
   4. VALIDATE & CORRECT the page number:
      - MUST be a visual page number on the PDF.
      - ALLOWED formats: Integers (12), Ranges (12-15), or "ff" suffix (12ff, 12f).
      - MUST NOT be an Article ID (strings like "e24234", "e0343", "Art. 3").
-     - MUST NOT be a DOI fragment.
+     - CANNOT be > 10000. If you see "Page 24032", this is an Article ID. REJECT IT.
+     - CANNOT start with a letter (e.g. "e352", "L20"). REJECT IT.
   5. If the source uses standard pagination, use the correct number.
-  6. If the source has NO visual page numbers (e.g. HTML/Online source) or you cannot determine it, ALWAYS default to "${defaultPage}".
+  6. If the source has NO visual page numbers (e.g. HTML/Online source) or you cannot determine it OR the number is suspicious (>10000, starts with letter):
+     - MUST use the "Start Page" from metadata (e.g. 401).
+     - ONLY IF fails, default to "${defaultPage}".
   7. If you CANNOT find the source, keep the existing page number or default to "${defaultPage}".
   
   CRITICAL RULES (STRICT COMPLIANCE REQUIRED):
   - 🚫 NEVER use "e-numbers" (e.g. "${pagePrefix} e123456" is FORBIDDEN).
+  - 🚫 NEVER use Page Numbers > 10000.
+  - 🚫 NEVER use Page Numbers starting with a letter.
   - 🚫 NEVER use "Article X" as a page number.
   - 🚫 NEVER use "n.pag." -> Use "${defaultPage}" instead.
   - 🚫 NEVER put text/sentences inside the page number spot. "(Smith, 2020, ${pagePrefix} finding shows...)" is WRONG.
