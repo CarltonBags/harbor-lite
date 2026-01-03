@@ -2591,6 +2591,11 @@ async function critiqueThesis(
        - **VERBOTENE FRAGE-MUSTER:** Prüfe auf "Thema? Aussage." Muster (z.B. "Der Grund? Einfach."). Das ist VERBOTEN.
        - **RHETORISCHE FRAGEN:** Sind rhetorische Fragen enthalten? (VERBOTEN)
        - **TON:** Zu emotional? Zu umgangssprachlich ("halt", "eben", "quasi")?
+
+    5. **SEITENZAHLEN-CHECK:**
+       - Prüfe Zitationen auf kryptische Seitenzahlen wie "e359385", "e1234", "Article 5". Das ist FALSCH.
+       - Seitenzahlen müssen das Format "S. XX" oder "S. XX-YY" haben.
+       - Zitationen OHNE Seitenzahl sind ebenfals ein FEHLER.
     
     THESIS TEXT (Ausschnitte):
     ${thesisText.substring(0, 50000)} ... [Text gekürzt für Analyse]
@@ -2600,7 +2605,8 @@ async function critiqueThesis(
     **1. Struktur:** [OK / FEHLER] - Kommentar...
     **2. Forschungsfrage:** [BEANTWORTET / UNKLAR] - Kommentar...
     **3. Quellen:** [SAUBER / HALLUZINATIONEN VERMUTET] - Kommentar...
-    **4. Sprache:** [SAUBER / FEHLERHAFT] - (Nenne konkrete Probleme: "man" verwendet, Doppelte Punkte, Zu umgangssprachlich, etc.)
+    **4. Seitenzahlen:** [OK / FEHLERHAFT] - (Prüfe auf "e359385" oder fehlende Seiten. Zitationen müssen "S. XX" sein!)
+    **5. Sprache:** [SAUBER / FEHLERHAFT] - (Nenne konkrete Probleme: "man" verwendet, Doppelte Punkte, Zu umgangssprachlich, etc.)
     **Gesamturteil:** [Kurzes Fazit]`
 
     : `You are a strict academic auditor. Critique the following thesis (excerpt/summary) rigorously.
@@ -2624,6 +2630,11 @@ async function critiqueThesis(
        - **BANNED PATTERNS:** Check for "Topic? Statement." (e.g. "The reason? Simple."). FORBIDDEN.
        - **RHETORICAL QUESTIONS:** Are there any? (FORBIDDEN)
        - Is the tone too emotional or colloquial?
+
+    5. **PAGE NUMBER CHECK:**
+       - Check citations for cryptic page numbers like "e359385", "e1234", "Article 5". This is WRONG.
+       - Page numbers must format as "p. XX" or "p. XX-YY".
+       - Citations WITHOUT page numbers are also an ERROR.
     
     THESIS TEXT (Excerpt):
     ${thesisText.substring(0, 50000)} ... [Text truncated]
@@ -2633,7 +2644,8 @@ async function critiqueThesis(
     **1. Structure:** [OK / ERROR] - Comment...
     **2. Research Question:** [ANSWERED / UNCLEAR] - Comment...
     **3. Sources:** [CLEAN / HALLUCINATIONS SUSPECTED] - Comment...
-    **4. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
+    **4. Page Numbers:** [OK / ISSUES] - (Check for "e359385" styling or missing pages. Must be "p. XX"!)
+    **5. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
     **Verdict:** [Short Conclusion]`
 
   if (isGerman) {
@@ -2651,13 +2663,18 @@ async function critiqueThesis(
   }
 
   try {
-    // Use decent model for critique (Pro or Flash)
+    // Use efficient strong model for critique
     const response = await retryApiCall(() => ai.models.generateContent({
-      model: 'gemini-2.5-pro',
+      model: 'gemini-1.5-pro', // Switched to Stable Pro as requested (2.5 may vary by region)
       contents: prompt,
-      config: { maxOutputTokens: 1000, temperature: 0.1 },
+      config: { maxOutputTokens: 8192, temperature: 0.1 }, // Max output for 1.5 Pro is typically 8k
     }), 'Critique Thesis')
-    return response.text || 'Critique generation failed.'
+
+    if (!response.text) {
+      console.error('[ThesisCritique] API returned empty text. Full response:', JSON.stringify(response))
+      return 'Critique generation failed (Empty Response).'
+    }
+    return response.text
   } catch (error) {
     console.error('[ThesisCritique] Failed to generate critique:', error)
     return 'Critique failed due to error.'
@@ -2691,8 +2708,11 @@ async function fixChapterContent(
        - Wandle "man" und "wir" in Passiv um.
        - Entferne doppelte Wörter/Punkte.
        - Ersetze Umgangssprache durch Fachsprache.
-    4. Wenn der Report keine Fehler nennt, die für diesen Text relevant sind: Gib den Text EXAKT SO ZURÜCK WIE ER WAR (keine Änderungen).
-    5. Ändere NICHTS am Stil, nur die kritisierten inhaltlichen/strukturellen/sprachlichen Fehler.
+    4. Wenn der Report "Seitenzahlen: FEHLERHAFT" (z.B. "e359385") meldet:
+       - Suche diese kryptischen Nummern und ersetze sie durch "S. 1" (oder korrekte Seite falls bekannt).
+       - Stelle sicher, dass ALLE Zitationen eine Seitenzahl haben ("S. XX").
+    5. Wenn der Report keine Fehler nennt, die für diesen Text relevant sind: Gib den Text EXAKT SO ZURÜCK WIE ER WAR (keine Änderungen).
+    6. Ändere NICHTS am Stil, nur die kritisierten inhaltlichen/strukturellen/sprachlichen Fehler.
     
     SUPREME REGEL: ÄNDERE NIEMALS DIE KAPITELÜBERSCHRIFT (Zeile 1). SIE MUSS EXAKT BLEIBEN.
     SUPREME REGEL: KEINE HIERARCHIE-ÄNDERUNGEN (## bleibt ##).
@@ -2716,8 +2736,11 @@ async function fixChapterContent(
     1. If report says "RQ missing in Intro" and this IS the Intro: ADD IT!
     2. If report says "Structure error in Ch 3" and this IS Ch 3: FIX IT!
     3. If report says "Language: ISSUES": FIX THEM! (Remove "man", "we", fix typos, formalize tone).
-    4. If report mentions no errors relevant to this text: Return the text EXACTLY AS IS (no changes).
-    5. Do NOT change style, only the criticized errors.
+    4. If report says "Page Numbers: ISSUES" (e.g. "e359385"): 
+       - Find these cryptic numbers and replace them with "p. 1" (or correct page if known).
+       - Ensure ALL citations have a page number ("p. XX").
+    5. If report mentions no errors relevant to this text: Return the text EXACTLY AS IS (no changes).
+    6. Do NOT change style, only the criticized errors.
     
     CHAPTER TEXT:
     ${chapterContent}
@@ -3068,43 +3091,40 @@ ${availableSourcesList}
 - Wenn der FileSearchStore keine Seitenzahl liefert, lasse die Seitenzahl KOMPLETT weg - schreibe NICHT "S. [keine Angabe]" oder ähnliches!
 - Prüfe IMMER: Ist die verwendete Seitenzahl die EXAKTE Seite, die der FileSearchStore für diesen Inhalt anzeigt?
 
-${thesisData.citationStyle === 'deutsche-zitierweise' ? `**Deutsche Zitierweise (Fußnoten):**
+
 - Im Text: Verwende "^N" direkt nach dem zitierten Inhalt
 - Fortlaufende Nummerierung (^1, ^2, ^3...) in der Reihenfolge des Erscheinens
 - Jede neue Zitation = neue Nummer (auch bei wiederholter Quelle)
 - WICHTIG: Schreibe KEINE Fußnoten-Definitionen ([^1]: ...) am Ende!
 - Die Fußnoten werden automatisch aus den Quellenmetadaten generiert
 
-**Beispiel mit echten Quellen aus der Liste:**
-"Künstliche Intelligenz verändert die Arbeitswelt grundlegend^1. ${rankedSources.length > 0 ? `${rankedSources[0].authors?.[0]?.split(' ').pop() || 'Autor'} (${rankedSources[0].year || 'o.J.'})` : 'Autor (Jahr)'} argumentiert, dass...^2"
-
-WICHTIG: Verwende NUR die Autoren/Jahre aus der obigen Quellenliste!` : `**${citationStyleLabel}:**
+**${citationStyleLabel}:**
 - Zitiere im Text: (Autor, Jahr, S. XX) oder (Autor, Jahr, S. XX-YY)
 - Bei mehreren Autoren: (Autor et al., Jahr, S. XX)
 
 **Beispiel mit echten Quellen aus der Liste:**
 ${rankedSources.length > 0 ? `"Die Forschung zeigt (${rankedSources[0].authors?.[0]?.split(' ').pop() || 'Autor'}, ${rankedSources[0].year || 'o.J.'}, S. 5)..."` : '"Die Forschung zeigt (Autor, Jahr, S. 5)..."'}
 
-WICHTIG: Verwende NUR die Autoren/Jahre aus der obigen Quellenliste!`}
+WICHTIG: Verwende NUR die Autoren/Jahre aus der obigen Quellenliste!
 
 ═══════════════════════════════════════════════════════════════════════════════
 SCHREIBSTIL
 ═══════════════════════════════════════════════════════════════════════════════
 
-**Wissenschaftlicher Ton:**
-- Objektiv, präzise, sachlich
-- Keine persönlichen Meinungen oder Marketing-Sprache
-- Ergebnisse den Autoren zuschreiben: "Müller (2021) zeigt..." statt "Es ist bewiesen..."
+** Wissenschaftlicher Ton:**
+  - Objektiv, präzise, sachlich
+  - Keine persönlichen Meinungen oder Marketing - Sprache
+    - Ergebnisse den Autoren zuschreiben: "Müller (2021) zeigt..." statt "Es ist bewiesen..."
 
-**🚫 VERBOTEN - Unwissenschaftliche Stilmittel:**
-- ABSOLUT KEINE FRAGEN IM TEXT - WEDER RHETORISCHE NOCH SUGGESTIVE!
+      **🚫 VERBOTEN - Unwissenschaftliche Stilmittel:**
+        - ABSOLUT KEINE FRAGEN IM TEXT - WEDER RHETORISCHE NOCH SUGGESTIVE!
   ✗ "Was bedeutet Digitalisierung für die Arbeitswelt?"
   ✗ "Aber ist das wirklich so?"
   ✗ "Welche Auswirkungen hat dies?"
-  ✗ "the research? a very important part..." (Fragezeichen nach Aussage)
+  ✗ "the research? a very important part..."(Fragezeichen nach Aussage)
   ✗ Jegliche Frageform, Fragezeichen oder suggestive Fragekonstruktionen
   ✗ Selbstreflexive Fragen wie "Was ist X? Ein wichtiger Aspekt..."
-- ABSOLUT VERBOTEN: FRAGE-ANTWORT-MUSTER (KRITISCH - UNLESBAR!)
+  - ABSOLUT VERBOTEN: FRAGE - ANTWORT - MUSTER(KRITISCH - UNLESBAR!)
   ✗ "Die Grenze zwischen X und Y? In der öffentlichen Wahrnehmung..."
   ✗ "Korruption und Lobbyismus: zwei verschiedene Arten. Lobbyismus hingegen? Unverzichtbar..."
   ✗ "Aber diese beiden Phänomene zu trennen? Schwierig."
@@ -3118,146 +3138,143 @@ SCHREIBSTIL
   ✓ "Die Trennung dieser beiden Phänomene ist schwierig."
   ✓ "Das Kernproblem besteht darin, dass es ungemein schwer ist..."
   ✓ "In der wirtschaftswissenschaftlichen Literatur versteht man unter Korruption..."
-- KEINE emotionalen oder wertenden Adjektive!
+  - KEINE emotionalen oder wertenden Adjektive!
   ✗ "wird heiß diskutiert", "brennend aktuell", "erschreckend", "beeindruckend"
   ✗ "dramatisch", "revolutionär", "bahnbrechend", "erstaunlich"
   ✓ "wird kontrovers diskutiert", "ist Gegenstand aktueller Forschung"
   ✓ "zeigt signifikante Veränderungen", "weist erhebliche Unterschiede auf"
-- KEINE journalistische oder Marketing-Sprache!
+  - KEINE journalistische oder Marketing - Sprache!
   ✗ "Die Zukunft ist jetzt", "Ein Paradigmenwechsel steht bevor"
   ✓ Sachliche, nüchterne Beschreibungen
 
-**Sprachliche Regeln:**
-- KEINE persönlichen Pronomen ("wir", "ich", "uns")
+  ** Sprachliche Regeln:**
+    - KEINE persönlichen Pronomen("wir", "ich", "uns")
   ✗ "Wir werden im nächsten Abschnitt..."
   ✓ "Im nächsten Abschnitt wird..."
-- KEINE unprofessionellen Wörter: "freilich", "sicherlich", "natürlich" (als Füllwort)
-- ABSOLUT KEINE UMGANGSSPRACHE!
+  - KEINE unprofessionellen Wörter: "freilich", "sicherlich", "natürlich"(als Füllwort)
+    - ABSOLUT KEINE UMGANGSSPRACHE!
   ✗ "denk mal an...", "schau dir an...", "guck mal...", "hör mal..."
-  ✗ "klar", "logisch", "natürlich" (umgangssprachlich), "eigentlich" (als Füllwort)
+  ✗ "klar", "logisch", "natürlich"(umgangssprachlich), "eigentlich"(als Füllwort)
   ✗ Alle umgangssprachlichen Formulierungen sind VERBOTEN
   ✓ Verwende ausschließlich wissenschaftliche, formale Sprache
-- Verwende Passiv oder unpersönliche Konstruktionen
+  - Verwende Passiv oder unpersönliche Konstruktionen
 
-**Natürlicher Stil (Anti-AI-Detection):**
-- Variiere Satzlängen: kurz (5-10 Wörter), mittel (15-20), lang (25-35)
-- Variiere Satzanfänge (nicht immer "Die", "Es", "Dies")
-- Verwende unterschiedliche Synonyme
-- Vermeide KI-typische Phrasen: "zunächst", "ferner", "zusammenfassend", "darüber hinaus"
-- Nutze natürliche Übergänge: "Dabei zeigt sich", "Vor diesem Hintergrund", "In diesem Kontext"
-- ABER: Bleibe IMMER sachlich und wissenschaftlich - keine Fragen, keine Emotionen!
+    ** Natürlicher Stil(Anti - AI - Detection):**
+      - Variiere Satzlängen: kurz(5 - 10 Wörter), mittel(15 - 20), lang(25 - 35)
+        - Variiere Satzanfänge(nicht immer "Die", "Es", "Dies")
+          - Verwende unterschiedliche Synonyme
+            - Vermeide KI - typische Phrasen: "zunächst", "ferner", "zusammenfassend", "darüber hinaus"
+              - Nutze natürliche Übergänge: "Dabei zeigt sich", "Vor diesem Hintergrund", "In diesem Kontext"
+                - ABER: Bleibe IMMER sachlich und wissenschaftlich - keine Fragen, keine Emotionen!
 
 ═══════════════════════════════════════════════════════════════════════════════
 STRUKTUR UND LÄNGE - ⚠️ KRITISCH: WORTANZAHL EINHALTEN!
 ═══════════════════════════════════════════════════════════════════════════════
 
-**🎯 PFLICHT-WORTANZAHL: MINDESTENS ${targetWordCount} Wörter!**
+**🎯 PFLICHT - WORTANZAHL: MINDESTENS ${targetWordCount} Wörter! **
 
-⚠️ **ABSOLUT KRITISCH - LÄNGENANFORDERUNG:**
-- Du MUSST mindestens ${targetWordCount} Wörter schreiben!
-- Eine Arbeit mit weniger als ${Math.floor(targetWordCount * 0.9)} Wörtern ist INAKZEPTABEL!
-- Maximum: ${maxWordCount} Wörter (aber NIEMALS unter ${targetWordCount}!)
-- ${targetWordCount} Wörter = ca. ${Math.ceil(targetWordCount / 250)} Seiten
+⚠️ ** ABSOLUT KRITISCH - LÄNGENANFORDERUNG:**
+  - Du MUSST mindestens ${targetWordCount} Wörter schreiben!
+    - Eine Arbeit mit weniger als ${Math.floor(targetWordCount * 0.9)} Wörtern ist INAKZEPTABEL!
+      - Maximum: ${maxWordCount} Wörter(aber NIEMALS unter ${targetWordCount}!)
+        - ${targetWordCount} Wörter = ca.${Math.ceil(targetWordCount / 250)} Seiten
 
-**WORTVERTEILUNG PRO KAPITEL (ungefähr):**
-- Einleitung: ${Math.ceil(targetWordCount * 0.08)}-${Math.ceil(targetWordCount * 0.12)} Wörter (~8-12%)
-- Theoretischer Rahmen/Grundlagen: ${Math.ceil(targetWordCount * 0.20)}-${Math.ceil(targetWordCount * 0.25)} Wörter (~20-25%)
-- Hauptteil (Kapitel 3+4): ${Math.ceil(targetWordCount * 0.45)}-${Math.ceil(targetWordCount * 0.55)} Wörter (~45-55%)
-- Fazit: ${Math.ceil(targetWordCount * 0.08)}-${Math.ceil(targetWordCount * 0.12)} Wörter (~8-12%)
+          ** WORTVERTEILUNG PRO KAPITEL(ungefähr):**
+            - Einleitung: ${Math.ceil(targetWordCount * 0.08)} -${Math.ceil(targetWordCount * 0.12)} Wörter(~8 - 12 %)
+              - Theoretischer Rahmen / Grundlagen: ${Math.ceil(targetWordCount * 0.20)} -${Math.ceil(targetWordCount * 0.25)} Wörter(~20 - 25 %)
+                - Hauptteil(Kapitel 3 + 4): ${Math.ceil(targetWordCount * 0.45)} -${Math.ceil(targetWordCount * 0.55)} Wörter(~45 - 55 %)
+                  - Fazit: ${Math.ceil(targetWordCount * 0.08)} -${Math.ceil(targetWordCount * 0.12)} Wörter(~8 - 12 %)
 
-**WIE DU DIE WORTANZAHL ERREICHST:**
-1. Jedes Kapitel AUSFÜHRLICH behandeln - nicht nur oberflächlich
+                    ** WIE DU DIE WORTANZAHL ERREICHST:**
+                      1. Jedes Kapitel AUSFÜHRLICH behandeln - nicht nur oberflächlich
 2. Theorien und Konzepte DETAILLIERT erklären
 3. Mehrere Quellen PRO Argument diskutieren
 4. Beispiele und Anwendungen einbringen
 5. Kritische Würdigung der Literatur einbauen
 6. Übergänge zwischen Kapiteln ausführlich gestalten
 
-**VERBOTEN:**
-- ✗ Zu kurze, oberflächliche Kapitel
-- ✗ Nur 1-2 Sätze pro Unterkapitel
-- ✗ Aufzählungen statt Fließtext
-- ✗ Eine Arbeit mit ${Math.floor(targetWordCount * 0.6)} Wörtern abliefern, wenn ${targetWordCount} gefordert sind!
+  ** VERBOTEN:**
+    - ✗ Zu kurze, oberflächliche Kapitel
+      - ✗ Nur 1 - 2 Sätze pro Unterkapitel
+        - ✗ Aufzählungen statt Fließtext
+          - ✗ Eine Arbeit mit ${Math.floor(targetWordCount * 0.6)} Wörtern abliefern, wenn ${targetWordCount} gefordert sind!
 
-**⚠️ STRIKTE GLIEDERUNGSTREUE - ABSOLUT KRITISCH:**
-- Schreibe NUR die Kapitel/Unterkapitel, die in der Gliederung vorgegeben sind
-- KEINE zusätzlichen Kapitel, Abschnitte oder Ergänzungen hinzufügen!
-- KEINE "Ergänzungen zu Kapitel X" oder ähnliche Nachträge
-- KEINE Zusammenfassungen einzelner Kapitel am Ende
-- Das letzte Kapitel der Gliederung IST das Ende der Arbeit
-- Nach dem letzten Kapitel kommt NICHTS mehr (kein Text, keine Ergänzungen)
+            **⚠️ STRIKTE GLIEDERUNGSTREUE - ABSOLUT KRITISCH:**
+              - Schreibe NUR die Kapitel / Unterkapitel, die in der Gliederung vorgegeben sind
+                - KEINE zusätzlichen Kapitel, Abschnitte oder Ergänzungen hinzufügen!
+                  - KEINE "Ergänzungen zu Kapitel X" oder ähnliche Nachträge
+                    - KEINE Zusammenfassungen einzelner Kapitel am Ende
+                      - Das letzte Kapitel der Gliederung IST das Ende der Arbeit
+                        - Nach dem letzten Kapitel kommt NICHTS mehr(kein Text, keine Ergänzungen)
 
-**🚫 VERBOT: KEINE EIGENEN UNTERKAPITEL ERFINDEN!**
-- Wenn die Gliederung nur 5.1 und 5.2 hat, darfst du KEINE 5.1.1, 5.1.2 etc. erstellen!
-- Du darfst die Gliederung NICHT vertiefen oder erweitern!
-- Schreibe NUR die Überschriften, die in der Gliederung stehen!
-- Beispiel: Gliederung hat "5.1 Zusammenfassung" → Schreibe NUR "### 5.1 Zusammenfassung"
-- VERBOTEN: Gliederung hat "5.1" aber du schreibst "#### 5.1.1", "#### 5.1.2" → FALSCH!
+                          **🚫 VERBOT: KEINE EIGENEN UNTERKAPITEL ERFINDEN! **
+                            - Wenn die Gliederung nur 5.1 und 5.2 hat, darfst du KEINE 5.1.1, 5.1.2 etc.erstellen!
+                              - Du darfst die Gliederung NICHT vertiefen oder erweitern!
+                                - Schreibe NUR die Überschriften, die in der Gliederung stehen!
+                                  - Beispiel: Gliederung hat "5.1 Zusammenfassung" → Schreibe NUR "### 5.1 Zusammenfassung"
+                                    - VERBOTEN: Gliederung hat "5.1" aber du schreibst "#### 5.1.1", "#### 5.1.2" → FALSCH!
 
-**📝 FAZIT / SCHLUSSKAPITEL - SPEZIELLE REGELN:**
-Das Fazit/Schlusskapitel muss KURZ und PRÄGNANT sein:
-- NUR eine Zusammenfassung der wichtigsten Erkenntnisse (keine neue Analyse!)
-- KEINE neuen Argumente, Theorien oder Zitationen im Fazit
-- Wenn "Ausblick" vorhanden: NUR 2-3 Sätze zu möglichem Forschungsbedarf
-- KEINE tiefen Analysen oder ausführlichen Diskussionen im Fazit
-- Das Fazit wiederholt KURZ die Hauptergebnisse, mehr nicht
-- Typische Länge: 1-2 Seiten, NICHT mehr!
+                                      **📝 FAZIT / SCHLUSSKAPITEL - SPEZIELLE REGELN:**
+                                        Das Fazit / Schlusskapitel muss KURZ und PRÄGNANT sein:
+- NUR eine Zusammenfassung der wichtigsten Erkenntnisse(keine neue Analyse!)
+  - KEINE neuen Argumente, Theorien oder Zitationen im Fazit
+    - Wenn "Ausblick" vorhanden: NUR 2 - 3 Sätze zu möglichem Forschungsbedarf
+      - KEINE tiefen Analysen oder ausführlichen Diskussionen im Fazit
+        - Das Fazit wiederholt KURZ die Hauptergebnisse, mehr nicht
+          - Typische Länge: 1 - 2 Seiten, NICHT mehr!
 
-**STRENG VERBOTEN nach dem letzten Kapitel:**
-- ✗ "Ergänzungen zu Kapitel 2..."
-- ✗ "Zusätzliche Anmerkungen..."
-- ✗ "Weitere Überlegungen..."
-- ✗ "Nachträge..."
-- ✗ Jeglicher Text nach dem Fazit/Schlusskapitel
+            ** STRENG VERBOTEN nach dem letzten Kapitel:**
+              - ✗ "Ergänzungen zu Kapitel 2..."
+                - ✗ "Zusätzliche Anmerkungen..."
+                  - ✗ "Weitere Überlegungen..."
+                    - ✗ "Nachträge..."
+                      - ✗ Jeglicher Text nach dem Fazit / Schlusskapitel
 
-**Strukturelle Anforderungen:**
-1. Beginne SOFORT mit "## 1. Einleitung" (kein Text davor!)
+                        ** Strukturelle Anforderungen:**
+                          1. Beginne SOFORT mit "## 1. Einleitung"(kein Text davor!)
 2. Schreibe ALLE Kapitel aus der Gliederung vollständig und IN DER RICHTIGEN REIHENFOLGE
 3. Jedes Kapitel muss seinen wissenschaftlichen Zweck erfüllen
-4. Ende mit dem letzten Kapitel (Fazit/Diskussion) - DANN STOPP!
+4. Ende mit dem letzten Kapitel(Fazit / Diskussion) - DANN STOPP!
 5. Wenn du mehr Inhalt brauchst, erweitere die BESTEHENDEN Kapitel, füge KEINE neuen hinzu
 6. KEINE Unterkapitel erfinden, die nicht in der Gliederung stehen!
 
-**Aufbau der Arbeit (in Einleitung):**
-- Beschreibe NUR die nachfolgenden Kapitel (2, 3, 4...)
-- NICHT Kapitel 1 beschreiben (ist bereits geschrieben)
+  ** Aufbau der Arbeit(in Einleitung):**
+    - Beschreibe NUR die nachfolgenden Kapitel(2, 3, 4...)
+      - NICHT Kapitel 1 beschreiben(ist bereits geschrieben)
   ✗ "Das erste Kapitel führt ein..."
   ✓ "Im zweiten Kapitel wird..., das dritte Kapitel behandelt..."
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT-FORMAT
+OUTPUT - FORMAT
 ═══════════════════════════════════════════════════════════════════════════════
 
 Gib den Text in Markdown aus - EXAKT nach der vorgegebenen Gliederung:
 
 ## 1. Einleitung
-[Einleitungstext mit Zitationen^1^2...]
+[Einleitungstext mit Zitationen ^ 1 ^ 2...]
 
-## 2. [Exakter Kapitelname aus Gliederung]
+## 2.[Exakter Kapitelname aus Gliederung]
 [Kapiteltext...]
 
-## 3. [Exakter Kapitelname aus Gliederung]
+## 3.[Exakter Kapitelname aus Gliederung]
 [Kapiteltext...]
 
 [... alle Kapitel EXAKT wie in der Gliederung ...]
 
-## [Letztes Kapitel aus Gliederung - z.B. Fazit]
+##[Letztes Kapitel aus Gliederung - z.B.Fazit]
 [Fazittext...]
 
---- ENDE DER ARBEIT ---
+--- ENDE DER ARBEIT-- -
 
-**⚠️ NACH DEM LETZTEN KAPITEL KOMMT NICHTS MEHR!**
-- Kein weiterer Text
-- Keine Ergänzungen
-- Keine Zusammenfassungen
-- Keine zusätzlichen Abschnitte
-- STOPP nach dem letzten Satz des Fazits/Schlusskapitels
+**⚠️ NACH DEM LETZTEN KAPITEL KOMMT NICHTS MEHR! **
+  - Kein weiterer Text
+    - Keine Ergänzungen
+      - Keine Zusammenfassungen
+        - Keine zusätzlichen Abschnitte
+          - STOPP nach dem letzten Satz des Fazits / Schlusskapitels
 
-${thesisData.citationStyle === 'deutsche-zitierweise' ? `
-**Fußnoten-Format im Text:**
-- Markiere Zitationen mit ^N direkt nach dem zitierten Inhalt (z.B. "Die Forschung zeigt^1")
-- Die Fußnoten-Metadaten werden automatisch verarbeitet - schreibe KEINE Fußnoten-Definitionen am Ende
-- Verwende fortlaufende Nummerierung (^1, ^2, ^3...)` : ''}
+
+
 
 BEGINNE JETZT mit "## 1. Einleitung" - schreibe die vollständige Thesis.
 HALTE DICH STRIKT an die vorgegebene Gliederung - KEINE zusätzlichen Kapitel oder Ergänzungen!`
@@ -3786,15 +3803,11 @@ If you write too little again, the thesis will be delivered incomplete!
 
         // CRITICAL: Check for minimum citation count
         let citationCount = 0
-        if (thesisData.citationStyle === 'deutsche-zitierweise') {
-          // Count footnotes: ^1, ^2, ^N etc.
-          const footnoteMatches = content.match(/\^(\d+)/g)
-          citationCount = footnoteMatches?.length || 0
-        } else {
-          // Count in-text citations: (Author, Year, S. XX) or (Author, Year, p. XX)
-          const citationMatches = content.match(/\([A-ZÄÖÜa-zäöü][a-zäöüß]+(?:\s+et\s+al\.?)?,?\s+\d{4}/g)
-          citationCount = citationMatches?.length || 0
-        }
+
+        // Check for page numbers in citations
+        // Matches (Author, Year, p. XX) or (Author, Year, S. XX)
+        const citationMatches = content.match(/\([A-ZÄÖÜa-zäöü][a-zäöüß]+(?:\s+et\s+al\.?)?,?\s+\d{4},?\s+[Sp]\.\s*\d+/g)
+        citationCount = citationMatches?.length || 0
 
         // Minimum citations: ~1 per 500 words (relaxed from strict requirement)
         const minCitations = Math.max(3, Math.floor(expectedWordCount / 600))
@@ -6354,7 +6367,7 @@ function generateBibliography(
     sourceMap.set(id, s)
   })
 
-  if (citationStyle === 'deutsche-zitierweise') {
+  if (false) {
     // For German style, use the extracted footnotes matching
     // Strategy: List ONLY sources referenced in footnotes
     if (Object.keys(footnotes).length > 0) {

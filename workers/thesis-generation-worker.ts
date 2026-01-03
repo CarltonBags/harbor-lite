@@ -2056,7 +2056,6 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     apa: 'APA',
     mla: 'MLA',
     harvard: 'Harvard',
-    'deutsche-zitierweise': 'Deutsche Zitierweise',
   }
 
   const citationStyleLabel = citationStyleLabels[thesisData.citationStyle] || thesisData.citationStyle
@@ -2206,7 +2205,7 @@ Erstelle den vollständigen Fließtext für alle Kapitel der Thesis. Du erstells
 **Was du erstellst:**
 - Vollständiger wissenschaftlicher Text für ALLE Kapitel aus der Gliederung
 - Zitationen im korrekten Stil (${citationStyleLabel})
-- ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'Fußnoten-Definitionen am Ende (Format: [^1]: Autor, Titel, Jahr, S. XX)' : 'In-Text-Zitationen im korrekten Format'}
+- In-Text-Zitationen im korrekten Format (Autor, Jahr, S. XX)
 
 **Was du NICHT erstellst:**
 - KEIN Inhaltsverzeichnis (wird automatisch generiert)
@@ -2247,18 +2246,9 @@ QUELLENNUTZUNG
 
 **Seitenzahlen:** JEDE Zitation muss eine Seitenzahl enthalten (S. XX oder S. XX-YY).
 
-${thesisData.citationStyle === 'deutsche-zitierweise' ? `**Deutsche Zitierweise (Fußnoten):**
-- Im Text: Verwende "^N" direkt nach dem zitierten Inhalt (z.B. "Die Forschung zeigt^1")
-- Am Ende: Definiere alle Fußnoten als [^N]: Autor, Titel, Jahr, S. XX
-- Fortlaufende Nummerierung (1, 2, 3...) in der Reihenfolge des Erscheinens
-- Jede neue Zitation = neue Nummer (auch bei wiederholter Quelle)
-
-Beispiel:
-Text: "Die Digitalisierung verändert Arbeitsprozesse grundlegend^1. Studien belegen^2..."
-[^1]: Müller, Hans. Digitale Transformation. Berlin: Verlag, 2023, S. 45.
-[^2]: Schmidt, Anna. "Arbeit 4.0." Zeitschrift, 2022, S. 12-15.` : `**${citationStyleLabel}:**
+**${citationStyleLabel}:**
 - Zitiere im Text: (Autor, Jahr, S. XX) oder (Autor, Jahr, S. XX-YY)
-- Bei mehreren Autoren: (Autor et al., Jahr, S. XX)`}
+- Bei mehreren Autoren: (Autor et al., Jahr, S. XX)
 
 ═══════════════════════════════════════════════════════════════════════════════
 SCHREIBSTIL
@@ -2320,13 +2310,6 @@ Gib den Text in Markdown aus:
 
 ## [Letztes Kapitel - Fazit/Diskussion]
 [Fazittext...]
-
-${thesisData.citationStyle === 'deutsche-zitierweise' ? `
----
-FUSSNOTEN:
-[^1]: [Vollständige Quellenangabe mit Seitenzahl]
-[^2]: [Vollständige Quellenangabe mit Seitenzahl]
-[... alle Fußnoten ...]` : ''}
 
 BEGINNE JETZT mit "## 1. Einleitung" - schreibe die vollständige Thesis.`
 
@@ -2596,11 +2579,11 @@ ${thesisData.lengthUnit === 'words' ? `- For word-based length, you can be up to
 - The work is only complete when:
   * ALL chapters from the outline are complete
   * The target length is reached (${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words${thesisData.lengthUnit === 'words' ? `, can be up to ${Math.ceil(thesisData.targetLength * 1.05)} words` : ''})
-  * ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'All footnotes are present' : 'All citations are correct'}
+  * All citations are correct
 
 **3. NO EARLY STOPPING - ABSOLUTELY CRITICAL:**
 - The work must NOT end in the middle of a chapter.
-- The work must NOT end without ${thesisData.citationStyle === 'deutsche-zitierweise' ? 'footnotes' : 'citations'}.
+- The work must NOT end without citations.
 - You MUST write until you reach the target length - do NOT stop early.
 - If you notice you haven't reached the target length yet, develop the chapters in more detail, add more details, expand the discussion.
 - Each chapter should be proportionally detailed relative to the total length.
@@ -2617,7 +2600,7 @@ ${thesisData.lengthUnit === 'words' ? `- For word-based length, you can be up to
   - Begin the description with the second chapter, since Chapter 1 is already present.
 - Main chapters: Each chapter fully developed
 - Discussion/Conclusion: Complete with summary, answer to research question, outlook
-${thesisData.citationStyle === 'deutsche-zitierweise' ? '- Footnotes: Complete with all citations\n' : ''}
+
 
 **5. QUALITY WITH COMPLETENESS:**
 - The work must be complete, but also of high quality.
@@ -2633,7 +2616,7 @@ Create a COMPLETE, FULL-LENGTH, citable, scientifically sound thesis that:
 1. Implements ALL chapters from the outline completely
 2. Reaches the target length of ${thesisData.targetLength} ${thesisData.lengthUnit} (${targetPages} pages, ~${thesisData.lengthUnit === 'words' ? thesisData.targetLength : thesisData.targetLength * 250} words)
 3. (Deleted requirement)
-${thesisData.citationStyle === 'deutsche-zitierweise' ? '4. Includes all footnotes\n' : '4. Includes all citations\n'}5. Is logically structured and correctly implements the citation style
+4. Includes all citations\n5. Is logically structured and correctly implements the citation style
 6. Uses exclusively validated sources
 7. Sounds natural and human from the start, not like AI-generated
 
@@ -2747,17 +2730,9 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
         // CRITICAL: Check for placeholder bibliography text
         const hasPlaceholderBib = /beispiel|example|placeholder|hypothetische quelle|hypothetical source|dies ist nur ein beispiel|this is just an example/i.test(bibliographyContent)
 
-        // CRITICAL: Check for minimum citation count
-        let citationCount = 0
-        if (thesisData.citationStyle === 'deutsche-zitierweise') {
-          // Count footnotes: ^1, ^2, etc.
-          const footnoteMatches = content.match(/\[\^\d+\]/g)
-          citationCount = footnoteMatches?.length || 0
-        } else {
-          // Count in-text citations with page numbers
-          const citationMatches = content.match(/\([A-ZÄÖÜa-zäöü][a-zäöüß]+,?\s+\d{4},?\s+[Sp]\.\s*\d+/g)
-          citationCount = citationMatches?.length || 0
-        }
+        // Count in-text citations with page numbers
+        const citationMatches = content.match(/\([A-ZÄÖÜa-zäöü][a-zäöüß]+,?\s+\d{4},?\s+[Sp]\.\s*\d+/g)
+        const citationCount = citationMatches?.length || 0
 
         // Minimum citations: ~1 per 500 words (10,000 words = 20 citations minimum)
         const minCitations = Math.max(5, Math.floor(expectedWordCount / 500))
@@ -2779,73 +2754,69 @@ DO NOT STOP until all requirements are met. The thesis must be COMPLETE.`
           console.error(`[ThesisGeneration]   This indicates incomplete generation`)
           console.error(`[ThesisGeneration]   Citation style: ${thesisData.citationStyle}`)
 
-          // Check if footnotes are present (for German citation)
-          if (thesisData.citationStyle === 'deutsche-zitierweise') {
-            const hasFootnotes = /\[\^\d+\]:|fußnoten|footnotes/i.test(content)
-            console.error(`[ThesisGeneration]   Has footnotes: ${hasFootnotes}`)
-          }
-
-          // Log the validation results (variables already computed above)
-          console.error(`[ThesisGeneration]   Citation count: ${citationCount} (minimum: ${minCitations})`)
-          console.error(`[ThesisGeneration]   Has sufficient citations: ${hasSufficientCitations}`)
-          console.error(`[ThesisGeneration]   Has placeholder bibliography: ${hasPlaceholderBib}`)
-
-
-          // Don't return incomplete content - throw error to trigger retry
-          if (attempt < maxAttempts) {
-            const issues = []
-            if (isTooShort) issues.push(`too short (${wordCount}/${expectedWordCount} words)`)
-            if (isMissingBibliography) issues.push('missing or empty bibliography')
-            if (hasPlaceholderBib) issues.push('bibliography contains placeholder/example text')
-            if (!hasSufficientCitations) issues.push(`insufficient citations (${citationCount}/${minCitations})`)
-            if (isMissingChapters && !wordCountMet) issues.push(`missing chapters (${foundChapters.length}/${outlineChapters.length})`)
-            throw new Error(`Generated content is incomplete: ${issues.join(', ')}. Attempting retry with stronger instructions.`)
-          } else {
-            console.error(`[ThesisGeneration]   All attempts exhausted - returning incomplete content (this is a problem!)`)
-            // Still return it, but log the issue
-          }
-        } else {
-          // Content looks good - log success even if chapter detection was imperfect
-          if (foundChapters.length < outlineChapters.length && wordCountMet) {
-            console.log(`[ThesisGeneration] ✓ Content complete (word count met: ${wordCount}/${expectedWordCount}, bibliography present)`)
-            console.log(`[ThesisGeneration]   Note: Chapter detection found ${foundChapters.length}/${outlineChapters.length} chapters, but word count suggests content is complete`)
-          }
         }
 
-        return content
+        // Log the validation results (variables already computed above)
+        console.error(`[ThesisGeneration]   Citation count: ${citationCount} (minimum: ${minCitations})`)
+        console.error(`[ThesisGeneration]   Has sufficient citations: ${hasSufficientCitations}`)
+        console.error(`[ThesisGeneration]   Has placeholder bibliography: ${hasPlaceholderBib}`)
+
+
+        // Don't return incomplete content - throw error to trigger retry
+        if (attempt < maxAttempts) {
+          const issues = []
+          if (isTooShort) issues.push(`too short (${wordCount}/${expectedWordCount} words)`)
+          if (isMissingBibliography) issues.push('missing or empty bibliography')
+          if (hasPlaceholderBib) issues.push('bibliography contains placeholder/example text')
+          if (!hasSufficientCitations) issues.push(`insufficient citations (${citationCount}/${minCitations})`)
+          if (isMissingChapters && !wordCountMet) issues.push(`missing chapters (${foundChapters.length}/${outlineChapters.length})`)
+          throw new Error(`Generated content is incomplete: ${issues.join(', ')}. Attempting retry with stronger instructions.`)
+        } else {
+          console.error(`[ThesisGeneration]   All attempts exhausted - returning incomplete content (this is a problem!)`)
+          // Still return it, but log the issue
+        }
       } else {
-        console.warn(`[ThesisGeneration] Attempt ${attempt} returned invalid content (length: ${content.length})`)
-        lastError = new Error(`Invalid content returned: length ${content.length} < 100`)
-      }
-    } catch (error: any) {
-      lastError = error
-      const errorMessage = error?.message || String(error)
-      const errorStatus = error?.status || error?.code || 'unknown'
-      console.error(`[ThesisGeneration] ✗ Attempt ${attempt}/${maxAttempts} failed:`)
-      console.error(`[ThesisGeneration]   Error: ${errorMessage}`)
-      console.error(`[ThesisGeneration]   Status/Code: ${errorStatus}`)
-      if (error?.response) {
-        console.error(`[ThesisGeneration]   Response:`, JSON.stringify(error.response).substring(0, 500))
+        // Content looks good - log success even if chapter detection was imperfect
+        if (foundChapters.length < outlineChapters.length && wordCountMet) {
+          console.log(`[ThesisGeneration] ✓ Content complete (word count met: ${wordCount}/${expectedWordCount}, bibliography present)`)
+          console.log(`[ThesisGeneration]   Note: Chapter detection found ${foundChapters.length}/${outlineChapters.length} chapters, but word count suggests content is complete`)
+        }
       }
 
-      // If not the last attempt, wait before retrying
-      if (attempt < maxAttempts) {
-        const waitTime = 5000 * attempt // Exponential backoff: 5s, 10s
-        console.log(`[ThesisGeneration] Waiting ${waitTime}ms before retry...`)
-        await new Promise(resolve => setTimeout(resolve, waitTime))
-      }
+      return content
+    } else {
+      console.warn(`[ThesisGeneration] Attempt ${attempt} returned invalid content (length: ${content.length})`)
+      lastError = new Error(`Invalid content returned: length ${content.length} < 100`)
+    }
+  } catch (error: any) {
+    lastError = error
+    const errorMessage = error?.message || String(error)
+    const errorStatus = error?.status || error?.code || 'unknown'
+    console.error(`[ThesisGeneration] ✗ Attempt ${attempt}/${maxAttempts} failed:`)
+    console.error(`[ThesisGeneration]   Error: ${errorMessage}`)
+    console.error(`[ThesisGeneration]   Status/Code: ${errorStatus}`)
+    if (error?.response) {
+      console.error(`[ThesisGeneration]   Response:`, JSON.stringify(error.response).substring(0, 500))
+    }
+
+    // If not the last attempt, wait before retrying
+    if (attempt < maxAttempts) {
+      const waitTime = 5000 * attempt // Exponential backoff: 5s, 10s
+      console.log(`[ThesisGeneration] Waiting ${waitTime}ms before retry...`)
+      await new Promise(resolve => setTimeout(resolve, waitTime))
     }
   }
+}
 
-  // If all attempts failed, throw detailed error
-  const errorDetails = lastError instanceof Error
-    ? `${lastError.message} (${lastError.name})`
-    : String(lastError)
-  throw new Error(
-    `Failed to generate thesis content after ${maxAttempts} attempts with FileSearchStore + Gemini Pro. ` +
-    `Last error: ${errorDetails}. ` +
-    `FileSearchStore ID: ${thesisData.fileSearchStoreId}`
-  )
+// If all attempts failed, throw detailed error
+const errorDetails = lastError instanceof Error
+  ? `${lastError.message} (${lastError.name})`
+  : String(lastError)
+throw new Error(
+  `Failed to generate thesis content after ${maxAttempts} attempts with FileSearchStore + Gemini Pro. ` +
+  `Last error: ${errorDetails}. ` +
+  `FileSearchStore ID: ${thesisData.fileSearchStoreId}`
+)
 }
 
 /**
@@ -3673,80 +3644,7 @@ async function checkWinston(content: string): Promise<{
   }
 }
 
-/**
- * Extract and process footnotes from German citation style text
- * Footnotes are numbered sequentially (1, 2, 3, ...) based on order of appearance in text
- * NOT based on source identity - each citation gets the next sequential number
- * Returns content with footnote markers and a footnotes object
- */
-function extractAndProcessFootnotes(content: string): { content: string; footnotes: Record<number, string> } {
-  // Step 1: Extract all markdown-style footnotes [^N]: citation
-  const markdownFootnoteRegex = /\[\^(\d+)\]:\s*(.+?)(?=\n\[\^|\n\n|$)/gs
-  const extractedFootnotes: Map<number, string> = new Map()
-  let processedContent = content.replace(markdownFootnoteRegex, (match, num, citation) => {
-    const footnoteNum = parseInt(num, 10)
-    extractedFootnotes.set(footnoteNum, citation.trim())
-    return '' // Remove the footnote definition from content
-  })
 
-  // Step 2: Replace all footnote references in text with ^N format
-  processedContent = processedContent.replace(/\[\^(\d+)\]/g, '^$1')
-
-  // Step 3: Find all footnote markers in text in order of appearance
-  // This gives us the sequential order of citations
-  const footnoteMarkers: Array<{ position: number; originalNum: number }> = []
-  const footnoteRegex = /\^(\d+)/g
-  let match
-  while ((match = footnoteRegex.exec(processedContent)) !== null) {
-    const originalNum = parseInt(match[1], 10)
-    footnoteMarkers.push({
-      position: match.index,
-      originalNum: originalNum
-    })
-  }
-
-  // Step 4: Create sequential numbering based on order of appearance
-  // Each citation occurrence gets the next sequential number (1, 2, 3, ...)
-  // Even if the same source is cited multiple times, each occurrence gets a new number
-  const sequentialFootnotes: Record<number, string> = {}
-  const markerToSequential: Map<number, number> = new Map() // marker index -> sequential number
-  let nextSequentialNumber = 1
-
-  // Process footnotes in order of appearance in text
-  // Each occurrence gets the next sequential number, regardless of source
-  for (let i = 0; i < footnoteMarkers.length; i++) {
-    const marker = footnoteMarkers[i]
-    const originalNum = marker.originalNum
-    const citation = extractedFootnotes.get(originalNum)
-
-    if (citation) {
-      // Assign the next sequential number to this citation occurrence
-      const sequentialNum = nextSequentialNumber++
-      markerToSequential.set(i, sequentialNum)
-      sequentialFootnotes[sequentialNum] = citation
-    }
-  }
-
-  // Step 5: Replace all ^N markers with sequential numbers based on order
-  // We need to replace them in order, so we track which one we're on
-  let currentMarkerIndex = 0
-  processedContent = processedContent.replace(/\^(\d+)/g, (match, numStr) => {
-    if (currentMarkerIndex < footnoteMarkers.length) {
-      const sequentialNum = markerToSequential.get(currentMarkerIndex)
-      currentMarkerIndex++
-      if (sequentialNum) {
-        return `^${sequentialNum}`
-      }
-    }
-    // Fallback: keep original
-    return match
-  })
-
-  console.log(`[Footnotes] Processed ${footnoteMarkers.length} footnote markers into ${Object.keys(sequentialFootnotes).length} sequential footnotes`)
-  console.log(`[Footnotes] Sequential numbering: ${Array.from(Object.keys(sequentialFootnotes).map(n => parseInt(n, 10)).sort((a, b) => a - b).slice(0, 10).join(', '))}${Object.keys(sequentialFootnotes).length > 10 ? '...' : ''}`)
-
-  return { content: processedContent.trim(), footnotes: sequentialFootnotes }
-}
 
 /**
  * Check if FileSearchStore already has documents uploaded
@@ -4338,17 +4236,10 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       console.error('[PROCESS] ERROR in Winston check:', error)
     }
 
-    // Process footnotes for German citation style
+    // Process footnotes for German citation style - DEPRECATED (removed)
     let processedContent = thesisContent
     let footnotes: Record<number, string> = {}
 
-    if (thesisData.citationStyle === 'deutsche-zitierweise') {
-      console.log('[PROCESS] Processing German footnotes...')
-      const footnoteResult = extractAndProcessFootnotes(thesisContent)
-      processedContent = footnoteResult.content
-      footnotes = footnoteResult.footnotes
-      console.log(`[PROCESS] Extracted ${Object.keys(footnotes).length} footnotes`)
-    }
 
     // Update thesis in database
     console.log('[PROCESS] Updating thesis in database with generated content...')
@@ -4399,10 +4290,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         updateData.metadata.used_sources = bibResult.usedSources
         updateData.metadata.bibliography_sources = bibResult.usedSourceIds
 
-        // Add footnotes if German citation style
-        if (thesisData.citationStyle === 'deutsche-zitierweise' && Object.keys(footnotes).length > 0) {
-          updateData.metadata.footnotes = footnotes
-        }
+
 
         // Add ZeroGPT result if available
         if (zeroGptResult) {
@@ -4814,7 +4702,7 @@ function generateBibliography(
     sourceMap.set(id, s)
   })
 
-  if (citationStyle === 'deutsche-zitierweise') {
+  if (false) {
     // For German style, use the extracted footnotes matching
     // Strategy: List ONLY sources referenced in footnotes
     if (Object.keys(footnotes).length > 0) {
