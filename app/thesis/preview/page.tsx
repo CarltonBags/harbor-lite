@@ -421,6 +421,27 @@ const ThesisPreviewContent = () => {
     return text.replace(/([^\n])\s*(#{1,6}\s+)/g, '$1\n\n$2')
   }
 
+  // Helper to normalize heading levels based on numbering
+  // Ensures 1. -> ##, 1.1 -> ###, etc. regardless of generation errors
+  const normalizeHeadingLevels = (text: string): string => {
+    if (!text) return ''
+    return text.split('\n').map(line => {
+      // Match numeric headings (e.g. "# 1. Title", "## 2.3 Title")
+      const match = line.match(/^(\#{1,6})\s+(\d+(?:\.\d+)*)\.?\s+(.+)$/)
+      if (match) {
+        const [_, hashes, number, content] = match
+        // Count levels: "1" = 1, "1.2" = 2, "1.2.3" = 3
+        const level = number.split('.').filter(n => n.trim().length > 0).length
+
+        // Mapping: Level 1 -> ## (Heading 2), Level 2 -> ### (Heading 3)
+        // This ensures consistent hierarchy even if AI generated wrong hashes
+        const targetHashes = '#'.repeat(Math.min(6, level + 1))
+        return `${targetHashes} ${number} ${content}`
+      }
+      return line
+    }).join('\n')
+  }
+
   const loadThesis = async () => {
     if (!thesisId) return
 
@@ -438,6 +459,7 @@ const ThesisPreviewContent = () => {
 
       // Fix formatting issues immediately on load
       thesisContent = ensureHeadingsOnNewLines(thesisContent)
+      thesisContent = normalizeHeadingLevels(thesisContent)
 
       setContent(thesisContent)
       setOriginalContent(thesisContent)

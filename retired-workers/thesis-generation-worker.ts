@@ -2665,7 +2665,7 @@ async function critiqueThesis(
   try {
     // Use efficient strong model for critique
     const response = await retryApiCall(() => ai.models.generateContent({
-      model: 'gemini-1.5-pro', // Switched to Stable Pro as requested (2.5 may vary by region)
+      model: 'gemini-2.5-pro', // Switched to Stable Pro as requested (2.5 may vary by region)
       contents: prompt,
       config: { maxOutputTokens: 8192, temperature: 0.1 }, // Max output for 1.5 Pro is typically 8k
     }), 'Critique Thesis')
@@ -2867,7 +2867,8 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
         continue
       }
 
-      const chapterTarget = Math.max(800, Math.round(targetWordCount / outlineChapters.length))
+      // Lower floor to 300 words to accommodate short theses (e.g. 3500 words / 6 chapters = ~600 words)
+      const chapterTarget = Math.max(300, Math.round(targetWordCount / outlineChapters.length))
       console.log(`[ThesisGeneration] Generating chapter ${chapter.number} (${chapterTarget} words target)`)
 
       const { content: chapterText, wordCount: chapterWordCount } = await generateChapterContent({
