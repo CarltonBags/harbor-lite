@@ -1107,9 +1107,14 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
             const isJournalStartNumeric = journalPageStart ? /^\d+$/.test(journalPageStart) : false
             const isJournalEndNumeric = journalPageEnd ? /^\d+$/.test(journalPageEnd) : false
 
-            // Case 1: Non-numeric pages (e.g. "a017640") - User explicitly wants to prevent this
-            if ((!isJournalStartNumeric || !isJournalEndNumeric) && journalPageStart) {
-              console.warn(`[DocUpload] DETECTED NON-NUMERIC PAGES: API returned "${journalPageStart}-${journalPageEnd}". Overriding with extracted PDF pages.`)
+            // Case 1: Non-numeric pages (e.g. "a017640") OR Pages > 10000 (Article IDs)
+            // User explicit rule: "everything above 10000 should be treated as false"
+            const startVal = parseInt(journalPageStart || '0', 10)
+            const endVal = parseInt(journalPageEnd || '0', 10)
+            const isTooLarge = startVal > 10000 || endVal > 10000
+
+            if (((!isJournalStartNumeric || !isJournalEndNumeric) || isTooLarge) && journalPageStart) {
+              console.warn(`[DocUpload] DETECTED INVALID PAGES (Non-numeric or >10000): API returned "${journalPageStart}-${journalPageEnd}". Overriding with extracted PDF pages.`)
               journalPageStart = pdfPageStart
               journalPageEnd = pdfPageEnd
               console.log(`[DocUpload] Overridden with PDF pages: ${journalPageStart}-${journalPageEnd}`)
@@ -2403,8 +2408,8 @@ INSTEAD - Attribute research to REAL authors:
     const isIntroduction = chapter.number === '1' || chapter.number === '1.' || chapterLabel.toLowerCase().includes('einleitung') || chapterLabel.toLowerCase().includes('introduction');
     const structureInstruction = isIntroduction
       ? (isGerman
-        ? `\n**⚠️ WICHTIG - AUFBAU DER ARBEIT (Letzter Abschnitt):**\n1. Wenn du den Aufbau der Arbeit beschreibst: Erwähne NIEMALS Kapitel 1 (dieses Kapitel). Beginne SOFORT mit Kapitel 2.\n2. **KEINE ZITATIONEN** in diesem Abschnitt! Der Aufbau der Arbeit beschreibt nur deine eigene Struktur -> Zitationen machen hier KEINEN Sinn.\n3. **STOPP NACH DEM LETZTEN KAPITEL!** Schreibe nach der Beschreibung des Fazits KEIN weiteres Wort. Keine Definitionen, keine Zusammenfassungen, NICHTS.\n4. **KEINE INHALTSDEFINITIONEN:** Schreibe NICHT "In Kapitel 2 wird KI definiert als...". Schreibe NUR "Kapitel 2 definiert die Grundlagen der KI." - Rein strukturell!\n5. FALSCH: "Kapitel 1 leitet ein..."\n6. RICHTIG: "Das zweite Kapitel beleuchtet..."`
-        : `\n**⚠️ IMPORTANT - STRUCTURE OF THE WORK (Last section):**\n1. When describing the thesis structure: NEVER mention Chapter 1 (this chapter). Start IMMEDIATELY with Chapter 2.\n2. **NO CITATIONS** in this section! The structure description explains your own work -> citations make NO sense here.\n3. **STOP AFTER THE LAST CHAPTER!** Do not write a single word after describing the conclusion. No definitions, no summaries, NOTHING.\n4. **NO DEFINITIONS:** Do not write "In Chapter 2, AI is defined as...". Write ONLY "Chapter 2 defines the basics of AI." - Purely structural!\n5. WRONG: "Chapter 1 introduces..."\n6. CORRECT: "The second chapter examines..."`)
+        ? `\n**⚠️ WICHTIG - AUFBAU DER ARBEIT (Gang der Untersuchung):**\n1. Nutze für die Beschreibung der kommenden Kapitel AUSSCHLIESSLICH die Informationen aus dem Abschnitt **"AUSBLICK AUF KOMMENDE KAPITEL"** (oben im Prompt).\n2. Erwähne NIEMALS Kapitel 1 (dieses Kapitel). Beginne SOFORT mit Kapitel 2.\n3. **KEINE HALLUZINATIONEN:** Erfinde keine Themen! Wenn im Ausblick steht "Kapitel 3: Methodik", dann schreibe "Kapitel 3 erläutert das methodische Vorgehen". Schreibe NICHT "Kapitel 3 behandelt Neurobiologie", wenn das nicht dort steht!\n4. **KEINE ZITATIONEN** in diesem Abschnitt! Der Aufbau der Arbeit beschreibt nur deine eigene Struktur.\n5. **STOPP NACH DEM LETZTEN KAPITEL!**`
+        : `\n**⚠️ IMPORTANT - STRUCTURE OF THE WORK:**\n1. To describe the upcoming chapters, you MUST EXCLUSIVELY use the information from the **"FUTURE CHAPTERS OUTLOOK"** section (provided above).\n2. NEVER mention Chapter 1 (this chapter). Start IMMEDIATELY with Chapter 2.\n3. **NO HALLUCINATIONS:** Do not invent topics! If the outlook says "Chapter 3: Methodology", write "Chapter 3 explains the methodology". Do NOT write "Chapter 3 covers Neurobiology" if it's not there!\n4. **NO CITATIONS** in this section!\n5. **STOP AFTER THE LAST CHAPTER!**`)
       : '';
 
     return `${promptIntro}
@@ -5851,7 +5856,14 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           console.log(`[Repair] Repairing chunk ${i + 1}/${chapters.length}: "${chunkTitle.substring(0, 50)}..."`)
 
           const repairedChunk = await fixChapterContent(chunk, critiqueReport, thesisData.language === 'german')
-          repairedChapters.push(repairedChunk)
+
+          // Safety check: If repair lost too much content (>40% loss), revert to original
+          if (repairedChunk.length < chunk.length * 0.6) {
+            console.warn(`[Repair] WARNING: Repaired chunk ${i + 1} is significantly shorter (${repairedChunk.length} vs ${chunk.length}). Reverting to original to prevent data loss.`)
+            repairedChapters.push(chunk)
+          } else {
+            repairedChapters.push(repairedChunk)
+          }
         }
 
         // 3. Reassemble
