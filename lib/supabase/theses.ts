@@ -60,6 +60,7 @@ export async function updateThesis(
     file_search_store_id: string
     uploaded_sources: any
     status: string
+    critique_report: string
   }>
 ): Promise<Thesis> {
   const supabase = createSupabaseClient()

@@ -5816,6 +5816,17 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       )
       console.log('[Critique] Report generated:')
       console.log(critiqueReport)
+
+      // Save critique report to database
+      try {
+        await supabase
+          .from('theses')
+          .update({ critique_report: critiqueReport })
+          .eq('id', thesisId)
+        console.log('[Critique] Report saved to database')
+      } catch (dbError) {
+        console.error('[Critique] Failed to save report to database:', dbError)
+      }
     } catch (error) {
       console.error('[PROCESS] ERROR in Thesis Critique:', error)
     }
