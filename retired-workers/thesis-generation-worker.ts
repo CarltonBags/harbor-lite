@@ -879,46 +879,37 @@ async function extractPageNumbers(pdfBuffer: Buffer): Promise<{ pageStart: strin
     // CRITICAL: Extract the ACTUAL page count of the document, not internal PDF page numbers
     const prompt = `Analyze this PDF document and extract the VISUAL page numbers.
 
-OBJECTIVE:
-Identify the correct "Start Page" and "End Page" as they appear visually on the document.
+    TASK:
+    1. Scan the header and footer of the FIRST visually distinct page.
+       - List all numbers found (e.g. "5917", "1", "2023").
+    2. Scan the header and footer of the SECOND visually distinct page.
+       - List all numbers found (e.g. "5917", "2", "2023").
+    3. COMPARE the numbers:
+       - "5917" vs "5917" -> Constant (likely Article ID or Year). REJECT.
+       - "1" vs "2" -> Increments (+1). ACCEPT as Page Number.
+       - "100" vs "101" -> Increments (+1). ACCEPT.
+    4. EXTRACT the correct Start and End page numbers based on this pattern.
 
-CRITICAL RULES:
-1. **Distinguish Article ID vs. Page Number**:
-   - Many scientific papers have an "Article ID" (e.g., 5719, e03342) in the header/branding area.
-   - The ACTUAL page number is usually in the corner (bottom-right or top-right).
-   - If you see "1" in the corner and "5719" in the header, the page number is 1.
-   - **IGNORE** numbers attached to "DOI", "Vol", "No", other strings,or colons (e.g. "doi...:5719", "14:5719"). These are identifiers, NOT page numbers.
+    RESPONSE FORMAT:
+    First, provide your reasoning. Do NOT use curly braces {} in your reasoning.
+    "REASONING:
+    Page 1 found: ...
+    Page 2 found: ...
+    Comparison: ...
+    Conclusion: ..."
 
-2. **Verify Sequence**:
-   - Check the first page. Does it say "1"?
-   - Check the second page. Does it say "2"?
-   - If yes, the pattern is 1, 2, 3... -> Use this!
-   - ID "5719" will likely stay constant. Do NOT use this.
+    Then, provide the JSON:
+    {
+      "pageStart": "1",
+      "pageEnd": "10"
+    }
 
-3. **Plausibility Check (Multiple Candidates)**:
-   - If you see multiple numbers (e.g. "5719" top-right, "1" bottom-center):
-   - Check next page: Does "5719" become "5720"? Or stay "5719"?
-   - Does "1" become "2"?
-   - ALWAYS choose the number that increments. Static numbers are Article IDs or Years.
+    Do NOT return alphanumeric strings like "e1234" (numeric only).`
 
-4. **Format**:
-   - Input: A PDF where Page 1 is physically the first page.
-   - Output: The visual numbers.
-   - If the document starts at 1, pageStart is "1".
-
-Respond ONLY with a JSON object:
-{
-  "pageStart": "1",    // The visual number on the first page
-  "pageEnd": "10"      // The visual number on the last page
-}
-
-If visual page numbers are missing, count the physical pages (e.g. 1 to N).
-Do NOT return alphanumeric strings like "e1234" (we strictly filter those out). Numeric only.`
-
-    console.log('[PageExtraction] Calling Gemini 2.5 Flash to extract page numbers...')
+    console.log('[PageExtraction] Calling Gemini 2.5 Pro to extract page numbers...')
     const response = await retryApiCall(
       () => ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.5-pro',
         contents: [
           {
             parts: [
@@ -939,6 +930,9 @@ Do NOT return alphanumeric strings like "e1234" (we strictly filter those out). 
     )
 
     const content = response.text
+    if (content) {
+      console.log('[PageExtraction] AI Output:', content.substring(0, 500) + '...') // Log reasoning
+    }
     if (!content) {
       console.warn('[PageExtraction] WARNING: No content from Gemini')
       return { pageStart: null, pageEnd: null }
