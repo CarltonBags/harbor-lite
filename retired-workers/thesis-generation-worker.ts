@@ -876,30 +876,44 @@ async function extractPageNumbers(pdfBuffer: Buffer): Promise<{ pageStart: strin
 
     // Use Gemini 2.5 Flash to extract page numbers
     // CRITICAL: Extract the ACTUAL page count of the document, not internal PDF page numbers
-    const prompt = `Analyze this PDF document and extract the ACTUAL number of pages in the document.
+    // CRITICAL: Extract the ACTUAL page count of the document, not internal PDF page numbers
+    const prompt = `Analyze this PDF document and extract the VISUAL page numbers.
 
-IMPORTANT:
-- Count the TOTAL number of pages in the PDF file itself
-- This is the physical page count (e.g., if PDF has 3 pages, return pageEnd: "3")
-- Do NOT use journal page numbers or article page numbers
-- Do NOT use page numbers from headers/footers that might be wrong
-- Simply count: page 1, page 2, page 3, etc. until the last page
+OBJECTIVE:
+Identify the correct "Start Page" and "End Page" as they appear visually on the document.
 
-Look for:
-1. The first page number (usually 1)
-2. The last page number (total physical pages in the PDF)
+CRITICAL RULES:
+1. **Distinguish Article ID vs. Page Number**:
+   - Many scientific papers have an "Article ID" (e.g., 5719, e03342) in the header/branding area.
+   - The ACTUAL page number is usually in the corner (bottom-right or top-right).
+   - If you see "1" in the corner and "5719" in the header, the page number is 1.
+   - **IGNORE** numbers attached to "DOI", "Vol", "No", or colons (e.g. "doi...:5719", "14:5719"). These are identifiers, NOT page numbers.
 
-Respond ONLY with a JSON object in this format:
+2. **Verify Sequence**:
+   - Check the first page. Does it say "1"?
+   - Check the second page. Does it say "2"?
+   - If yes, the pattern is 1, 2, 3... -> Use this!
+   - ID "5719" will likely stay constant. Do NOT use this.
+
+3. **Plausibility Check (Multiple Candidates)**:
+   - If you see multiple numbers (e.g. "5719" top-right, "1" bottom-center):
+   - Check next page: Does "5719" become "5720"? Or stay "5719"?
+   - Does "1" become "2"?
+   - ALWAYS choose the number that increments. Static numbers are Article IDs or Years.
+
+4. **Format**:
+   - Input: A PDF where Page 1 is physically the first page.
+   - Output: The visual numbers.
+   - If the document starts at 1, pageStart is "1".
+
+Respond ONLY with a JSON object:
 {
-  "pageStart": "1",
-  "pageEnd": "3"
+  "pageStart": "1",    // The visual number on the first page
+  "pageEnd": "10"      // The visual number on the last page
 }
 
-If you cannot determine the page numbers accurately, return:
-{
-  "pageStart": null,
-  "pageEnd": null
-}`
+If visual page numbers are missing, count the physical pages (e.g. 1 to N).
+Do NOT return alphanumeric strings like "e1234" (we strictly filter those out). Numeric only.`
 
     console.log('[PageExtraction] Calling Gemini 2.5 Flash to extract page numbers...')
     const response = await retryApiCall(
