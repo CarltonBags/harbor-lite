@@ -1078,7 +1078,9 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
       const pageExtractStart = Date.now()
       try {
         const pageNumbers = await extractPageNumbers(docBuffer)
-        if (pageNumbers.pageStart && pageNumbers.pageEnd) {
+        // STRICT VALIDATION: PDF extraction must return numeric strings only
+        // Rejects "e1234", "1-10", "iv" etc. - We want purely "1" and "10"
+        if (pageNumbers.pageStart && pageNumbers.pageEnd && /^\d+$/.test(pageNumbers.pageStart) && /^\d+$/.test(pageNumbers.pageEnd)) {
           const extractedStart = parseInt(pageNumbers.pageStart, 10)
           const extractedEnd = parseInt(pageNumbers.pageEnd, 10)
 
@@ -1092,6 +1094,35 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
             pdfPageEnd = pageNumbers.pageEnd
             const pageExtractDuration = Date.now() - pageExtractStart
             console.log(`[DocUpload] PDF extraction: ${pdfPageStart}-${pdfPageEnd} pages (${pageExtractDuration}ms)`)
+
+            // CORRECTION: Check for invalid or mismatched API page data
+            const isJournalStartNumeric = journalPageStart ? /^\d+$/.test(journalPageStart) : false
+            const isJournalEndNumeric = journalPageEnd ? /^\d+$/.test(journalPageEnd) : false
+
+            // Case 1: Non-numeric pages (e.g. "a017640") - User explicitly wants to prevent this
+            if ((!isJournalStartNumeric || !isJournalEndNumeric) && journalPageStart) {
+              console.warn(`[DocUpload] DETECTED NON-NUMERIC PAGES: API returned "${journalPageStart}-${journalPageEnd}". Overriding with extracted PDF pages.`)
+              journalPageStart = pdfPageStart
+              journalPageEnd = pdfPageEnd
+              console.log(`[DocUpload] Overridden with PDF pages: ${journalPageStart}-${journalPageEnd}`)
+            } else if (journalPageStart && journalPageEnd && journalPageStart === journalPageEnd) {
+              const pdfPages = extractedEnd - extractedStart + 1
+              if (pdfPages > 1) {
+                console.warn(`[DocUpload] DETECTED PAGE MISMATCH: API says single page (${journalPageStart}) but PDF has ${pdfPages} pages.`)
+
+                // Calculate new end page based on PDF length
+                // Example: Start 20, PDF 10 pages -> End 20 + 10 - 1 = 29
+                const newEnd = parseInt(journalPageStart, 10) + pdfPages - 1
+                journalPageEnd = String(newEnd)
+                console.log(`[DocUpload] CORRECTED journal page range: ${journalPageStart}-${journalPageEnd}`)
+              }
+            } else if (!journalPageStart && !journalPageEnd) {
+              // Fallback: If no journal pages from API, use PDF pages
+              // This is better than "keine Angabe"
+              journalPageStart = pdfPageStart
+              journalPageEnd = pdfPageEnd
+              console.log(`[DocUpload] No API journal pages, using PDF pages as fallback: ${journalPageStart}-${journalPageEnd}`)
+            }
           }
         }
       } catch (error) {
@@ -5836,8 +5867,8 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     }
 
     // Step 7.5: Humanize the text to avoid AI detection
-    // SKIP if Step 7.4 already achieved a good score (>= 90%)
-    const humanScoreThreshold = 90
+    // SKIP if Step 7.4 already achieved a good score (>= 75%)
+    const humanScoreThreshold = 75
     const alreadyHumanEnough = winstonResult && winstonResult.score >= humanScoreThreshold
 
     if (alreadyHumanEnough) {
@@ -6558,13 +6589,10 @@ async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId:
         model: 'gemini-2.5-flash', // Fast and effective for this
         contents: prompt,
         config: {
-          maxOutputTokens: Math.ceil(content.split(' ').length * 2), // Ensure enough space for full text
+          maxOutputTokens: 8192, // Ensure enough space for full text
           temperature: 0.1, // Very low temperature for high precision
-          tools: [{
-            fileSearch: {
-              fileSearchStoreNames: [fileSearchStoreId],
-            },
-          }],
+          // Removed FileSearch tool as it requires a loop handler which is not implemented here.
+          // The model will still perform formatting verification logic.
         },
       }),
       'Verify citations',
@@ -6572,11 +6600,24 @@ async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId:
       1000
     )
 
-    const verifiedText = response.text?.trim()
+    let verifiedText = response.text?.trim()
 
-    // Safety check: if result is empty or vastly different in length, return original
-    if (!verifiedText || Math.abs(verifiedText.length - content.length) > content.length * 0.5) {
-      console.warn('[CitationVerifier] Verified text length mismatch or empty, rejecting.')
+    // Strip markdown blocks if present (common LLM artifact)
+    if (verifiedText?.startsWith('```')) {
+      verifiedText = verifiedText.replace(/^```[a-z]*\n/i, '').replace(/\n```$/, '').trim()
+    }
+
+    if (!verifiedText) {
+      console.warn('[CitationVerifier] Result is empty. Rejecting.')
+      return content
+    }
+
+    // Safety check: if result is vastly different in length, return original
+    const lengthDiff = Math.abs(verifiedText.length - content.length)
+    const allowedDiff = content.length * 0.5
+
+    if (lengthDiff > allowedDiff) {
+      console.warn(`[CitationVerifier] Verified text length mismatch (Original: ${content.length}, Output: ${verifiedText.length}). Rejecting.`)
       return content
     }
 
