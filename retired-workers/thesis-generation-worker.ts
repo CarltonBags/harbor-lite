@@ -887,7 +887,7 @@ CRITICAL RULES:
    - Many scientific papers have an "Article ID" (e.g., 5719, e03342) in the header/branding area.
    - The ACTUAL page number is usually in the corner (bottom-right or top-right).
    - If you see "1" in the corner and "5719" in the header, the page number is 1.
-   - **IGNORE** numbers attached to "DOI", "Vol", "No", or colons (e.g. "doi...:5719", "14:5719"). These are identifiers, NOT page numbers.
+   - **IGNORE** numbers attached to "DOI", "Vol", "No", other strings,or colons (e.g. "doi...:5719", "14:5719"). These are identifiers, NOT page numbers.
 
 2. **Verify Sequence**:
    - Check the first page. Does it say "1"?
