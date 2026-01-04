@@ -5800,82 +5800,116 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       throw new Error('Thesis generation failed and no valid content was produced')
     }
 
-    // Step 7.1: Thesis Critique Agent (Refactored Order)
-    // Run Critique BEFORE humanization/checks to ensure we fix content first
+    // Step 7.1 & 7.2: Iterative Critique & Repair Loop
+    console.log('\n[PROCESS] ========== Step 7.1 & 7.2: Iterative Critique & Repair Loop ==========')
+
+    const MAX_REPAIR_ITERATIONS = 3
+    let currentIteration = 0
     let critiqueReport = ''
-    console.log('\n[PROCESS] ========== Step 7.1: Thesis Critique Agent (Refactored) ==========')
-    try {
-      // Map outline to expected format for critique
-      const outlineForCritique = (thesisData.outline || []).map((chapter: any, index: number) => ({
-        number: (chapter?.number ?? `${index + 1}.`).toString().trim(),
-        title: (chapter?.title ?? '').toString().trim(),
-        sections: []
-      }))
 
-      critiqueReport = await critiqueThesis(
-        thesisContent,
-        outlineForCritique,
-        thesisData.researchQuestion || 'N/A',
-        sourcesForGeneration || [],
-        thesisData.language === 'german'
-      )
-      console.log('[Critique] Report generated:')
-      console.log(critiqueReport)
+    while (currentIteration < MAX_REPAIR_ITERATIONS) {
+      currentIteration++
+      console.log(`\n[Loop] Starting Critique/Repair Iteration ${currentIteration}/${MAX_REPAIR_ITERATIONS}`)
 
-      // Save critique report to database
+      // --- CRITIQUE PHASE ---
+      console.log('[Loop] Running Critique Agent...')
       try {
-        await supabase
-          .from('theses')
-          .update({ critique_report: critiqueReport })
-          .eq('id', thesisId)
-        console.log('[Critique] Report saved to database')
-      } catch (dbError) {
-        console.error('[Critique] Failed to save report to database:', dbError)
-      }
-    } catch (error) {
-      console.error('[PROCESS] ERROR in Thesis Critique:', error)
-    }
+        const outlineForCritique = (thesisData.outline || []).map((chapter: any, index: number) => ({
+          number: (chapter?.number ?? `${index + 1}.`).toString().trim(),
+          title: (chapter?.title ?? '').toString().trim(),
+          sections: []
+        }))
 
-    // Step 7.2: Thesis Repair Agent (Refactored Order)
-    console.log('\n[PROCESS] ========== Step 7.2: Thesis Repair Agent (Refactored) ==========')
-    try {
-      if (critiqueReport && critiqueReport.length > 100) {
-        console.log('[Repair] Critique report available. Starting chunked repair...')
+        critiqueReport = await critiqueThesis(
+          thesisContent,
+          outlineForCritique,
+          thesisData.researchQuestion || 'N/A',
+          sourcesForGeneration || [],
+          thesisData.language === 'german'
+        )
+        console.log(`[Critique] Report generated (Iteration ${currentIteration}):`)
+        console.log(critiqueReport)
 
-        // 1. Split content into chapters (using headlines as delimiter)
-        // Regex looks for "## " at start of line
-        const chapters = thesisContent.split(/(?=^## )/gm).filter(c => c.trim().length > 0)
-        console.log(`[Repair] Split thesis into ${chapters.length} chunks for processing`)
-
-        const repairedChapters: string[] = []
-
-        // 2. Process each chapter
-        for (let i = 0; i < chapters.length; i++) {
-          const chunk = chapters[i]
-          const chunkTitle = chunk.split('\n')[0].replace(/#/g, '').trim()
-          console.log(`[Repair] Repairing chunk ${i + 1}/${chapters.length}: "${chunkTitle.substring(0, 50)}..."`)
-
-          const repairedChunk = await fixChapterContent(chunk, critiqueReport, thesisData.language === 'german')
-
-          // Safety check: If repair lost too much content (>40% loss), revert to original
-          if (repairedChunk.length < chunk.length * 0.6) {
-            console.warn(`[Repair] WARNING: Repaired chunk ${i + 1} is significantly shorter (${repairedChunk.length} vs ${chunk.length}). Reverting to original to prevent data loss.`)
-            repairedChapters.push(chunk)
-          } else {
-            repairedChapters.push(repairedChunk)
-          }
+        // Save critique report to database
+        try {
+          await supabase
+            .from('theses')
+            .update({ critique_report: `[Iteration ${currentIteration}]\n${critiqueReport}` })
+            .eq('id', thesisId)
+          console.log('[Critique] Report saved to database')
+        } catch (dbError) {
+          console.error('[Critique] Failed to save report to database:', dbError)
         }
-
-        // 3. Reassemble
-        thesisContent = repairedChapters.join('\n')
-        console.log('[Repair] Thesis successfully repaired and reassembled.')
-
-      } else {
-        console.log('[Repair] No critique report available or report too short. Skipping repair.')
+      } catch (error) {
+        console.error('[PROCESS] ERROR in Thesis Critique:', error)
+        critiqueReport = '' // Clear if failed
       }
-    } catch (error) {
-      console.error('[PROCESS] ERROR in Thesis Repair:', error)
-      console.warn('[Repair] Continuing with original content (repair failed)')
+
+      // --- CHECK PHASE ---
+      // Check if the report contains error markers
+      const hasErrors = critiqueReport.includes('[FEHLER]') ||
+        critiqueReport.includes('[FEHLERHAFT]') ||
+        critiqueReport.includes('[HALLUZINATIONEN]') ||
+        critiqueReport.includes('Error') ||
+        critiqueReport.includes('Mangel')
+
+      if (!hasErrors && currentIteration > 1) {
+        console.log('[Loop] Critique is clean (no major errors detected). Exiting loop early.')
+        break
+      }
+
+      if (!hasErrors && critiqueReport.length > 100 && currentIteration === 1) {
+        // If first iteration is clean, we MIGHT still want to run one repair pass just in case, 
+        // or we can skip. The user said "the rewrite is supposed to fix all the issues", suggesting we only rewrite if there ARE issues.
+        // However, sometimes critique is subtle. Let's trust the error markers.
+        console.log('[Loop] Iteration 1 is clean. Skipping repair loop.')
+        break
+      }
+
+      // --- REPAIR PHASE ---
+      console.log('[Loop] Errors detected or first run. Running Repair Agent...')
+      try {
+        if (critiqueReport && critiqueReport.length > 100) {
+          console.log('[Repair] Starting chunked repair...')
+
+          // 1. Split content into chapters
+          const chapters = thesisContent.split(/(?=^## )/gm).filter(c => c.trim().length > 0)
+          console.log(`[Repair] Split thesis into ${chapters.length} chunks for processing`)
+
+          const repairedChapters: string[] = []
+
+          // 2. Process each chapter
+          for (let i = 0; i < chapters.length; i++) {
+            const chunk = chapters[i]
+            const chunkTitle = chunk.split('\n')[0].replace(/#/g, '').trim()
+            console.log(`[Repair] Repairing chunk ${i + 1}/${chapters.length}: "${chunkTitle.substring(0, 50)}..."`)
+
+            const repairedChunk = await fixChapterContent(chunk, critiqueReport, thesisData.language === 'german')
+
+            // Safety check: If repair lost too much content (>40% loss), revert to original
+            if (repairedChunk.length < chunk.length * 0.6) {
+              console.warn(`[Repair] WARNING: Repaired chunk ${i + 1} is significantly shorter (${repairedChunk.length} vs ${chunk.length}). Reverting to original to prevent data loss.`)
+              repairedChapters.push(chunk)
+            } else {
+              repairedChapters.push(repairedChunk)
+            }
+          }
+
+          // 3. Reassemble
+          thesisContent = repairedChapters.join('\n')
+          console.log('[Repair] Thesis successfully repaired and reassembled.')
+
+        } else {
+          console.log('[Repair] No critique report available. Skipping repair.')
+        }
+      } catch (error) {
+        console.error('[PROCESS] ERROR in Thesis Repair:', error)
+        console.warn('[Repair] Continuing with original content (repair failed)')
+      }
+
+      if (currentIteration === MAX_REPAIR_ITERATIONS) {
+        console.log('[Loop] Max iterations reached. Proceeding with current content.')
+      }
     }
 
     // Step 7.4: Winston AI Check & Sentence Rewrite
