@@ -2846,6 +2846,63 @@ async function critiqueThesis(
 }
 
 /**
+ * Applies Search/Replace patches to a text.
+ * Format:
+ * <<<<<<< SEARCH
+ * original text
+ * =======
+ * new text
+ * >>>>>>> REPLACE
+ */
+function applySearchReplace(originalText: string, patchText: string): string {
+  if (!patchText.includes('<<<<<<< SEARCH')) {
+    // If no patch markers found, check if it's just the full text or empty
+    if (patchText.trim() === '[DELETE_CHAPTER]') return '[DELETE_CHAPTER]'
+
+    // If output is very long (close to original length), assume it's a full rewrite (fallback)
+    // But be careful: if we asked for a patch and got full text, it might be a failure to follow instructions.
+    // However, for safety, if it looks like a valid chapter (starts with #), we accept it.
+    if (patchText.length > 50 && patchText.includes('# ')) {
+      console.log('[DiffPatches] No markers found, but looks like full chapter. Accepting as full rewrite.')
+      return patchText
+    }
+
+    // Otherwise, assume no changes needed or invalid output
+    return originalText
+  }
+
+  let currentText = originalText
+  // Regex to capture SEARCH and REPLACE blocks. 
+  // We use [\s\S]*? for non-greedy match across newlines.
+  const regex = /<<<<<<< SEARCH\s*([\s\S]*?)\s*=======\s*([\s\S]*?)\s*>>>>>>> REPLACE/g
+
+  let match
+  let appliedCount = 0
+
+  while ((match = regex.exec(patchText)) !== null) {
+    const [fullMatch, searchBlock, replaceBlock] = match
+    const cleanSearch = searchBlock.trim()
+    const cleanReplace = replaceBlock.trim()
+
+    if (!cleanSearch) continue
+
+    // 1. Try Exact Match (strict)
+    if (currentText.includes(cleanSearch)) {
+      currentText = currentText.replace(cleanSearch, cleanReplace)
+      appliedCount++
+    } else {
+      // 2. Try soft normalization (ignore leading/trailing whitespace inconsistencies)
+      // This is a common AI failure mode (forgetting indentation).
+      // We'll simplisticly try finding the line in the text.
+      console.warn(`[DiffPatches] Could not find exact match for: "${cleanSearch.substring(0, 30)}..."`)
+    }
+  }
+
+  console.log(`[DiffPatches] Applied ${appliedCount} patches.`)
+  return currentText
+}
+
+/**
  * Repairs a specific chapter based on the global critique report.
  */
 async function fixChapterContent(
@@ -2870,7 +2927,25 @@ async function fixChapterContent(
     DEINE AUFGABE:
     Korrigiere dieses Kapitel SYSTEMATISCH. Gehe die Liste der Fehler im Report Punkt für Punkt durch.
     Wenn der Report 5 Fehler nennt, musst du 5 Fehler beheben. Höre nicht nach dem ersten auf!
-    **WICHTIG:** Korrigiere ausschließlich die im Report genannten Fehler! Wenn ein Kapitel fehlerfrei ist, gib es EXAKT SO ZURÜCK!
+    **WICHTIG:** Korrigiere ausschließlich die im Report genannten Fehler! Wenn ein Kapitel fehlerfrei ist, gib es ein LEERES SEARCH/REPLACE zurück.
+    
+    NEUES FORMAT (DIFF-PATCHING):
+    Du schreibst KEINEN vollen Text zurück. Du gibst nur die ÄNDERUNGEN im Search/Replace Format zurück.
+    
+    Format:
+    <<<<<<< SEARCH
+    (Der exakte Originaltext, der ersetzt werden soll)
+    =======
+    (Der neue, korrigierte Text)
+    >>>>>>> REPLACE
+    
+    Regeln:
+    1. Der "SEARCH" Block muss EXAKT mit dem Original übereinstimmen (inklusive Leerzeichen).
+    2. Der "REPLACE" Block ist deine Korrektur.
+    3. Gib NUR diese Blöcke zurück. Kein anderer Text.
+    4. Wenn du mehrere Fehler korrigierst, mache mehrere Blöcke.
+    5. Wenn du das GESAMTE Kapitel löschen willst (Duplikat), schreibe NUR: [DELETE_CHAPTER]
+    
     Dein Ziel: Repariere NUR die Fehler, die im "CRITIQUE REPORT" genannt sind.
     
     KONTEXT: Du bearbeitest gerade Teil ${chunkIndex + 1} von ${totalChunks} des gesamten Textes.
@@ -2880,10 +2955,9 @@ async function fixChapterContent(
     Wenn der Kritik-Report sagt "LÖSCHE DIESES KAPITEL" oder "Kapitel ist doppelt", dann antworte NUR mit: [DELETE_CHAPTER]
     
     SUPREME REGEL (STRUKTUR & ÜBERSCHRIFTEN):
-    1. Die allererste Zeile DEINER ANTWORT MUSS EXAKT LAUTEN: "# ${chunkTitle}" (oder "## ${chunkTitle}").
-    2. DU DARFST KEINE UNTER-ÜBERSCHRIFTEN (z.B. "1.1 ...", "1.2 ...") LÖSCHEN!
-    3. Alle Zeilen, die mit "#" beginnen, MÜSSEN ERHALTEN BLEIBEN.
-    4. Die Nummerierung (1.1, 1.2, etc.) MUSS EXAKT BLEIBEN.
+    Da du nur Search/Replace machst, ist das Risiko geringer. ABER:
+    NIEMALS "SEARCH" Blöcke machen, die Überschriften enthalten, es sei denn, du willst diese explizit korrigieren.
+    LÖSCHE NIEMALS UNABSICHTLICH ÜBERSCHRIFTEN.
     
     KONTEXT-CHECK (DUPLIKATE):
     Hier ist die Liste ALLER Kapitel in der Thesis:
@@ -2933,6 +3007,23 @@ async function fixChapterContent(
      
      NOTE: You have access to the 'fileSearch' tool. If the report says "Page missing", you CAN look it up in the PDF yourself if the report provides no solution.
     
+    NEW FORMAT (DIFF-PATCHING):
+    Do NOT return the full text. Return ONLY the changes using the Search/Replace format.
+    
+    Format:
+    <<<<<<< SEARCH
+    (The exact original text to be replaced)
+    =======
+    (The new, corrected text)
+    >>>>>>> REPLACE
+    
+    Rules:
+    1. The "SEARCH" block must MATCH the original text EXACTLY (including whitespace).
+    2. The "REPLACE" block is your correction.
+    3. Return ONLY these blocks. No other text.
+    4. Use multiple blocks for multiple errors.
+    5. If you want to DELETE the entire chapter (duplicate), write ONLY: [DELETE_CHAPTER]
+    
     YOUR TASK:
     Correct this chapter SYSTEMATICALLY. Go through the list of errors one by one.
     If the report lists 5 errors, you must fix 5 errors.
@@ -2971,21 +3062,18 @@ async function fixChapterContent(
     CHAPTER TEXT:
     ${chapterContent}
     
-    OUTPUT ONLY THE (CORRECTED) TEXT. NO COMMENTS.
+    OUTPUT ONLY THE SEARCH/REPLACE BLOCKS. NO COMMENTS.
     
-    SUPREME RULE: NEVER EDIT THE CHAPTER HEADING (Line 1). IT MUST REMAIN EXACTLY AS IS.
-    SUPREME RULE: NEVER EDIT SUBHEADERS OR THEIR NUMBERING! "1.1 Title" STAYS "1.1 Title". NEVER REMOVE THE NUMBERS.
-    SUPREME RULE: DO NOT CHANGE HEADING LEVELS (## stays ##, ### stays ###).
+    SUPREME RULE: NEVER EDIT THE CHAPTER HEADING(Line 1).IT MUST REMAIN EXACTLY AS IS.
+    SUPREME RULE: NEVER EDIT SUBHEADERS OR THEIR NUMBERING! "1.1 Title" STAYS "1.1 Title".NEVER REMOVE THE NUMBERS.
+    SUPREME RULE: DO NOT CHANGE HEADING LEVELS(## stays ##, ### stays ###).
     SUPREME RULE: NO "Topic? Statement." rhetorical patterns. "Global Crisis? Huge." -> BANNED.
     SUPREME RULE: IF REPORT CONTAINS "SOLUTION:", EXECUTE IT EXACTLY!
-    SUPREME RULE: YOU ARE A SURGEON. CUT ONLY THE REPORTED ERRORS. DO NOT REWRITE SENTENCES THAT ARE NOT LISTED AS ERRORS.
-    SUPREME RULE: IF REPORT CONTAINS "SOLUTION:", EXECUTE IT EXACTLY!
-    SUPREME RULE: YOU ARE A SURGEON. CUT ONLY THE REPORTED ERRORS. DO NOT REWRITE SENTENCES THAT ARE NOT LISTED AS ERRORS.
-    SUPREME RULE (STRUCTURE & HEADINGS):
-    1. THE VERY FIRST LINE MUST BE: "# ${chunkTitle}" (or "## ${chunkTitle}").
-    2. DO NOT DELETE SUB-HEADINGS (e.g. "6.1...", "6.2...")!
-    3. ALL lines starting with "#" MUST BE PRESERVED.
-    4. PRESERVE EXACT NUMBERING.`
+    SUPREME RULE: YOU ARE A SURGEON.CUT ONLY THE REPORTED ERRORS.DO NOT REWRITE SENTENCES THAT ARE NOT LISTED AS ERRORS.
+
+    SUPREME RULE(STRUCTURE & HEADINGS):
+    Since you are only patching, avoid touching headings unless necessary.
+    NEVER create a "SEARCH" block that includes a header line unless you intend to fix it.`
 
 
   let lastError = null
@@ -3009,22 +3097,23 @@ async function fixChapterContent(
 
       const modifiedContent = response.text ? response.text.trim() : ''
 
-      // SAFETY CHECK 1: Empty Content
-      if (!modifiedContent || modifiedContent.length < 50) {
-        console.warn(`[ThesisRepair] Attempt ${attempt}/${maxAttempts} REJECTED: Empty/too short content.`)
-        lastError = 'Content too short'
-        continue
+      // Apply the patches
+      const patchedContent = applySearchReplace(chapterContent, modifiedContent)
+
+      // If we got back [DELETE_CHAPTER], just return it
+      if (patchedContent === '[DELETE_CHAPTER]') return '[DELETE_CHAPTER]'
+
+      // If content is suspiciously short (and it wasn't a delete), something went wrong (or no changes needed)
+      if (patchedContent.length < 50) {
+        // Maybe it was validly short, or maybe applyPatches failed. 
+        // But if original was > 100, and now < 50, that's bad (unless specific delete).
+        if (chapterContent.length > 200) {
+          console.warn(`[ThesisRepair] Patching resulted in suspiciously short content.Reverting to original.`)
+          return chapterContent
+        }
       }
 
-      // SAFETY CHECK 2: Massive Deletion (prevent deleting whole chapters)
-      if (chapterContent.length > 500 && modifiedContent.length < chapterContent.length * 0.5) {
-        console.warn(`[ThesisRepair] Attempt ${attempt}/${maxAttempts} REJECTED: Massive deletion detected (${chapterContent.length} -> ${modifiedContent.length}).`)
-        lastError = 'Massive deletion'
-        continue
-      }
-
-      // If we got here, content is valid
-      return modifiedContent
+      return patchedContent
 
     } catch (err) {
       console.warn(`[ThesisRepair] Attempt ${attempt}/${maxAttempts} failed:`, err)
