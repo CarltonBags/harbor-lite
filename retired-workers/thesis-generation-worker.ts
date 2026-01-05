@@ -2750,12 +2750,13 @@ async function critiqueThesis(
 
     if (!response.text) {
       console.error('[ThesisCritique] API returned empty text. Full response:', JSON.stringify(response))
-      return 'Critique generation failed (Empty Response).'
+      throw new Error('Critique API returned empty text (MAX_TOKENS or filter?)')
     }
     return response.text
   } catch (error) {
     console.error('[ThesisCritique] Failed to generate critique:', error)
-    return 'Critique failed due to error.'
+    // Return a special error marker that the loop can detect
+    return 'CRITIQUE_GENERATION_FAILED_ERROR'
   }
 }
 
@@ -2846,15 +2847,79 @@ async function fixChapterContent(
   }
 }
 
+/**
+ * Specialized repair function to sync the Introduction's "Structure" section 
+ * with the actual generated chapters.
+ */
+async function syncStructureInIntroduction(
+  introContent: string,
+  actualStructure: string,
+  isGerman: boolean
+): Promise<string> {
+  const prompt = isGerman
+    ? `Du bist ein strenger akademischer Lektor.
+    
+    DEINE AUFGABE:
+    In diesem Einleitungskapitel gibt es einen Abschnitt "Aufbau der Arbeit" (oder "Gang der Untersuchung").
+    Dieser Abschnitt beschreibt oft eine Gliederung, die NICHT MEHR stimmt.
+    
+    HIER IST DIE TATSÄCHLICHE GLIEDERUNG DER FERTIGEN ARBEIT:
+    ${actualStructure}
+    
+    ANWEISUNG:
+    1. Suche den Abschnitt "Aufbau der Arbeit", "Gliederung" oder "Gang der Untersuchung" (oft 1.3 oder am Ende der Einleitung).
+    2. Wenn dieser Abschnitt NICHT existiert, erstelle ihn neu am Ende.
+    3. SCHREIBE IHN KOMPLETT UM, sodass er EXAKT die oben genannte Gliederung beschreibt.
+    4. Nenne die Kapitelnummern und Titel korrekt (z.B. "In Kapitel 2 beschäftigt sich die Arbeit mit...").
+    5. Ändere NICHTS anderes am Text! Nur diesen einen Abschnitt.
+    
+    KAPITEL TEXT:
+    ${introContent}
+    
+    GIB DAS KOMPLETTE KAPITEL ZURÜCK (mit dem korrigierten Abschnitt).`
+
+    : `You are a strict academic editor.
+    
+    YOUR TASK:
+    In this Introduction chapter, there is a section describing the "Structure of the Thesis".
+    This section often describes an outline that is OUTDATED.
+    
+    HERE IS THE ACTUAL STRUCTURE OF THE FINISHED THESIS:
+    ${actualStructure}
+    
+    INSTRUCTION:
+    1. Find the section describing the structure.
+    2. REWRITE IT COMPLETELY to match the list above EXACTLY.
+    3. Mention chapter numbers and titles correctly (e.g. "Chapter 2 deals with...").
+    4. Do NOT change anything else! Only this section.
+    
+    CHAPTER TEXT:
+    ${introContent}
+    
+    OUTPUT THE FULL CHAPTER (with the corrected section).`
+
+  try {
+    const response = await retryApiCall(() => ai.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: prompt,
+      config: { maxOutputTokens: 8000, temperature: 0.1 },
+    }), 'Sync Structure')
+    return response.text ? response.text.trim() : introContent
+  } catch (error) {
+    console.warn('[StructureSync] Failed to sync:', error)
+    return introContent
+  }
+}
+
 
 
 async function generateThesisContent(thesisData: ThesisData, rankedSources: Source[], thesisPlan: string = ''): Promise<string> {
   console.log('[ThesisGeneration] Starting thesis content generation...')
   console.log(`[ThesisGeneration] Thesis: "${thesisData.title}"`)
-  console.log(`[ThesisGeneration] Target length: ${thesisData.targetLength} ${thesisData.lengthUnit}`)
-  console.log(`[ThesisGeneration] Language: ${thesisData.language}`)
-  console.log(`[ThesisGeneration] Available sources: ${rankedSources.length}`)
-  console.log(`[ThesisGeneration] FileSearchStore: ${thesisData.fileSearchStoreId}`)
+  console.log(`[ThesisGeneration] Target length: ${thesisData.targetLength} ${thesisData.lengthUnit} `)
+  console.log(`[ThesisGeneration] Language: ${thesisData.language} `)
+  console.log(`[ThesisGeneration] Available sources: ${rankedSources.length} `)
+  console.log(`[ThesisGeneration] FileSearchStore: ${thesisData.fileSearchStoreId} `)
 
   // Map citation style to readable label
   const citationStyleLabels: Record<string, string> = {
@@ -2864,16 +2929,16 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   }
 
   const citationStyleLabel = citationStyleLabels[thesisData.citationStyle] || thesisData.citationStyle
-  console.log(`[ThesisGeneration] Citation style: ${citationStyleLabel}`)
+  console.log(`[ThesisGeneration] Citation style: ${citationStyleLabel} `)
 
   const outlineChapters: OutlineChapterInfo[] = (thesisData.outline || []).map((chapter: any, index: number) => ({
     number: (chapter?.number ?? `${index + 1}.`).toString().trim(),
     title: (chapter?.title ?? '').toString().trim(),
     sections: (chapter?.sections || chapter?.subchapters || []).map((section: any, sectionIndex: number) => ({
-      number: (section?.number ?? `${index + 1}.${sectionIndex + 1}`).toString().trim(),
+      number: (section?.number ?? `${index + 1}.${sectionIndex + 1} `).toString().trim(),
       title: (section?.title ?? '').toString().trim(),
       subsections: (section?.subsections || []).map((subsection: any, subsectionIndex: number) => ({
-        number: (subsection?.number ?? `${index + 1}.${sectionIndex + 1}.${subsectionIndex + 1}`).toString().trim(),
+        number: (subsection?.number ?? `${index + 1}.${sectionIndex + 1}.${subsectionIndex + 1} `).toString().trim(),
         title: (subsection?.title ?? '').toString().trim(),
       })),
     })),
@@ -2883,7 +2948,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
   const isWords = thesisData.lengthUnit === 'words' || thesisData.targetLength > 500
   const targetWordCount = isWords ? thesisData.targetLength : thesisData.targetLength * 250
   const maxWordCount = Math.ceil(targetWordCount * 1.10) // Max 10% overshoot
-  console.log(`[ThesisGeneration] Target words: ${targetWordCount}, Max words (10% overshoot): ${maxWordCount}`)
+  console.log(`[ThesisGeneration] Target words: ${targetWordCount}, Max words(10 % overshoot): ${maxWordCount} `)
   const expectedWordCount = targetWordCount
 
   // Calculate appropriate number of sources based on thesis length
@@ -2903,20 +2968,20 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
   if (targetPages < 10) {
     recommendedSourceCount = Math.max(8, Math.min(12, Math.ceil(targetPages * 1.0)))
-    sourceUsageGuidance = `Sehr kurze Arbeit (${targetPages} Seiten): Verwende nur ${recommendedSourceCount}-${recommendedSourceCount + 2} hochwertige, zentrale Quellen. Jede Quelle muss essentiell sein. Keine Füllquellen. Eine Arbeit von ${targetPages} Seiten mit ${recommendedSourceCount + 20}+ Quellen wirkt übertrieben und unprofessionell.`
+    sourceUsageGuidance = `Sehr kurze Arbeit(${targetPages} Seiten): Verwende nur ${recommendedSourceCount} -${recommendedSourceCount + 2} hochwertige, zentrale Quellen.Jede Quelle muss essentiell sein.Keine Füllquellen.Eine Arbeit von ${targetPages} Seiten mit ${recommendedSourceCount + 20} + Quellen wirkt übertrieben und unprofessionell.`
   } else if (targetPages < 20) {
     recommendedSourceCount = Math.max(12, Math.min(25, Math.ceil(targetPages * 1.2)))
-    sourceUsageGuidance = `Kurze Arbeit (${targetPages} Seiten): Verwende ${recommendedSourceCount}-${recommendedSourceCount + 3} sorgfältig ausgewählte Quellen. Fokus auf Qualität, nicht Quantität. Eine Arbeit von ${targetPages} Seiten sollte nicht mehr als ${recommendedSourceCount + 5} Quellen haben, sonst wirkt sie überladen.`
+    sourceUsageGuidance = `Kurze Arbeit(${targetPages} Seiten): Verwende ${recommendedSourceCount} -${recommendedSourceCount + 3} sorgfältig ausgewählte Quellen.Fokus auf Qualität, nicht Quantität.Eine Arbeit von ${targetPages} Seiten sollte nicht mehr als ${recommendedSourceCount + 5} Quellen haben, sonst wirkt sie überladen.`
   } else if (targetPages < 40) {
     recommendedSourceCount = Math.max(25, Math.min(50, Math.ceil(targetPages * 1.3)))
-    sourceUsageGuidance = `Mittlere Arbeit (${targetPages} Seiten): Verwende ${recommendedSourceCount}-${recommendedSourceCount + 5} relevante Quellen. Jede Quelle sollte einen klaren Zweck erfüllen.`
+    sourceUsageGuidance = `Mittlere Arbeit(${targetPages} Seiten): Verwende ${recommendedSourceCount} -${recommendedSourceCount + 5} relevante Quellen.Jede Quelle sollte einen klaren Zweck erfüllen.`
   } else {
     recommendedSourceCount = Math.max(50, Math.min(80, Math.ceil(targetPages * 1.5)))
-    sourceUsageGuidance = `Längere Arbeit (${targetPages} Seiten): Verwende ${recommendedSourceCount}-${recommendedSourceCount + 10} Quellen. Umfangreiche Literaturrecherche ist hier angemessen.`
+    sourceUsageGuidance = `Längere Arbeit(${targetPages} Seiten): Verwende ${recommendedSourceCount} -${recommendedSourceCount + 10} Quellen.Umfangreiche Literaturrecherche ist hier angemessen.`
   }
 
-  console.log(`[ThesisGeneration] Target pages: ${targetPages}, Recommended sources: ${recommendedSourceCount}`)
-  console.log(`[ThesisGeneration] Available sources: ${rankedSources.length}`)
+  console.log(`[ThesisGeneration] Target pages: ${targetPages}, Recommended sources: ${recommendedSourceCount} `)
+  console.log(`[ThesisGeneration] Available sources: ${rankedSources.length} `)
   console.log(`[ThesisGeneration] Using top ${rankedSources.length} sources by relevance for RAG context`)
 
   const isGerman = thesisData.language === 'german'
@@ -2945,7 +3010,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
       // Skip non-content chapters (Verzeichnisse, Bibliography, etc.)
       if (shouldSkipChapter(chapter)) {
-        console.log(`[ThesisGeneration] Skipping chapter ${chapter.number} "${chapter.title}" (non-content chapter)`)
+        console.log(`[ThesisGeneration] Skipping chapter ${chapter.number} "${chapter.title}"(non - content chapter)`)
         continue
       }
 
@@ -2968,12 +3033,12 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
       chapterContents.push(chapterText.trim())
       totalWordCount += chapterWordCount
-      console.log(`[ThesisGeneration] Chapter ${chapter.number} complete (~${chapterWordCount} words, total ${totalWordCount}/${expectedWordCount})`)
+      console.log(`[ThesisGeneration] Chapter ${chapter.number} complete(~${chapterWordCount} words, total ${totalWordCount} / ${expectedWordCount})`)
 
       // Generate Summary for next chapters
-      const summary = await summarizeChapter(`${chapter.number} ${chapter.title}`, chapterText, isGerman)
+      const summary = await summarizeChapter(`${chapter.number} ${chapter.title} `, chapterText, isGerman)
       chapterSummaries.push(summary)
-      console.log(`[ThesisGeneration] Chapter summary generated (${summary.length} chars)`)
+      console.log(`[ThesisGeneration] Chapter summary generated(${summary.length} chars)`)
     }
 
     let combinedContent = chapterContents.join('\n\n\n')
@@ -5857,10 +5922,12 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         // 2. Rewrite Introduction (Chapter 1)
         // We use fixChapterContent with a specific instruction
         const introChunk = chapters[0]
-        const syncInstruction = `[SYSTEM CRITICAL]\nThe actual structure of the thesis is:\n${actualStructure}\n\nINSTRUCTION: Rewrite the 'Structure of the Thesis' / 'Gang der Untersuchung' section in this Introduction to match the list above EXACTLY. Ensure the preview of future chapters is accurate based on this list.`
-
-        console.log('[StructureSync] Rewriting Introduction to match reality...')
-        const fixedIntro = await fixChapterContent(introChunk, syncInstruction, thesisData.language === 'german')
+        console.log('[StructureSync] Rewriting Introduction to match reality (Dedicated Function)...')
+        const fixedIntro = await syncStructureInIntroduction(
+          introChunk,
+          actualStructure,
+          thesisData.language === 'german'
+        )
 
         // Safety check
         if (fixedIntro && fixedIntro.length > introChunk.length * 0.6) {
@@ -5940,7 +6007,21 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         critiqueReport.includes('Error') ||
         critiqueReport.includes('Mangel')
 
-      if (!hasErrors && currentIteration > 1) {
+      // Check for technical failure
+      const isTechnicalFailure = critiqueReport.includes('CRITIQUE_GENERATION_FAILED_ERROR')
+
+      if (isTechnicalFailure) {
+        console.warn('[Loop] Critique generation failed technically. Validating retry...')
+        // If we failed, we should NOT exit. We should probably force a retry or just continue to next iteration?
+        // Since we are inside a limited loop, continuing effectively retries the critique in the next iteration 
+        // (since we skip the repair logic below if report is "failed").
+        if (currentIteration < MAX_REPAIR_ITERATIONS) {
+          console.log('[Loop] Retrying in next iteration...')
+          continue
+        }
+      }
+
+      if (!hasErrors && !isTechnicalFailure && currentIteration > 1) {
         console.log('[Loop] Critique is clean (no major errors detected). Exiting loop early.')
         break
       }
