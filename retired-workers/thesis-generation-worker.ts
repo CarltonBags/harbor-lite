@@ -2186,6 +2186,12 @@ ${availableSourcesList}
   - JEDE Zitation MUSS eine Seitenzahl haben.
   - Wenn MLA: (Autor S. 12).
   - Wenn Harvard/APA: (Autor, Jahr, S. 12).
+- **REGEL 5: KEINE SEKUNDÄRZITATE**
+  - Wenn Quelle A über Autor B spricht, zitiere Quelle A!
+  - Zitiere NIEMALS Werke, die nicht in deiner Quellenliste stehen.
+  - FALSCH: Zitation von (Freud, 1920), wenn du nur ein Buch von (Müller, 2023) hast, das Freud erwähnt.
+  - RICHTIG: "(Freud, 1920, zitiert nach Müller, 2023, S. 45)" oder einfach nur (Müller, 2023, S. 45).
+  - Nutze NUR die Quellen, die dir bereitgestellt wurden.
 
 **🚫 ABSOLUT VERBOTEN: FRAGEN & FRAGE-ANTWORT-MUSTER 🚫**
 - NIEMALS Konstruktionen wie "Begriff? Definition." verwenden!
@@ -2275,6 +2281,12 @@ ${availableSourcesList}
   - EVERY citation MUST have a page number.
   - If MLA: (Author 12).
   - If Harvard/APA: (Author, Year, p. 12).
+- **RULE 5: NO SECONDARY CITATIONS**
+  - If Source A discusses Author B, cite Source A!
+  - NEVER cite works not in your provided source list.
+  - WRONG: Citing (Freud, 1920) if you only have a book by (Miller, 2023) mentioning Freud.
+  - CORRECT: "(Freud, 1920, cited in Miller, 2023, p. 45)" or just (Miller, 2023, p. 45).
+  - Use ONLY the provided sources.
 
 **🚫 ABSOLUTELY FORBIDDEN: QUESTIONS & Q&A PATTERNS 🚫**
 - NEVER use constructions like "Term? Definition."!
@@ -5798,6 +5810,43 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
 
     if (!thesisContent || thesisContent.length < 100) {
       throw new Error('Thesis generation failed and no valid content was produced')
+    }
+
+    // Step 7.05: Sync Introduction Structure (Pre-Critique)
+    // Ensure the "Gang der Untersuchung" matches the actual generated chapters BEFORE we critique.
+    console.log('\n[PROCESS] ========== Step 7.05: Syncing Introduction Structure ==========')
+    try {
+      if (thesisContent && thesisContent.length > 100) {
+        const chapters = thesisContent.split(/(?=^## )/gm).filter(c => c.trim().length > 0)
+
+        // 1. Build Actual Structure Summary
+        const actualStructure = chapters.map((c, idx) => {
+          const title = c.split('\n')[0].replace(/#/g, '').trim()
+          return `Kapitel ${idx + 1}: ${title}`
+        }).join('\n')
+
+        console.log('[StructureSync] Actual structure extracted:')
+        console.log(actualStructure)
+
+        // 2. Rewrite Introduction (Chapter 1)
+        // We use fixChapterContent with a specific instruction
+        const introChunk = chapters[0]
+        const syncInstruction = `[SYSTEM CRITICAL]\nThe actual structure of the thesis is:\n${actualStructure}\n\nINSTRUCTION: Rewrite the 'Structure of the Thesis' / 'Gang der Untersuchung' section in this Introduction to match the list above EXACTLY. Ensure the preview of future chapters is accurate based on this list.`
+
+        console.log('[StructureSync] Rewriting Introduction to match reality...')
+        const fixedIntro = await fixChapterContent(introChunk, syncInstruction, thesisData.language === 'german')
+
+        // Safety check
+        if (fixedIntro && fixedIntro.length > introChunk.length * 0.6) {
+          chapters[0] = fixedIntro
+          thesisContent = chapters.join('\n')
+          console.log('[StructureSync] Introduction updated.')
+        } else {
+          console.warn('[StructureSync] Rewrite failed (too short). Keeping original.')
+        }
+      }
+    } catch (syncError) {
+      console.warn('[StructureSync] Failed to sync structure (non-fatal):', syncError)
     }
 
     // Step 7.1 & 7.2: Iterative Critique & Repair Loop
