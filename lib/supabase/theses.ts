@@ -61,6 +61,7 @@ export async function updateThesis(
     uploaded_sources: any
     status: string
     critique_report: string
+    critique_history: any[]
   }>
 ): Promise<Thesis> {
   const supabase = createSupabaseClient()

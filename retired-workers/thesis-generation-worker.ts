@@ -2614,7 +2614,8 @@ async function critiqueThesis(
   outlineChapters: OutlineChapterInfo[],
   researchQuestion: string,
   sources: Source[],
-  isGerman: boolean
+  isGerman: boolean,
+  fileSearchStoreId: string
 ): Promise<string> {
   console.log('[ThesisCritique] Starting comprehensive thesis critique...')
 
@@ -2639,6 +2640,12 @@ async function critiqueThesis(
     3. **QUELLEN-CHECK:** Werden Quellen zitiert, die NICHT in der erlaubten Liste stehen? (Halluzinations-Check)
        ERLAUBTE QUELLEN:
        ${sourceListShort}
+       
+       **WICHTIG:** Nutze das `fileSearch` Tool, um **ALLE** Zitationen zu überprüfen!
+       - Gehe jede einzelne Zitation durch.
+       - Suche nach dem zitierten Satz im PDF.
+       - Stimmt die Seitenzahl? Wenn nein -> REPORT!
+       - **FALLS GEFUNDEN:** Gib die KORREKTE Seitenzahl an! (z.B. "Gefunden auf S. 12").
 
     4. **SPRACHE & TON:** 
        - Enthält der Text das Wort "man" oder "wir"? (VERBOTEN)
@@ -2679,6 +2686,12 @@ async function critiqueThesis(
     3. **SOURCE CHECK:** No fake sources?
        ALLOWED SOURCES:
        ${sourceListShort}
+
+       **IMPORTANT:** Use the `fileSearch` tool to verify **ALL** citations!
+       - Check every single citation.
+       - Search for the cited sentence in the PDF.
+       - Does the page number match? If no -> REPORT!
+       - **IF FOUND:** Provide the CORRECT page number! (e.g. "Found on p. 12").
 
     4. **LANGUAGE & TONE:**
        - Any usage of "man", "we", "I"? (FORBIDDEN)
@@ -2723,7 +2736,15 @@ async function critiqueThesis(
     const response = await retryApiCall(() => ai.models.generateContent({
       model: 'gemini-2.5-pro', // Switched to Stable Pro as requested (2.5 may vary by region)
       contents: prompt,
-      config: { maxOutputTokens: 8192, temperature: 0.1 }, // Max output for 1.5 Pro is typically 8k
+      config: {
+        maxOutputTokens: 8192,
+        temperature: 0.1,
+        tools: [{
+          fileSearch: {
+            fileSearchStoreNames: [fileSearchStoreId],
+          },
+        }],
+      }, // Max output for 1.5 Pro is typically 8k
     }), 'Critique Thesis')
 
     if (!response.text) {
@@ -2765,8 +2786,10 @@ async function fixChapterContent(
        - Entferne doppelte Wörter/Punkte.
        - Ersetze Umgangssprache durch Fachsprache.
     4. Wenn der Report "Seitenzahlen: FEHLERHAFT" (z.B. "e359385") meldet:
-       - Suche diese kryptischen Nummern und ersetze sie durch "S. 1" (oder korrekte Seite falls bekannt).
-       - Stelle sicher, dass ALLE Zitationen eine Seitenzahl haben ("S. XX").
+       - Suche diese kryptischen Nummern und finde die ECHTE Seitenzahl basierend auf dem Inhalt.
+       - **WICHTIG:** Wenn der Report sagt "CORRECT PAGE: XX", nutze exakt diese Nummer!
+       - ERFINDE KEINE ZAHLEN! "S. 1" oder "1" als Fallback ist VERBOTEN.
+       - Jede Zitation muss korrekt sein. Wenn die Seite nicht auffindbar ist, ist die Zitation ungültig.
     5. Wenn der Report keine Fehler nennt, die für diesen Text relevant sind: Gib den Text EXAKT SO ZURÜCK WIE ER WAR (keine Änderungen).
     6. Ändere NICHTS am Stil, nur die kritisierten inhaltlichen/strukturellen/sprachlichen Fehler.
     
@@ -2793,8 +2816,10 @@ async function fixChapterContent(
     2. If report says "Structure error in Ch 3" and this IS Ch 3: FIX IT!
     3. If report says "Language: ISSUES": FIX THEM! (Remove "man", "we", fix typos, formalize tone).
     4. If report says "Page Numbers: ISSUES" (e.g. "e359385"): 
-       - Find these cryptic numbers and replace them with "p. 1" (or correct page if known).
-       - Ensure ALL citations have a page number ("p. XX").
+       - Find these cryptic numbers and replace them with the TRUE page number based on context.
+       - **IMPORTANT:** If the report says "CORRECT PAGE: XX", use exactly that number!
+       - DO NOT INVENT NUMBERS! "p. 1" or "1" as a fallback is FORBIDDEN.
+       - Ensure ALL citations have a page number ("p. XX") - but only the TRUE one.
     5. If report mentions no errors relevant to this text: Return the text EXACTLY AS IS (no changes).
     6. Do NOT change style, only the criticized errors.
     
@@ -5855,6 +5880,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     const MAX_REPAIR_ITERATIONS = 3
     let currentIteration = 0
     let critiqueReport = ''
+    const critiqueHistory: any[] = []
 
     while (currentIteration < MAX_REPAIR_ITERATIONS) {
       currentIteration++
@@ -5874,18 +5900,29 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           outlineForCritique,
           thesisData.researchQuestion || 'N/A',
           sourcesForGeneration || [],
-          thesisData.language === 'german'
+          thesisData.language === 'german',
+          thesisData.fileSearchStoreId
         )
         console.log(`[Critique] Report generated (Iteration ${currentIteration}):`)
         console.log(critiqueReport)
 
-        // Save critique report to database
+        // Update history
+        critiqueHistory.push({
+          iteration: currentIteration,
+          report: critiqueReport,
+          timestamp: new Date().toISOString()
+        })
+
+        // Save critique report and history to database
         try {
           await supabase
             .from('theses')
-            .update({ critique_report: `[Iteration ${currentIteration}]\n${critiqueReport}` })
+            .update({
+              critique_report: `[Iteration ${currentIteration}]\n${critiqueReport}`,
+              critique_history: critiqueHistory
+            })
             .eq('id', thesisId)
-          console.log('[Critique] Report saved to database')
+          console.log('[Critique] Report and history saved to database')
         } catch (dbError) {
           console.error('[Critique] Failed to save report to database:', dbError)
         }
