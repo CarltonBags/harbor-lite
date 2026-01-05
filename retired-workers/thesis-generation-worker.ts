@@ -2157,7 +2157,7 @@ FORMATIERUNG & REGELN
 **⚠️ WICHTIG - FORMATIERUNG ⚠️**
 - Neue Überschriften (##, ###) MÜSSEN immer auf einer neuen Zeile beginnen, mit einer Leerzeile davor.
 - 🚫 FALSCH: "Text.## Überschrift"
-- ✅ RICHTIG: "Text.\n\n## Überschrift"
+- ✅ RICHTIG: "Text.\n## Überschrift"
 - Markdown muss sauber sein.
 
 QUELLENNUTZUNG & STIL - ABSOLUT KRITISCH
@@ -2173,6 +2173,8 @@ ${availableSourcesList}
 **ZITATIONSSTIL: ${citationStyleLabel}**
 **${citationStyleLabel} (STRENG):**
 - Zitiere im Fließtext: (Autor, Jahr, S. XX)
+- **ABSOLUT WICHTIG:** Sei streng bei der Verwendung von Zitationen und deren Seitenzahlen. Zitationen müssen präzise auf der zitierten Seite in der Quelle zu finden sein. 
+- **ABSOLUT WICHTIG:** Verwende primär die Seitenzahlen, die in den Metadaten der ${availableSourcesList} für die zitierte Quelle definiert sind. Nur wenn hier keine Seitenzahlen vorliegen, darfst du das PDF nach Seitenzahlen durchsuchen.
 - **REGEL 1: KEINE strukturellen Zitationen.**
   - FALSCH: "Dieses Kapitel diskutiert (Müller, 2020)..." oder "Wie bei (Schmidt, 2019) gesehen..."
   - RICHTIG: "Der Markt wuchs um 5% (Müller, 2020)." (Nur FAKTEN zitieren).
@@ -2669,6 +2671,11 @@ async function critiqueThesis(
        - **PRÜFE GENAU:** Hat jedes Unterkapitel seine Nummer? "1.1 Begriff" MUSS "1.1" haben.
        - FEHLER: "Begriff" (ohne Nummer). LÖSUNG: "Füge Nummer 1.1 hinzu."
        - Stimmt der tatsächliche Aufbau oder Gang der Untersuchung der Arbeit mit dem in der Einleitung beschriebenen Aufbau oder Gang der Untersuchung überein?
+       - Prüfe auf DOPPELTE KAPITEL (z.B. zweimal "Fazit").
+       - WENN DU DOPPELTE KAPITEL FINDEST: VERGLEICHE SIE. Entscheide, welches besser ist (z.B. Unterkapitel hat, dem Outline entspricht).
+       - Das SCHLECHTERE/FALSCHE Kapitel muss gelöscht werden.
+       - GIB EINE KLARE ANWEISUNG: "Lösche das zweite Kapitel 6 am Ende des Textes" oder "Lösche das Kapitel 'Fazit', das keine Unterkapitel hat".
+       - Strukturelle Probleme (falsche Reihenfolge, fehlende Kapitel).
     
     2. **FORSCHUNGSFRAGE:** Wird die folgende Forschungsfrage explizit und schlüssig beantwortet?
        FRAGE: "${researchQuestion}"
@@ -2730,6 +2737,11 @@ async function critiqueThesis(
        ${outlineShort}
        - **CHECK CAREFULLY:** Does every subchapter have its number? "1.1 Term" MUST have "1.1".
        - ERROR: "Term" (without number). SOLUTION: "Add number 1.1."
+       - Check for DUPLICATE CHAPTERS (e.g. two "Conclusion" chapters).
+       - IF YOU FIND DUPLICATES: COMPARE THEM. Decide which one is better/correct.
+       - The WORSE/INCORRECT chapter must be deleted.
+       - GIVE CLEAR INSTRUCTION: "Delete the second Chapter 6 at the end" or "Delete the 'Conclusion' chapter that has no subchapters".
+       - Structural issues (wrong order, missing sections).
     
     2. **RESEARCH QUESTION:** Is the following Research Question explicitly and coherently answered?
        QUESTION: "${researchQuestion}"
@@ -2833,7 +2845,9 @@ async function critiqueThesis(
 async function fixChapterContent(
   chapterContent: string,
   critiqueReport: string,
-  isGerman: boolean
+  isGerman: boolean,
+  chunkIndex: number,
+  totalChunks: number
 ): Promise<string> {
   // If the content is too short (e.g. placeholder), don't touch it
   if (chapterContent.length < 100) return chapterContent
@@ -2845,9 +2859,10 @@ async function fixChapterContent(
     Korrigiere dieses Kapitel SYSTEMATISCH. Gehe die Liste der Fehler im Report Punkt für Punkt durch.
     Wenn der Report 5 Fehler nennt, musst du 5 Fehler beheben. Höre nicht nach dem ersten auf!
     **WICHTIG:** Korrigiere ausschließlich die im Report genannten Fehler! Wenn ein Kapitel fehlerfrei ist, gib es EXAKT SO ZURÜCK!
+    Dein Ziel: Repariere NUR die Fehler, die im "CRITIQUE REPORT" genannt sind.
     
-    CRITIQUE REPORT:
-    ${critiqueReport}
+    KONTEXT: Du bearbeitest gerade Teil ${chunkIndex + 1} von ${totalChunks} des gesamten Textes.
+    Das ist wichtig, falls der Report sagt "Lösche das zweite Fazit am Ende". Wenn du Teil ${totalChunks}/${totalChunks} bist, bist du wahrscheinlich dieses Kapitel.
     
     REGELN:
     1. Wenn der Report sagt "Forschungsfrage in der Einleitung fehlt" und dies IST die Einleitung: FÜGE SIE EIN!
@@ -2872,6 +2887,7 @@ async function fixChapterContent(
     SUPREME REGEL: LÖSCHE "man" und "wir" -> Passiv!
     SUPREME REGEL: WENN DER REPORT EINE "LÖSUNG:" ENTHÄLT, FÜHRE DIESE EXAKT AUS!
     SUPREME REGEL: SCHNEIDE NUR DAS KRANKE GEWEBE WEG! ÄNDERE NICHTS, WAS NICHT KAPUTT IST. KEINE "VERBESSERUNGEN" OHNE AUFTRAG.
+    SUPREME REGEL: WENN DER REPORT SAGT "LÖSCHE DIESES KAPITEL" (z.B. weil es doppelt ist), GIB GENAU DIESEN STRING ZURÜCK: "[DELETE_CHAPTER]". SONST NICHTS.
     
     KAPITEL TEXT:
     ${chapterContent}
@@ -2882,10 +2898,11 @@ async function fixChapterContent(
     
     YOUR TASK:
     Correct this chapter SYSTEMATICALLY. Go through the list of errors one by one.
-    If the report lists 5 errors, you must fix 5 errors. Do not stop after the first one!
+    If the report lists 5 errors, you must fix 5 errors.
+    Your Goal: Fix ONLY the errors mentioned in the "CRITIQUE REPORT".
     
-    CRITIQUE REPORT:
-    ${critiqueReport}
+    CONTEXT: You are currently processing Chunk ${chunkIndex + 1} of ${totalChunks} of the whole text.
+    This is important if the report says "Delete the second Conclusion at the end". If you are chunk ${totalChunks}/${totalChunks}, you are likely that chapter.
     
     RULES:
     1. If report says "RQ missing in Intro" and this IS the Intro: ADD IT!
@@ -2898,6 +2915,7 @@ async function fixChapterContent(
        - Ensure ALL citations have a page number ("p. XX") - but only the TRUE one.
     5. If report mentions no errors relevant to this text: Return the text EXACTLY AS IS (no changes).
     6. Do NOT change style, only the criticized errors.
+    7. IF THE REPORT SAYS "DELETE THIS CHAPTER" (e.g. duplicate), RETURN EXACTLY THIS STRING: "[DELETE_CHAPTER]". NOTHING ELSE.
     
     CHAPTER TEXT:
     ${chapterContent}
@@ -6179,7 +6197,14 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
             const chunkTitle = chunk.split('\n')[0].replace(/#/g, '').trim()
             console.log(`[Repair] Repairing chunk ${i + 1}/${chapters.length}: "${chunkTitle.substring(0, 50)}..."`)
 
-            const repairedChunk = await fixChapterContent(chunk, critiqueReport, thesisData.language === 'german')
+            const repairedChunk = await fixChapterContent(chunk, critiqueReport, thesisData.language === 'german', i, chapters.length)
+
+            // Handle explicit deletion
+            if (repairedChunk.trim() === '[DELETE_CHAPTER]') {
+              console.log(`[Repair] Chunk ${i + 1} marked for deletion by Repair Agent (likely duplicate). Removing.`)
+              // Do NOT push to repairedChapters
+              continue
+            }
 
             // Safety check: If repair lost too much content (>40% loss), revert to original
             if (repairedChunk.length < chunk.length * 0.6) {
