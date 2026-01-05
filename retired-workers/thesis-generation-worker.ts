@@ -2200,6 +2200,17 @@ ${availableSourcesList}
   - Artikelnummern (e12932) sind KEINE Seitenzahlen.
   - Wenn du dir unsicher bist, nutze "S. 1" (nur im absoluten Notfall) oder lasse die Seite weg, aber erfinde keine "e-Nummern".
 
+
+**STRUKTUR & GLIEDERUNG - ULTIMA RATIO:**
+- Die untenstehende "GEPLANTE GLIEDERUNG" ist das GESETZ.
+- Ändere NIEMALS die Nummerierung oder die Titel.
+- Wenn im Plan steht "1.1 Begriff", dann MUSS die Überschrift "## 1.1 Begriff" lauten. NICHT "1. Begriff" oder "Begriff".
+- Unterschlage KEINE Unterkapitel. Wenn der Plan 1.1, 1.2, 1.3 hat, musst du ALLE generieren.
+- Halte dich exakt an die Hierarchie (#, ##, ###).
+
+GEPLANTE GLIEDERUNG für dieses Kapitel:
+${chapterTask.subChapters ? chapterTask.subChapters.map(s => `- ${s}`).join('\n') : '(Keine Unterkapitel, nur Fließtext)'}
+
 **🚫 ABSOLUT VERBOTEN: FRAGEN & FRAGE-ANTWORT-MUSTER 🚫**
 - NIEMALS Konstruktionen wie "Begriff? Definition." verwenden!
   ✗ "Politische Korruption? Sie ist definiert als..."
@@ -2256,6 +2267,16 @@ STATTDESSEN - Forschung den ECHTEN Autoren zuschreiben:
       : `═══════════════════════════════════════════════════════════════════════════════
 FORMATTING & RULES
 ═══════════════════════════════════════════════════════════════════════════════
+**STRUCTURE & OUTLINE - ULTIMA RATIO:**
+- The "PLANNED OUTLINE" below is the LAW.
+- NEVER change the numbering or titles.
+- If the plan says "1.1 Term", the heading MUST be "## 1.1 Term". NOT "1. Term" or "Term".
+- Do NOT skip subchapters. If plan has 1.1, 1.2, 1.3, you MUST generate ALL of them.
+- Stick exactly to the hierarchy (#, ##, ###).
+
+PLANNED OUTLINE for this chapter:
+${chapterTask.subChapters ? chapterTask.subChapters.map(s => `- ${s}`).join('\n') : '(No subchapters, just text)'}
+
 **⚠️ IMPORTANT - FORMATTING ⚠️**
 - New headings (##, ###) MUST always start on a new line, preceded by a blank line.
 - 🚫 WRONG: "Text.## Heading"
@@ -2645,6 +2666,8 @@ async function critiqueThesis(
     1. **STRUKTUR:** Entsprechen die Kapitelüberschriften exakt der Vorgabe?
        VORGABE:
        ${outlineShort}
+       - **PRÜFE GENAU:** Hat jedes Unterkapitel seine Nummer? "1.1 Begriff" MUSS "1.1" haben.
+       - FEHLER: "Begriff" (ohne Nummer). LÖSUNG: "Füge Nummer 1.1 hinzu."
     
     2. **FORSCHUNGSFRAGE:** Wird die folgende Forschungsfrage explizit und schlüssig beantwortet?
        FRAGE: "${researchQuestion}"
@@ -2684,11 +2707,6 @@ async function critiqueThesis(
     **3. Quellen:** [SAUBER / HALLUZINATIONEN VERMUTET] - Kommentar...
     **4. Seitenzahlen:** [OK / FEHLERHAFT] - (Prüfe auf "e359385" oder fehlende Seiten. Zitationen müssen "S. XX" sein!)
     **5. Sprache:** [SAUBER / FEHLERHAFT] - (Nenne konkrete Probleme: "man" verwendet, Doppelte Punkte, Zu umgangssprachlich, etc.)
-    **1. Struktur:** [OK / FEHLER] - Kommentar...
-    **2. Forschungsfrage:** [BEANTWORTET / UNKLAR] - Kommentar...
-    **3. Quellen:** [SAUBER / HALLUZINATIONEN VERMUTET] - Kommentar...
-    **4. Seitenzahlen:** [OK / FEHLERHAFT] - (Prüfe auf "e359385" oder fehlende Seiten. Zitationen müssen "S. XX" sein!)
-    **5. Sprache:** [SAUBER / FEHLERHAFT] - (Nenne konkrete Probleme: "man" verwendet, Doppelte Punkte, Zu umgangssprachlich, etc.)
     **Gesamturteil:** [Kurzes Fazit]
     
     REGEL: Wenn du unten EINEN Fehler nennst, MUSS der Status oben [FEHLERHAFT] sein! [SAUBER] ist nur erlaubt, wenn die Liste LEER ist.
@@ -2696,9 +2714,10 @@ async function critiqueThesis(
     WICHTIG:
     1. Erstelle KEINE neuen Abschnitte. Füge die Details UNTER den Punkten 1-5 ein.
     2. Liste NUR FEHLER. Wenn eine Zitation korrekt ist, erwähne sie NICHT.
-    3. DU MUSST FÜR JEDEN FEHLER EINE LÖSUNG ANGEBEN!
-    4. Nutze DIESES Format: "Ort: [Kapitel] -> FEHLER: [Problem] -> LÖSUNG: [Genauer Befehl]"
-    Beispiel: "Ort: Kapitel 1.2 -> FEHLER: Zitation (Müller, 2020) hat falsche Seite 1585 -> LÖSUNG: Ändere Seite in S. 1"`
+    3. HÖRE NICHT NACH 5 FEHLERN AUF! LISTE JEDEN EINZELNEN FEHLER IM GESAMTEN TEXT!
+    4. DU MUSST FÜR JEDEN FEHLER EINE LÖSUNG ANGEBEN!
+    5. Nutze DIESES Format: "Ort: [Kapitel] -> FEHLER: [Problem] -> LÖSUNG: [Genauer Befehl]"
+    Beispiel: "Ort: 1.2 -> FEHLER: Zitation (Müller, 2020) hat falsche Seite 1585 -> LÖSUNG: Ändere Seite in S. 1"`
 
     : `You are a strict academic auditor. Critique the following thesis (excerpt/summary) rigorously.
     
@@ -2706,6 +2725,8 @@ async function critiqueThesis(
     1. **STRUCTURE:** Do the chapter headings match the outline exactly?
        OUTLINE:
        ${outlineShort}
+       - **CHECK CAREFULLY:** Does every subchapter have its number? "1.1 Term" MUST have "1.1".
+       - ERROR: "Term" (without number). SOLUTION: "Add number 1.1."
     
     2. **RESEARCH QUESTION:** Is the following Research Question explicitly and coherently answered?
        QUESTION: "${researchQuestion}"
@@ -2756,9 +2777,10 @@ async function critiqueThesis(
     IMPORTANT:
     1. Do NOT create new sections. List details UNDER points 1-5.
     2. List ONLY ERRORS. If a citation is correct, DO NOT MENTION IT.
-    3. YOU MUST PROVIDE A SOLUTION FOR EVERY ERROR!
-    4. Use THIS format: "Loc: [Chapter] -> ERROR: [Problem] -> SOLUTION: [Exact Command]"
-    Example: "Loc: Chapter 1.2 -> ERROR: Citation (Miller, 2020) has wrong page p. 1585 -> SOLUTION: Change page to p. 1"`
+    3. DO NOT STOP AFTER 5 ERRORS! LIST EVERY SINGLE ERROR IN THE ENTIRE TEXT!
+    4. YOU MUST PROVIDE A SOLUTION FOR EVERY ERROR!
+    5. Use THIS format: "Loc: [Chapter] -> ERROR: [Problem] -> SOLUTION: [Exact Command]"
+    Example: "Loc: 1.2 -> ERROR: Citation (Miller, 2020) has wrong page p. 1585 -> SOLUTION: Change page to p. 1"`
 
   if (isGerman) {
     prompt += `
@@ -2840,10 +2862,12 @@ async function fixChapterContent(
     6. Ändere NICHTS am Stil, nur die kritisierten inhaltlichen/strukturellen/sprachlichen Fehler.
     
     SUPREME REGEL: ÄNDERE NIEMALS DIE KAPITELÜBERSCHRIFT (Zeile 1). SIE MUSS EXAKT BLEIBEN.
+    SUPREME REGEL: ÄNDERE NIEMALS UNTER-ÜBERSCHRIFTEN ODER DEREN NUMMERIERUNG! "1.1 Titel" BLEIBT "1.1 Titel". ENTFERNE NIEMALS DIE ZAHLEN.
     SUPREME REGEL: KEINE HIERARCHIE-ÄNDERUNGEN (## bleibt ##).
     SUPREME REGEL: LÖSCHE ALLE "Thema? Aussage." MUSTER! "Grund? Einfach." -> VERBOTEN. Schreibe als Aussagesatz!
     SUPREME REGEL: LÖSCHE "man" und "wir" -> Passiv!
-    SUPREME REGEL: WENN DER REPORT EINE "LÖSUNG:" ENTHÄLT, FÜHRE DIESE EXAKT AUS! (Das ist der wichtigste Befehl).
+    SUPREME REGEL: WENN DER REPORT EINE "LÖSUNG:" ENTHÄLT, FÜHRE DIESE EXAKT AUS!
+    SUPREME REGEL: SCHNEIDE NUR DAS KRANKE GEWEBE WEG! ÄNDERE NICHTS, WAS NICHT KAPUTT IST. KEINE "VERBESSERUNGEN" OHNE AUFTRAG.
     
     KAPITEL TEXT:
     ${chapterContent}
@@ -2877,9 +2901,11 @@ async function fixChapterContent(
     OUTPUT ONLY THE (CORRECTED) TEXT. NO COMMENTS.
     
     SUPREME RULE: NEVER EDIT THE CHAPTER HEADING (Line 1). IT MUST REMAIN EXACTLY AS IS.
+    SUPREME RULE: NEVER EDIT SUBHEADERS OR THEIR NUMBERING! "1.1 Title" STAYS "1.1 Title". NEVER REMOVE THE NUMBERS.
     SUPREME RULE: DO NOT CHANGE HEADING LEVELS (## stays ##, ### stays ###).
     SUPREME RULE: NO "Topic? Statement." rhetorical patterns. "Global Crisis? Huge." -> BANNED.
-    SUPREME RULE: IF REPORT CONTAINS "SOLUTION:", EXECUTE IT EXACTLY! (This is the highest priority command).`
+    SUPREME RULE: IF REPORT CONTAINS "SOLUTION:", EXECUTE IT EXACTLY!
+    SUPREME RULE: YOU ARE A SURGEON. CUT ONLY THE REPORTED ERRORS. DO NOT REWRITE SENTENCES THAT ARE NOT LISTED AS ERRORS.`
 
 
   let lastError = null
@@ -6625,6 +6651,7 @@ const worker = new Worker(
       await job.updateProgress(10)
 
       // Call the main processing function
+      // Call the main processing function
       await processThesisGeneration(thesisId, thesisData)
 
       await job.updateProgress(100)
@@ -6661,8 +6688,10 @@ const worker = new Worker(
     }
   },
   {
-    connection: workerConnection,
-    concurrency: 1, // Reduced from 3 - thesis generation is heavy, run one at a time
+    connection: redisConnection,
+    concurrency: 1,
+    lockDuration: 900000, // 15 mins (prevents 'job stalled' errors)
+    maxStalledCount: 0, // Do not retry if stalled (avoids infinite loops on timeout)
     // REDIS OPTIMIZATION: Reduce polling frequency when idle
     // Default is 5000ms, we use 30000ms (30 seconds) to save commands
     drainDelay: 30000, // Wait 30 seconds between drain checks when queue is empty
