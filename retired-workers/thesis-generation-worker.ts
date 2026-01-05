@@ -2178,7 +2178,8 @@ ${availableSourcesList}
   - RICHTIG: "Der Markt wuchs um 5% (Müller, 2020)." (Nur FAKTEN zitieren).
 - **REGEL 2: Autoren:**
   - 1 Autor: "Name"
-  - >1 Autor: IMMER "Name et al." (z.B. "Müller et al., 2020")
+  - 2 Autoren: "Name & Name" (z.B. "Müller & Schmidt, 2020")
+  - >2 Autoren: IMMER "Name et al." (z.B. "Müller et al., 2020")
 - **REGEL 3: Seitenzahlen (f./ff.):**
   - Eine Seite: "S. 324"
   - Zwei Seiten: "S. 324f." (NICHT 324-325)
@@ -2273,7 +2274,8 @@ ${availableSourcesList}
   - CORRECT: "The market grew (Miller, 2021)." (Cite FACTS only).
 - **RULE 2: Authors:**
   - 1 Author: "Name"
-  - >1 Author: ALWAYS "Name et al." (e.g. "Smith et al., 2020")
+  - 2 Authors: "Name & Name" (e.g. "Smith & Jones, 2020")
+  - >2 Author: ALWAYS "Name et al." (e.g. "Smith et al., 2020")
 - **RULE 3: Page Numbers (f./ff.):**
   - One page: "p. 324"
   - Two pages: "p. 324f." (NOT 324-325)
@@ -2671,7 +2673,9 @@ async function critiqueThesis(
     **3. Quellen:** [SAUBER / HALLUZINATIONEN VERMUTET] - Kommentar...
     **4. Seitenzahlen:** [OK / FEHLERHAFT] - (Prüfe auf "e359385" oder fehlende Seiten. Zitationen müssen "S. XX" sein!)
     **5. Sprache:** [SAUBER / FEHLERHAFT] - (Nenne konkrete Probleme: "man" verwendet, Doppelte Punkte, Zu umgangssprachlich, etc.)
-    **Gesamturteil:** [Kurzes Fazit]`
+    **Gesamturteil:** [Kurzes Fazit]
+    
+    WICHTIG: Sei EXTREM GRÜNDLICH. Liste JEDEN EINZELNEN Fehler auf, damit der "Repair Agent" ihn finden kann. Pauschale Aussagen wie "viele Fehler" helfen nicht. Nenne Beispiele und Kapitelnummern!`
 
     : `You are a strict academic auditor. Critique the following thesis (excerpt/summary) rigorously.
     
@@ -2690,8 +2694,9 @@ async function critiqueThesis(
 
        **IMPORTANT:** Use the 'fileSearch' tool to verify **ALL** citations!
        - Check every single citation.
-       - Search for the cited sentence in the PDF.
-       - Does the page number match? If no -> REPORT!
+       - **Incorrect usage of "et al."?** (Only valid for >2 authors! For 2 authors: "Name & Name".)
+       - Is format correct? (Author, Year, p. XX) -> "p. 336f." is okay.
+       - **IMPORTANT:** If page is "e12345" (article number) -> REPORT! Demand "p. 1" or real page in PDF.
        - **IF FOUND:** Provide the CORRECT page number! (e.g. "Found on p. 12").
 
     4. **LANGUAGE & TONE:**
@@ -2716,7 +2721,9 @@ async function critiqueThesis(
     **3. Sources:** [CLEAN / HALLUCINATIONS SUSPECTED] - Comment...
     **4. Page Numbers:** [OK / ISSUES] - (Check for "e359385" styling or missing pages. Must be "p. XX"!)
     **5. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
-    **Verdict:** [Short Conclusion]`
+    **Verdict:** [Short Conclusion]
+    
+    IMPORTANT: Be EXTREMELY THOROUGH. List EVERY SINGLE error so the "Repair Agent" can fix it. Vague statements help nobody. Cite specific examples and chapter numbers!`
 
   if (isGerman) {
     prompt += `
@@ -2775,7 +2782,8 @@ async function fixChapterContent(
     ? `Du bist ein erfahrener akademischer Lektor. Unten siehst du ein Buchkapitel und einen "Critique Report" für die gesamte Thesis.
     
     DEINE AUFGABE:
-    Korrigiere dieses Kapitel NUR DANN, wenn der Critique Report Fehler nennt, die für DIESES Kapitel relevant sind.
+    Korrigiere dieses Kapitel SYSTEMATISCH. Gehe die Liste der Fehler im Report Punkt für Punkt durch.
+    Wenn der Report 5 Fehler nennt, musst du 5 Fehler beheben. Höre nicht nach dem ersten auf!
     
     CRITIQUE REPORT:
     ${critiqueReport}
@@ -2788,8 +2796,9 @@ async function fixChapterContent(
        - Entferne doppelte Wörter/Punkte.
        - Ersetze Umgangssprache durch Fachsprache.
     4. Wenn der Report "Seitenzahlen: FEHLERHAFT" (z.B. "e359385") meldet:
-       - Suche diese kryptischen Nummern und finde die ECHTE Seitenzahl basierend auf dem Inhalt.
-       - **WICHTIG:** Wenn der Report sagt "CORRECT PAGE: XX", nutze exakt diese Nummer!
+       - **Fehlerhafte Verwendung von "et al."?** (Nur bei >2 Autoren erlaubt! Bei 2 Autoren: "Name & Name".)
+       - Stimmt das Format? (Autor, Jahr, S. XX) -> "S. 336f." ist okay, "S. 336ff." ist okay.
+       - **WICHTIG:** Wenn die Seite "e12345" (Artikelnummer) ist -> REPORT! Fordere "S. 1" oder die echte Seite im PDF.
        - ERFINDE KEINE ZAHLEN! "S. 1" oder "1" als Fallback ist VERBOTEN.
        - Jede Zitation muss korrekt sein. Wenn die Seite nicht auffindbar ist, ist die Zitation ungültig.
     5. Wenn der Report keine Fehler nennt, die für diesen Text relevant sind: Gib den Text EXAKT SO ZURÜCK WIE ER WAR (keine Änderungen).
@@ -2808,7 +2817,8 @@ async function fixChapterContent(
     : `You are an expert academic editor. Below is a book chapter and a "Critique Report" for the entire thesis.
     
     YOUR TASK:
-    Correct this chapter ONLY IF the Critique Report mentions errors relevant to THIS chapter.
+    Correct this chapter SYSTEMATICALLY. Go through the list of errors one by one.
+    If the report lists 5 errors, you must fix 5 errors. Do not stop after the first one!
     
     CRITIQUE REPORT:
     ${critiqueReport}
@@ -5912,9 +5922,12 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
 
         // 1. Build Actual Structure Summary
         const actualStructure = chapters.map((c, idx) => {
-          const title = c.split('\n')[0].replace(/#/g, '').trim()
-          return `Kapitel ${idx + 1}: ${title}`
-        }).join('\n')
+          const lines = c.split('\n')
+          const title = lines[0].replace(/#/g, '').trim()
+          // Extract a snippet of content (skip heading)
+          const contentSnippet = lines.slice(1).join(' ').replace(/\s+/g, ' ').substring(0, 600) + '...'
+          return `Kapitel ${idx + 1}: ${title}\n   Inhalt: ${contentSnippet}`
+        }).join('\n\n')
 
         console.log('[StructureSync] Actual structure extracted:')
         console.log(actualStructure)
@@ -5945,7 +5958,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     // Step 7.1 & 7.2: Iterative Critique & Repair Loop
     console.log('\n[PROCESS] ========== Step 7.1 & 7.2: Iterative Critique & Repair Loop ==========')
 
-    const MAX_REPAIR_ITERATIONS = 3
+    const MAX_REPAIR_ITERATIONS = 5
     let currentIteration = 0
     let critiqueReport = ''
     const critiqueHistory: any[] = []
