@@ -2672,6 +2672,7 @@ async function critiqueThesis(
        - Prüfe Zitationen auf kryptische Seitenzahlen wie "e359385", "e1234", "Article 5". Das ist FALSCH.
        - Seitenzahlen müssen das Format "S. XX" oder "S. XX-YY" haben.
        - Zitationen OHNE Seitenzahl sind ebenfals ein FEHLER.
+       - **WICHTIG:** Schlage NIEMALS vor, die Seitenzahl zu löschen! Jede Zitation MUSS eine Seite haben. Wenn unbekannt, fordere "S. 1".
     
     THESIS TEXT (Ausschnitte):
     ${thesisText.substring(0, 50000)} ... [Text gekürzt für Analyse]
@@ -2683,7 +2684,14 @@ async function critiqueThesis(
     **3. Quellen:** [SAUBER / HALLUZINATIONEN VERMUTET] - Kommentar...
     **4. Seitenzahlen:** [OK / FEHLERHAFT] - (Prüfe auf "e359385" oder fehlende Seiten. Zitationen müssen "S. XX" sein!)
     **5. Sprache:** [SAUBER / FEHLERHAFT] - (Nenne konkrete Probleme: "man" verwendet, Doppelte Punkte, Zu umgangssprachlich, etc.)
+    **1. Struktur:** [OK / FEHLER] - Kommentar...
+    **2. Forschungsfrage:** [BEANTWORTET / UNKLAR] - Kommentar...
+    **3. Quellen:** [SAUBER / HALLUZINATIONEN VERMUTET] - Kommentar...
+    **4. Seitenzahlen:** [OK / FEHLERHAFT] - (Prüfe auf "e359385" oder fehlende Seiten. Zitationen müssen "S. XX" sein!)
+    **5. Sprache:** [SAUBER / FEHLERHAFT] - (Nenne konkrete Probleme: "man" verwendet, Doppelte Punkte, Zu umgangssprachlich, etc.)
     **Gesamturteil:** [Kurzes Fazit]
+    
+    REGEL: Wenn du unten EINEN Fehler nennst, MUSS der Status oben [FEHLERHAFT] sein! [SAUBER] ist nur erlaubt, wenn die Liste LEER ist.
     
     WICHTIG:
     1. Erstelle KEINE neuen Abschnitte. Füge die Details UNTER den Punkten 1-5 ein.
@@ -2726,8 +2734,12 @@ async function critiqueThesis(
        - Page numbers must format as "p. XX" or "p. XX-YY".
        - Citations WITHOUT page numbers are also an ERROR.
     
+    
     THESIS TEXT (Excerpt):
     ${thesisText.substring(0, 50000)} ... [Text truncated]
+    
+    CRITICAL RULE: NEVER SUGGEST REMOVING A PAGE NUMBER. EVERY CITATION MUST HAVE ONE.
+    If you cannot find the page, suggest "p. 1" as a fallback. "Remove page" is FORBIDDEN.
     
     ANSWER IN THIS FORMAT:
     ## 🧐 CRITIQUE REPORT
@@ -2736,7 +2748,10 @@ async function critiqueThesis(
     **3. Sources:** [CLEAN / HALLUCINATIONS SUSPECTED] - Comment...
     **4. Page Numbers:** [OK / ISSUES] - (Check for "e359385" styling or missing pages. Must be "p. XX"!)
     **5. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
+    **5. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
     **Verdict:** [Short Conclusion]
+    
+    RULE: If you list ANY error below, the status above MUST be [ISSUES]. [CLEAN] is only allowed if the list is EMPTY.
     
     IMPORTANT:
     1. Do NOT create new sections. List details UNDER points 1-5.
@@ -5973,6 +5988,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       throw new Error('Thesis generation failed and no valid content was produced')
     }
 
+    /* STEP 7.05 REMOVED - CAUSED BUGS WITH HEADER PLACEMENT
     // Step 7.05: Sync Introduction Structure (Pre-Critique)
     // Ensure the "Gang der Untersuchung" matches the actual generated chapters BEFORE we critique.
     console.log('\n[PROCESS] ========== Step 7.05: Syncing Introduction Structure ==========')
@@ -5992,28 +6008,32 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         console.log('[StructureSync] Actual structure extracted:')
         console.log(actualStructure)
 
-        // 2. Rewrite Introduction (Chapter 1)
-        // We use fixChapterContent with a specific instruction
-        const introChunk = chapters[0]
-        console.log('[StructureSync] Rewriting Introduction to match reality (Dedicated Function)...')
-        const fixedIntro = await syncStructureInIntroduction(
-          introChunk,
-          actualStructure,
-          thesisData.language === 'german'
-        )
-
-        // Safety check
-        if (fixedIntro && fixedIntro.length > introChunk.length * 0.6) {
-          chapters[0] = fixedIntro
-          thesisContent = chapters.join('\n')
+        // 2. Rewrite Introduction's "Structure" section
+        // Note: The first chapter (chapters[0]) is assumed to be the Introduction
+        // Check if title contains "Einleitung" or "Introduction"
+        const introTitle = chapters[0].split('\n')[0].toLowerCase()
+        if (introTitle.includes('einleitung') || introTitle.includes('introduction')) {
+          console.log('[StructureSync] Rewriting Introduction to match reality (Dedicated Function)...')
+          
+          const newIntro = await syncStructureInIntroduction(
+            chapters[0], 
+            actualStructure, 
+            thesisData.language === 'german'
+          )
+          
+          // Replace the old intro
+          chapters[0] = newIntro
+          thesisContent = chapters.join('\n\n')
           console.log('[StructureSync] Introduction updated.')
         } else {
-          console.warn('[StructureSync] Rewrite failed (too short). Keeping original.')
+          console.log('[StructureSync] First chapter is not Introduction. Skipping sync.')
         }
       }
-    } catch (syncError) {
-      console.warn('[StructureSync] Failed to sync structure (non-fatal):', syncError)
+    } catch (error) {
+      console.warn('[StructureSync] Failed to sync structure:', error)
+      // Continue without syncing - not critical
     }
+    */
 
     // Step 7.1 & 7.2: Iterative Critique & Repair Loop
     console.log('\n[PROCESS] ========== Step 7.1 & 7.2: Iterative Critique & Repair Loop ==========')
@@ -6078,7 +6098,11 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         critiqueReport.includes('[FEHLERHAFT]') ||
         critiqueReport.includes('[HALLUZINATIONEN]') ||
         critiqueReport.includes('Error') ||
-        critiqueReport.includes('Mangel')
+        critiqueReport.includes('Mangel') ||
+        critiqueReport.includes('FEHLER:') || // Catch detailed errors even if status is clean
+        critiqueReport.includes('**FEHLER') ||
+        critiqueReport.includes('LÖSUNG:') || // If there is a solution proposed, there is an error
+        critiqueReport.includes('SOLUTION:')
 
       // Check for technical failure
       const isTechnicalFailure = critiqueReport.includes('CRITIQUE_GENERATION_FAILED_ERROR')

@@ -83,6 +83,31 @@
   color: #000 !important; /* Always black, even in dark mode */
   font-weight: bold;
   text-align: left !important; /* Never center headings */
+  margin-bottom: 0.5em; /* Standardize bottom margin */
+  line-height: 1.2;
+}
+
+/* Reduce spacing when H2 follows H1 immediately */
+.thesis-document h1 + h2 {
+  margin-top: 0.5em !important;
+}
+
+.thesis-document h1 {
+  font-size: 24pt;
+  margin-top: 0;
+  margin-bottom: 12pt;
+}
+
+.thesis-document h2 {
+  font-size: 18pt;
+  margin-top: 18pt;
+  margin-bottom: 6pt;
+}
+
+.thesis-document h3 {
+  font-size: 14pt;
+  margin-top: 12pt;
+  margin-bottom: 6pt;
 }
 
 .thesis-document p,
