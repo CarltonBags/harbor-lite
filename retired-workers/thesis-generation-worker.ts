@@ -2105,7 +2105,7 @@ async function generateChapterContent({
 
     // Show valid page range - but emphasize EXACT page numbers are required
     const pageRangeInfo = pageStart && pageEnd
-      ? `Seiten: ${pages} (Dokument umfasst S. ${pageStart}-${pageEnd} - verwende die EXAKTE Seitenzahl!)`
+      ? `Seiten: ${pages} (Dokument umfasst S. ${pageStart}-${pageEnd}. Du darfst NUR Seitenzahlen zwischen ${pageStart} und ${pageEnd} verwenden! Zitationen wie "e12345" sind VERBOTEN.)`
       : `Seiten: ${pages} (keine Seitenzahlen verfügbar - lasse die Seitenzahl weg)`
 
     return `[${i + 1}] ${authors} (${year}): "${s.title}". ${pageRangeInfo}`
@@ -2193,7 +2193,12 @@ ${availableSourcesList}
   - Zitiere NIEMALS Werke, die nicht in deiner Quellenliste stehen.
   - FALSCH: Zitation von (Freud, 1920), wenn du nur ein Buch von (Müller, 2023) hast, das Freud erwähnt.
   - RICHTIG: "(Freud, 1920, zitiert nach Müller, 2023, S. 45)" oder einfach nur (Müller, 2023, S. 45).
+  - RICHTIG: "(Freud, 1920, zitiert nach Müller, 2023, S. 45)" oder einfach nur (Müller, 2023, S. 45).
   - Nutze NUR die Quellen, die dir bereitgestellt wurden.
+- **REGEL 6: NUR BEDINGUNGSLOS EXISTIERENDE SEITEN**
+  - Wenn in der Quellenliste steht "S. 1-10", darfst du NICHT "S. 1585" zitieren!
+  - Artikelnummern (e12932) sind KEINE Seitenzahlen.
+  - Wenn du dir unsicher bist, nutze "S. 1" (nur im absoluten Notfall) oder lasse die Seite weg, aber erfinde keine "e-Nummern".
 
 **🚫 ABSOLUT VERBOTEN: FRAGEN & FRAGE-ANTWORT-MUSTER 🚫**
 - NIEMALS Konstruktionen wie "Begriff? Definition." verwenden!
@@ -2289,7 +2294,12 @@ ${availableSourcesList}
   - NEVER cite works not in your provided source list.
   - WRONG: Citing (Freud, 1920) if you only have a book by (Miller, 2023) mentioning Freud.
   - CORRECT: "(Freud, 1920, cited in Miller, 2023, p. 45)" or just (Miller, 2023, p. 45).
+  - CORRECT: "(Freud, 1920, cited in Miller, 2023, p. 45)" or just (Miller, 2023, p. 45).
   - Use ONLY the provided sources.
+- **RULE 6: ONLY EXISTING PAGE NUMBERS**
+  - If source list says "pp. 1-10", you MUST NOT cite "p. 1585"!
+  - Article numbers (e1293) are NOT page numbers.
+  - If unsure, use "p. 1" (only in emergency) or omit page, but DO NOT invent "e-numbers".
 
 **🚫 ABSOLUTELY FORBIDDEN: QUESTIONS & Q&A PATTERNS 🚫**
 - NEVER use constructions like "Term? Definition."!
@@ -2675,7 +2685,12 @@ async function critiqueThesis(
     **5. Sprache:** [SAUBER / FEHLERHAFT] - (Nenne konkrete Probleme: "man" verwendet, Doppelte Punkte, Zu umgangssprachlich, etc.)
     **Gesamturteil:** [Kurzes Fazit]
     
-    WICHTIG: Sei EXTREM GRÜNDLICH. Liste JEDEN EINZELNEN Fehler auf, damit der "Repair Agent" ihn finden kann. Pauschale Aussagen wie "viele Fehler" helfen nicht. Nenne Beispiele und Kapitelnummern!`
+    WICHTIG:
+    1. Erstelle KEINE neuen Abschnitte. Füge die Details UNTER den Punkten 1-5 ein.
+    2. Liste NUR FEHLER. Wenn eine Zitation korrekt ist, erwähne sie NICHT.
+    3. DU MUSST FÜR JEDEN FEHLER EINE LÖSUNG ANGEBEN!
+    4. Nutze DIESES Format: "Ort: [Kapitel] -> FEHLER: [Problem] -> LÖSUNG: [Genauer Befehl]"
+    Beispiel: "Ort: Kapitel 1.2 -> FEHLER: Zitation (Müller, 2020) hat falsche Seite 1585 -> LÖSUNG: Ändere Seite in S. 1"`
 
     : `You are a strict academic auditor. Critique the following thesis (excerpt/summary) rigorously.
     
@@ -2723,7 +2738,12 @@ async function critiqueThesis(
     **5. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
     **Verdict:** [Short Conclusion]
     
-    IMPORTANT: Be EXTREMELY THOROUGH. List EVERY SINGLE error so the "Repair Agent" can fix it. Vague statements help nobody. Cite specific examples and chapter numbers!`
+    IMPORTANT:
+    1. Do NOT create new sections. List details UNDER points 1-5.
+    2. List ONLY ERRORS. If a citation is correct, DO NOT MENTION IT.
+    3. YOU MUST PROVIDE A SOLUTION FOR EVERY ERROR!
+    4. Use THIS format: "Loc: [Chapter] -> ERROR: [Problem] -> SOLUTION: [Exact Command]"
+    Example: "Loc: Chapter 1.2 -> ERROR: Citation (Miller, 2020) has wrong page p. 1585 -> SOLUTION: Change page to p. 1"`
 
   if (isGerman) {
     prompt += `
@@ -2808,6 +2828,7 @@ async function fixChapterContent(
     SUPREME REGEL: KEINE HIERARCHIE-ÄNDERUNGEN (## bleibt ##).
     SUPREME REGEL: LÖSCHE ALLE "Thema? Aussage." MUSTER! "Grund? Einfach." -> VERBOTEN. Schreibe als Aussagesatz!
     SUPREME REGEL: LÖSCHE "man" und "wir" -> Passiv!
+    SUPREME REGEL: WENN DER REPORT EINE "LÖSUNG:" ENTHÄLT, FÜHRE DIESE EXAKT AUS! (Das ist der wichtigste Befehl).
     
     KAPITEL TEXT:
     ${chapterContent}
@@ -2842,16 +2863,48 @@ async function fixChapterContent(
     
     SUPREME RULE: NEVER EDIT THE CHAPTER HEADING (Line 1). IT MUST REMAIN EXACTLY AS IS.
     SUPREME RULE: DO NOT CHANGE HEADING LEVELS (## stays ##, ### stays ###).
-    SUPREME RULE: NO "Topic? Statement." rhetorical patterns. "Global Crisis? Huge." -> BANNED.`
+    SUPREME RULE: NO "Topic? Statement." rhetorical patterns. "Global Crisis? Huge." -> BANNED.
+    SUPREME RULE: IF REPORT CONTAINS "SOLUTION:", EXECUTE IT EXACTLY! (This is the highest priority command).`
 
   try {
-    const response = await retryApiCall(() => ai.models.generateContent({
-      model: 'gemini-2.5-pro',
-      contents: prompt,
-      config: { maxOutputTokens: 8000, temperature: 0.1 }, // Flash allows 8k output
-    }), 'Fix Chapter Content')
-    return response.text ? response.text.trim() : chapterContent
-  } catch (error) {
+    let lastError = null
+    const maxAttempts = 3 // 1 initial + 2 retries
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await retryApiCall(() => ai.models.generateContent({
+          model: 'gemini-2.5-pro',
+          contents: prompt,
+          config: { maxOutputTokens: 8000, temperature: 0.1 + (attempt * 0.1) }, // Increase temp slightly on retry
+        }), 'Fix Chapter Content')
+
+        const modifiedContent = response.text ? response.text.trim() : ''
+
+        // SAFETY CHECK 1: Empty Content
+        if (!modifiedContent || modifiedContent.length < 50) {
+          console.warn(`[ThesisRepair] Attempt ${attempt}/${maxAttempts} REJECTED: Empty/too short content.`)
+          lastError = 'Content too short'
+          continue
+        }
+
+        // SAFETY CHECK 2: Massive Deletion (prevent deleting whole chapters)
+        if (chapterContent.length > 500 && modifiedContent.length < chapterContent.length * 0.5) {
+          console.warn(`[ThesisRepair] Attempt ${attempt}/${maxAttempts} REJECTED: Massive deletion detected (${chapterContent.length} -> ${modifiedContent.length}).`)
+          lastError = 'Massive deletion'
+          continue
+        }
+
+        // If we got here, content is valid
+        return modifiedContent
+
+      } catch (err) {
+        console.warn(`[ThesisRepair] Attempt ${attempt}/${maxAttempts} failed:`, err)
+        lastError = err
+      }
+    }
+
+    console.warn('[ThesisRepair] All repair attempts failed or were rejected. Keeping original content.')
+    return chapterContent
     console.warn('[ThesisRepair] Failed to repair chapter:', error)
     return chapterContent // Fallback to original on error
   }
@@ -2886,7 +2939,12 @@ async function syncStructureInIntroduction(
     KAPITEL TEXT:
     ${introContent}
     
-    GIB DAS KOMPLETTE KAPITEL ZURÜCK (mit dem korrigierten Abschnitt).`
+    GIB DAS KOMPLETTE KAPITEL ZURÜCK.
+    
+    WICHTIGE FORMAT-REGELN:
+    1. Die ERSTE ZEILE der Ausgabe MUSS die Kapitelüberschrift sein (z.B. "# 1 Einleitung"). Ändere sie NICHT.
+    2. Der Abschnitt "Aufbau der Arbeit" darf NICHT an den Anfang verschoben werden. Er muss dort bleiben, wo er war (meist am Ende).
+    3. Zerstöre nicht die Struktur (1.1, 1.2 müssen vor 1.3 bleiben!).`
 
     : `You are a strict academic editor.
     
@@ -2906,7 +2964,12 @@ async function syncStructureInIntroduction(
     CHAPTER TEXT:
     ${introContent}
     
-    OUTPUT THE FULL CHAPTER (with the corrected section).`
+    OUTPUT THE FULL CHAPTER.
+    
+    IMPORTANT FORMATTING RULES:
+    1. The FIRST LINE of output MUST be the Chapter Title (e.g. "# 1 Introduction"). Do NOT change it.
+    2. The "Structure" section must NOT be moved to the top. It must stay where it was (usually at the end).
+    3. Do not destroy the structure (1.1, 1.2 must remain before 1.3!).`
 
   try {
     const response = await retryApiCall(() => ai.models.generateContent({
@@ -3084,7 +3147,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
     // Show valid page range - but emphasize EXACT page numbers are required
     const pageRangeInfo = pageStart && pageEnd
-      ? `Seiten: ${pages} (Dokument umfasst S. ${pageStart}-${pageEnd} - verwende die EXAKTE Seitenzahl, auf der der zitierte Inhalt steht!)`
+      ? `Seiten: ${pages} (Dokument umfasst S. ${pageStart}-${pageEnd}. WICHTIG: Deine Zitation MUSS innerhalb dieses Bereichs liegen (z.B. zwischen ${pageStart} und ${pageEnd}). Artikelnummern wie "e12345" sind VERBOTEN!)`
       : `Seiten: ${pages} (keine Seitenzahlen verfügbar - lasse die Seitenzahl KOMPLETT weg, schreibe NICHT "S. [keine Angabe]")`
 
     return `[${i + 1}] ${authors} (${year}): "${s.title}"${journal ? `. In: ${journal}` : ''}. ${pageRangeInfo}`
