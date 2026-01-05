@@ -2866,48 +2866,45 @@ async function fixChapterContent(
     SUPREME RULE: NO "Topic? Statement." rhetorical patterns. "Global Crisis? Huge." -> BANNED.
     SUPREME RULE: IF REPORT CONTAINS "SOLUTION:", EXECUTE IT EXACTLY! (This is the highest priority command).`
 
-  try {
-    let lastError = null
-    const maxAttempts = 3 // 1 initial + 2 retries
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const response = await retryApiCall(() => ai.models.generateContent({
-          model: 'gemini-2.5-pro',
-          contents: prompt,
-          config: { maxOutputTokens: 8000, temperature: 0.1 + (attempt * 0.1) }, // Increase temp slightly on retry
-        }), 'Fix Chapter Content')
+  let lastError = null
+  const maxAttempts = 3 // 1 initial + 2 retries
 
-        const modifiedContent = response.text ? response.text.trim() : ''
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await retryApiCall(() => ai.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents: prompt,
+        config: { maxOutputTokens: 8000, temperature: 0.1 + (attempt * 0.1) }, // Increase temp slightly on retry
+      }), 'Fix Chapter Content')
 
-        // SAFETY CHECK 1: Empty Content
-        if (!modifiedContent || modifiedContent.length < 50) {
-          console.warn(`[ThesisRepair] Attempt ${attempt}/${maxAttempts} REJECTED: Empty/too short content.`)
-          lastError = 'Content too short'
-          continue
-        }
+      const modifiedContent = response.text ? response.text.trim() : ''
 
-        // SAFETY CHECK 2: Massive Deletion (prevent deleting whole chapters)
-        if (chapterContent.length > 500 && modifiedContent.length < chapterContent.length * 0.5) {
-          console.warn(`[ThesisRepair] Attempt ${attempt}/${maxAttempts} REJECTED: Massive deletion detected (${chapterContent.length} -> ${modifiedContent.length}).`)
-          lastError = 'Massive deletion'
-          continue
-        }
-
-        // If we got here, content is valid
-        return modifiedContent
-
-      } catch (err) {
-        console.warn(`[ThesisRepair] Attempt ${attempt}/${maxAttempts} failed:`, err)
-        lastError = err
+      // SAFETY CHECK 1: Empty Content
+      if (!modifiedContent || modifiedContent.length < 50) {
+        console.warn(`[ThesisRepair] Attempt ${attempt}/${maxAttempts} REJECTED: Empty/too short content.`)
+        lastError = 'Content too short'
+        continue
       }
-    }
 
-    console.warn('[ThesisRepair] All repair attempts failed or were rejected. Keeping original content.')
-    return chapterContent
-    console.warn('[ThesisRepair] Failed to repair chapter:', error)
-    return chapterContent // Fallback to original on error
+      // SAFETY CHECK 2: Massive Deletion (prevent deleting whole chapters)
+      if (chapterContent.length > 500 && modifiedContent.length < chapterContent.length * 0.5) {
+        console.warn(`[ThesisRepair] Attempt ${attempt}/${maxAttempts} REJECTED: Massive deletion detected (${chapterContent.length} -> ${modifiedContent.length}).`)
+        lastError = 'Massive deletion'
+        continue
+      }
+
+      // If we got here, content is valid
+      return modifiedContent
+
+    } catch (err) {
+      console.warn(`[ThesisRepair] Attempt ${attempt}/${maxAttempts} failed:`, err)
+      lastError = err
+    }
   }
+
+  console.warn('[ThesisRepair] All repair attempts failed or were rejected. Keeping original content.')
+  return chapterContent
 }
 
 /**
