@@ -2471,6 +2471,7 @@ Weitere Anforderungen:
 - ${isGerman ? 'HALTE DICH STRIKT AN DIE VORGEGEBENE GLIEDERUNG. Ändere KEINE Überschriften. Nutze exakt die vorgegebenen Unterkapitel.' : 'ADHERE STRICTLY TO THE PROVIDED OUTLINE. Do NOT change any headings. Use exactly the provided subchapters.'}
 - ${isGerman ? 'Die Kapitelnummer und der Titel müssen EXAKT wie in der Vorgabe sein.' : 'The chapter number and title must be EXACTLY as provided.'}
 - ${isGerman ? 'Nutze die bereitgestellten Quellen INTENSIV.' : 'Use the provided sources EXTENSIVELY.'}
+- ${isGerman ? 'KRITISCHE DISKUSSION (WICHTIG): Reproduziere Literatur nicht einfach. Diskutiere sie! Wo widersprechen sich Wissenschaftler? Wo gibt es Lücken? Was ist deine Einschätzung als neutraler Beobachter des Diskurses?' : 'CRITICAL DISCUSSION (IMPORTANT): Do not just reproduce literature. Discuss it! Where do scientists disagree? Where are the gaps? What is your assessment as a neutral observer of the discourse?'}
 - ${isGerman ? 'Integriere Kontext, Analyse, Beispiele, Methodik und Diskussion.' : 'Include context, analysis, examples, methodology, and discussion.'}
 - ${isGerman ? 'Füge Übergänge zu vorherigen und folgenden Kapiteln ein, ohne Inhalte zu wiederholen.' : 'Add transitions to previous and upcoming chapters without repeating content.'}
 - ${isGerman ? 'Da der Kapiteltitel ## ist, MÜSSEN alle Unterkapitel mit ### beginnen. Verwende KEINE ## mehr für Unterkapitel!' : 'Since the chapter title is ##, all subchapters MUST start with ###. Do NOT use ## for subchapters!'}
