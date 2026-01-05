@@ -2705,7 +2705,10 @@ async function critiqueThesis(
     5. **SEITENZAHLEN-CHECK:**
        - Prüfe Zitationen auf kryptische Seitenzahlen wie "e359385", "e1234", "Article 5". Das ist FALSCH.
        - Seitenzahlen müssen das Format "S. XX", "S. XXf.", "S. XXff." oder "S. XX-YY" haben.
-       - Zitationen OHNE Seitenzahl sind ebenfals ein FEHLER.
+       - Zitationen OHNE Seitenzahl sind ein FEHLER.
+       - **WICHTIG (SUCHE):** Wenn eine Seitenzahl fehlt oder falsch ist ("e12345"), NUTZE DAS 'fileSearch' WERKZEUG, um die Stelle im Text zu finden!
+       - **LÖSUNG MUSS KONKRET SEIN:** Schreibe NICHT "Füge eine Seitenzahl hinzu." Schreibe: "LÖSUNG: Ergänze Seitenzahl S. 12 (gefunden im PDF)."
+       - Wenn du die Seite nicht finden kannst, schlage S. 1 vor oder markiere es zur manuellen Prüfung. Aber versuche erst zu SUCHEN.
        - **WICHTIG:** Schlage NIEMALS vor, die Seitenzahl zu löschen! Jede Zitation MUSS eine Seite haben.
     
     THESIS TEXT:
@@ -2756,7 +2759,9 @@ async function critiqueThesis(
        - Check every single citation.
        - **Incorrect usage of "et al."?** (Only valid for >2 authors! For 2 authors: "Name & Name".)
        - Is format correct? (Author, Year, p. XX) -> "p. 336f." is okay.
-       - **IMPORTANT:** If page is "e12345" (article number) -> REPORT! Demand "p. 1" or real page in PDF.
+       - **IMPORTANT (SEARCH):** If a citation lacks a page number or has an article ID ("e12345"), USE THE 'fileSearch' TOOL to find the content!
+       - **SOLUTION MUST BE CONCRETE:** Do NOT write "Add a page number." Write: "SOLUTION: Add page number p. 12 (found in PDF)."
+       - If you cannot find the page, suggest p. 1 or mark for manual review. But SEARCH first.
        - **IF FOUND:** Provide the CORRECT page number! (e.g. "Found on p. 12").
 
     4. **LANGUAGE & TONE:**
@@ -2848,13 +2853,19 @@ async function fixChapterContent(
   critiqueReport: string,
   isGerman: boolean,
   chunkIndex: number,
-  totalChunks: number
+  totalChunks: number,
+  allChapterTitles: string[],
+  fileSearchStoreId?: string
 ): Promise<string> {
   // If the content is too short (e.g. placeholder), don't touch it
   if (chapterContent.length < 100) return chapterContent
 
+  const chunkTitle = chapterContent.split('\n')[0].replace(/#/g, '').trim()
+
   const prompt = isGerman
     ? `Du bist ein erfahrener akademischer Lektor. Unten siehst du ein Buchkapitel und einen "Critique Report" für die gesamte Thesis.
+     
+     HINWEIS: Du hast Zugriff auf das 'fileSearch' Werkzeug. Wenn der Report sagt "Seite fehlt", KANNST du selbst im PDF nachsehen, falls der Report keine Lösung liefert.
     
     DEINE AUFGABE:
     Korrigiere dieses Kapitel SYSTEMATISCH. Gehe die Liste der Fehler im Report Punkt für Punkt durch.
@@ -2864,6 +2875,25 @@ async function fixChapterContent(
     
     KONTEXT: Du bearbeitest gerade Teil ${chunkIndex + 1} von ${totalChunks} des gesamten Textes.
     Das ist wichtig, falls der Report sagt "Lösche das zweite Fazit am Ende". Wenn du Teil ${totalChunks}/${totalChunks} bist, bist du wahrscheinlich dieses Kapitel.
+    
+    SUPREME REGEL:
+    Wenn der Kritik-Report sagt "LÖSCHE DIESES KAPITEL" oder "Kapitel ist doppelt", dann antworte NUR mit: [DELETE_CHAPTER]
+    
+    SUPREME REGEL (STRUKTUR & ÜBERSCHRIFTEN):
+    1. Die allererste Zeile DEINER ANTWORT MUSS EXAKT LAUTEN: "# ${chunkTitle}" (oder "## ${chunkTitle}").
+    2. DU DARFST KEINE UNTER-ÜBERSCHRIFTEN (z.B. "1.1 ...", "1.2 ...") LÖSCHEN!
+    3. Alle Zeilen, die mit "#" beginnen, MÜSSEN ERHALTEN BLEIBEN.
+    4. Die Nummerierung (1.1, 1.2, etc.) MUSS EXAKT BLEIBEN.
+    
+    KONTEXT-CHECK (DUPLIKATE):
+    Hier ist die Liste ALLER Kapitel in der Thesis:
+    ${allChapterTitles.map((t, i) => `${i + 1}. ${t}`).join('\n    ')}
+    
+    Du bearbeitest gerade Index ${chunkIndex + 1} (von ${totalChunks}).
+    Titel dieses Chunks: "${(chunkTitle || '').replace(/#/g, '').trim()}"
+    
+    REGEL: Wenn du siehst, dass ein Kapitel mit DEMSELBEN Titel/Inhalt bereits vorher (bei einem niedrigeren Index) existiert, BIST DU EIN DUPLIKAT.
+    In diesem Fall: Antworte SOFORT mit: [DELETE_CHAPTER]
     
     REGELN:
     1. **KONTEXT-CHECK:** Bist du "Kapitel X" oder "Einleitung"? Wenn ja, und der Report nennt Fehler für "Kapitel X" oder "Einleitung": **DU MUSST SIE KORRIGIEREN!** Ignoriere sie nicht!
@@ -2900,6 +2930,8 @@ async function fixChapterContent(
     GIB NUR DEN (KORRIGIERTEN) TEXT ZURÜCK. KEINE KOMMENTARE.`
 
     : `You are an expert academic editor. Below is a book chapter and a "Critique Report" for the entire thesis.
+     
+     NOTE: You have access to the 'fileSearch' tool. If the report says "Page missing", you CAN look it up in the PDF yourself if the report provides no solution.
     
     YOUR TASK:
     Correct this chapter SYSTEMATICALLY. Go through the list of errors one by one.
@@ -2910,7 +2942,17 @@ async function fixChapterContent(
     This is important if the report says "Delete the second Conclusion at the end". If you are chunk ${totalChunks}/${totalChunks}, you are likely that chapter.
     
     RULES:
-    1. **CONTEXT CHECK:** Are you "Chapter X" or "Intro"? If yes, and report lists errors for "Chapter X" or "Intro": **YOU MUST FIX THEM!** Do not ignore them.
+    1. **CONTEXT CHECK (DUPLICATES):**
+       Here is the list of ALL chapters in the thesis:
+       ${allChapterTitles.map((t, i) => `${i + 1}. ${t}`).join('\n       ')}
+       
+       You are processing Index ${chunkIndex + 1} (of ${totalChunks}).
+       Title of this chunk: "${(chunkTitle || '').replace(/#/g, '').trim()}"
+       
+       RULE: If you see that a chapter with the SAME title/content already exists before you (at a lower index), YOU ARE A DUPLICATE.
+       In this case: Answer IMMEDIATELY with: [DELETE_CHAPTER]
+       
+    2. **CONTEXT CHECK:** Are you "Chapter X" or "Intro"? If yes, and report lists errors for "Chapter X" or "Intro": **YOU MUST FIX THEM!** Do not ignore them.
     2. **EXAMPLE (STRUCTURE ERROR):**
        - REPORT: "Intro says 5 chapters, but it's 6." -> FIND in text: "five chapters" -> CHANGE to: "six chapters".
        - REPORT: "Chapter 5 is Discussion, not Conclusion." -> FIND in text: "The fifth chapter serves as conclusion" -> CHANGE to: "The fifth chapter discusses the results..."
@@ -2936,7 +2978,14 @@ async function fixChapterContent(
     SUPREME RULE: DO NOT CHANGE HEADING LEVELS (## stays ##, ### stays ###).
     SUPREME RULE: NO "Topic? Statement." rhetorical patterns. "Global Crisis? Huge." -> BANNED.
     SUPREME RULE: IF REPORT CONTAINS "SOLUTION:", EXECUTE IT EXACTLY!
-    SUPREME RULE: YOU ARE A SURGEON. CUT ONLY THE REPORTED ERRORS. DO NOT REWRITE SENTENCES THAT ARE NOT LISTED AS ERRORS.`
+    SUPREME RULE: YOU ARE A SURGEON. CUT ONLY THE REPORTED ERRORS. DO NOT REWRITE SENTENCES THAT ARE NOT LISTED AS ERRORS.
+    SUPREME RULE: IF REPORT CONTAINS "SOLUTION:", EXECUTE IT EXACTLY!
+    SUPREME RULE: YOU ARE A SURGEON. CUT ONLY THE REPORTED ERRORS. DO NOT REWRITE SENTENCES THAT ARE NOT LISTED AS ERRORS.
+    SUPREME RULE (STRUCTURE & HEADINGS):
+    1. THE VERY FIRST LINE MUST BE: "# ${chunkTitle}" (or "## ${chunkTitle}").
+    2. DO NOT DELETE SUB-HEADINGS (e.g. "6.1...", "6.2...")!
+    3. ALL lines starting with "#" MUST BE PRESERVED.
+    4. PRESERVE EXACT NUMBERING.`
 
 
   let lastError = null
@@ -2947,7 +2996,15 @@ async function fixChapterContent(
       const response = await retryApiCall(() => ai.models.generateContent({
         model: 'gemini-2.5-pro',
         contents: prompt,
-        config: { maxOutputTokens: 50000, temperature: 0.1 + (attempt * 0.1) }, // Increase temp slightly on retry
+        config: {
+          maxOutputTokens: 50000,
+          temperature: 0.1 + (attempt * 0.1),
+          tools: fileSearchStoreId ? [{
+            fileSearch: {
+              fileSearchStoreNames: [fileSearchStoreId],
+            },
+          }] : undefined,
+        }, // Increase temp slightly on retry
       }), 'Fix Chapter Content')
 
       const modifiedContent = response.text ? response.text.trim() : ''
@@ -6198,6 +6255,9 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           const chapters = thesisContent.split(/(?=^## )/gm).filter(c => c.trim().length > 0)
           console.log(`[Repair] Split thesis into ${chapters.length} chunks for processing`)
 
+          // Extract all titles for context
+          const allChapterTitles = chapters.map(c => c.split('\n')[0].replace(/#/g, '').trim())
+
           const repairedChapters: string[] = []
 
           // 2. Process each chapter
@@ -6206,7 +6266,15 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
             const chunkTitle = chunk.split('\n')[0].replace(/#/g, '').trim()
             console.log(`[Repair] Repairing chunk ${i + 1}/${chapters.length}: "${chunkTitle.substring(0, 50)}..."`)
 
-            const repairedChunk = await fixChapterContent(chunk, critiqueReport, thesisData.language === 'german', i, chapters.length)
+            const repairedChunk = await fixChapterContent(
+              chunk,
+              critiqueReport,
+              thesisData.language === 'german',
+              i,
+              chapters.length,
+              allChapterTitles, // Pass context
+              thesisData.fileSearchStoreId // Pass fileSearchStoreId
+            )
 
             // Handle explicit deletion
             if (repairedChunk.trim() === '[DELETE_CHAPTER]') {
