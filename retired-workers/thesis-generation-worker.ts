@@ -2660,7 +2660,7 @@ async function critiqueThesis(
   const outlineShort = outlineChapters.map(c => `${c.number} ${c.title}`).join('\n')
 
   let prompt = isGerman
-    ? `Du bist ein strenger akademischer Prüfer. Überprüfe die folgende Thesis (Ausschnitt/Zusammenfassung) auf Herz und Nieren.
+    ? `Du bist ein akademischer Prüfer. Überprüfe die folgende Thesis VOLLSTÄNDIG und erstelle eine Report mit ALLEN Fehlern.
     
     PRÜFUNGSKRITERIEN:
     1. **STRUKTUR:** Entsprechen die Kapitelüberschriften exakt der Vorgabe?
@@ -2668,6 +2668,7 @@ async function critiqueThesis(
        ${outlineShort}
        - **PRÜFE GENAU:** Hat jedes Unterkapitel seine Nummer? "1.1 Begriff" MUSS "1.1" haben.
        - FEHLER: "Begriff" (ohne Nummer). LÖSUNG: "Füge Nummer 1.1 hinzu."
+       - Stimmt der tatsächliche Aufbau oder Gang der Untersuchung der Arbeit mit dem in der Einleitung beschriebenen Aufbau oder Gang der Untersuchung überein?
     
     2. **FORSCHUNGSFRAGE:** Wird die folgende Forschungsfrage explizit und schlüssig beantwortet?
        FRAGE: "${researchQuestion}"
@@ -2679,26 +2680,28 @@ async function critiqueThesis(
        
        **WICHTIG:** Nutze das 'fileSearch' Tool, um **ALLE** Zitationen zu überprüfen!
        - Gehe jede einzelne Zitation durch.
-       - Suche nach dem zitierten Satz im PDF.
+       - Suche die Stelle im PDF, die zitiert wurde. 
+       - Sei nicht zu streng bei Überprüfung der Zitation. Wichtig ist, ob der zitierte Inhalt auf die Zitation passt. Wenn nicht, gib das an.
        - Stimmt die Seitenzahl? Wenn nein -> REPORT!
+       - Suche die richtige Seitenzahl oder mache einen Vorschlag zur Umformulierung, sodass die Zitation passt.
        - **FALLS GEFUNDEN:** Gib die KORREKTE Seitenzahl an! (z.B. "Gefunden auf S. 12").
 
     4. **SPRACHE & TON:** 
        - Enthält der Text das Wort "man" oder "wir"? (VERBOTEN)
        - Ist der Stil zu umgangssprachlich?
-       - Gibt es Flüchtigkeitsfehler ("Jahrhunderts. Jahrhunderts." oder "..")?
+       - Gibt es Flüchtigkeitsfehler (z.B. "Jahrhunderts. Jahrhunderts." oder "..")?
        - **VERBOTENE FRAGE-MUSTER:** Prüfe auf "Thema? Aussage." Muster (z.B. "Der Grund? Einfach."). Das ist VERBOTEN.
        - **RHETORISCHE FRAGEN:** Sind rhetorische Fragen enthalten? (VERBOTEN)
        - **TON:** Zu emotional? Zu umgangssprachlich ("halt", "eben", "quasi")?
 
     5. **SEITENZAHLEN-CHECK:**
        - Prüfe Zitationen auf kryptische Seitenzahlen wie "e359385", "e1234", "Article 5". Das ist FALSCH.
-       - Seitenzahlen müssen das Format "S. XX" oder "S. XX-YY" haben.
+       - Seitenzahlen müssen das Format "S. XX", "S. XXf.", "S. XXff." oder "S. XX-YY" haben.
        - Zitationen OHNE Seitenzahl sind ebenfals ein FEHLER.
-       - **WICHTIG:** Schlage NIEMALS vor, die Seitenzahl zu löschen! Jede Zitation MUSS eine Seite haben. Wenn unbekannt, fordere "S. 1".
+       - **WICHTIG:** Schlage NIEMALS vor, die Seitenzahl zu löschen! Jede Zitation MUSS eine Seite haben.
     
-    THESIS TEXT (Ausschnitte):
-    ${thesisText.substring(0, 50000)} ... [Text gekürzt für Analyse]
+    THESIS TEXT:
+    ${thesisText} 
     
     ANTWORTE IN DIESEM FORMAT:
     ## 🧐 CRITIQUE REPORT
@@ -2752,12 +2755,12 @@ async function critiqueThesis(
 
     5. **PAGE NUMBER CHECK:**
        - Check citations for cryptic page numbers like "e359385", "e1234", "Article 5". This is WRONG.
-       - Page numbers must format as "p. XX" or "p. XX-YY".
+       - Page numbers must format as "p. XX", "p. XXf.", "p. XXff." or "p. XX-YY".
        - Citations WITHOUT page numbers are also an ERROR.
     
     
     THESIS TEXT (Excerpt):
-    ${thesisText.substring(0, 50000)} ... [Text truncated]
+    ${thesisText}
     
     CRITICAL RULE: NEVER SUGGEST REMOVING A PAGE NUMBER. EVERY CITATION MUST HAVE ONE.
     If you cannot find the page, suggest "p. 1" as a fallback. "Remove page" is FORBIDDEN.
@@ -2802,7 +2805,7 @@ async function critiqueThesis(
       model: 'gemini-2.5-pro', // Switched to Stable Pro as requested (2.5 may vary by region)
       contents: prompt,
       config: {
-        maxOutputTokens: 8192,
+        maxOutputTokens: 50000,
         temperature: 0.1,
         tools: [{
           fileSearch: {
@@ -2841,6 +2844,7 @@ async function fixChapterContent(
     DEINE AUFGABE:
     Korrigiere dieses Kapitel SYSTEMATISCH. Gehe die Liste der Fehler im Report Punkt für Punkt durch.
     Wenn der Report 5 Fehler nennt, musst du 5 Fehler beheben. Höre nicht nach dem ersten auf!
+    **WICHTIG:** Korrigiere ausschließlich die im Report genannten Fehler! Wenn ein Kapitel fehlerfrei ist, gib es EXAKT SO ZURÜCK!
     
     CRITIQUE REPORT:
     ${critiqueReport}
@@ -2916,7 +2920,7 @@ async function fixChapterContent(
       const response = await retryApiCall(() => ai.models.generateContent({
         model: 'gemini-2.5-pro',
         contents: prompt,
-        config: { maxOutputTokens: 8000, temperature: 0.1 + (attempt * 0.1) }, // Increase temp slightly on retry
+        config: { maxOutputTokens: 50000, temperature: 0.1 + (attempt * 0.1) }, // Increase temp slightly on retry
       }), 'Fix Chapter Content')
 
       const modifiedContent = response.text ? response.text.trim() : ''
