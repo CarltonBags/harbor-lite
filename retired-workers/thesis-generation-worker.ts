@@ -889,6 +889,7 @@ async function extractPageNumbers(pdfBuffer: Buffer): Promise<{ pageStart: strin
        - "1" vs "2" -> Increments (+1). ACCEPT as Page Number.
        - "100" vs "101" -> Increments (+1). ACCEPT.
     4. EXTRACT the correct Start and End page numbers based on this pattern.
+    -Important: Sometimes page 1 of an article might not contain page number 1. but if page 2 contains page number 2, then the first page is page 1.
 
     RESPONSE FORMAT:
     First, provide your reasoning. Do NOT use curly braces {} in your reasoning.
@@ -2641,7 +2642,7 @@ async function critiqueThesis(
        ERLAUBTE QUELLEN:
        ${sourceListShort}
        
-       **WICHTIG:** Nutze das `fileSearch` Tool, um **ALLE** Zitationen zu überprüfen!
+       **WICHTIG:** Nutze das 'fileSearch' Tool, um **ALLE** Zitationen zu überprüfen!
        - Gehe jede einzelne Zitation durch.
        - Suche nach dem zitierten Satz im PDF.
        - Stimmt die Seitenzahl? Wenn nein -> REPORT!
@@ -2687,7 +2688,7 @@ async function critiqueThesis(
        ALLOWED SOURCES:
        ${sourceListShort}
 
-       **IMPORTANT:** Use the `fileSearch` tool to verify **ALL** citations!
+       **IMPORTANT:** Use the 'fileSearch' tool to verify **ALL** citations!
        - Check every single citation.
        - Search for the cited sentence in the PDF.
        - Does the page number match? If no -> REPORT!
