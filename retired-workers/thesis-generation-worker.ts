@@ -2193,7 +2193,7 @@ ${availableSourcesList}
   - Zitiere NIEMALS Werke, die nicht in deiner Quellenliste stehen.
   - FALSCH: Zitation von (Freud, 1920), wenn du nur ein Buch von (Müller, 2023) hast, das Freud erwähnt.
   - RICHTIG: "(Freud, 1920, zitiert nach Müller, 2023, S. 45)" oder einfach nur (Müller, 2023, S. 45).
-  - RICHTIG: "(Freud, 1920, zitiert nach Müller, 2023, S. 45)" oder einfach nur (Müller, 2023, S. 45).
+
   - Nutze NUR die Quellen, die dir bereitgestellt wurden.
 - **REGEL 6: NUR BEDINGUNGSLOS EXISTIERENDE SEITEN**
   - Wenn in der Quellenliste steht "S. 1-10", darfst du NICHT "S. 1585" zitieren!
@@ -2209,7 +2209,7 @@ ${availableSourcesList}
 - Halte dich exakt an die Hierarchie (#, ##, ###).
 
 GEPLANTE GLIEDERUNG für dieses Kapitel:
-${chapterTask.subChapters ? chapterTask.subChapters.map(s => `- ${s}`).join('\n') : '(Keine Unterkapitel, nur Fließtext)'}
+${(chapter.sections && chapter.sections.length > 0) ? chapter.sections.map(s => '- ' + s.number + ' ' + s.title).join('\n') : '(Keine Unterkapitel, nur Fließtext)'}
 
 **🚫 ABSOLUT VERBOTEN: FRAGEN & FRAGE-ANTWORT-MUSTER 🚫**
 - NIEMALS Konstruktionen wie "Begriff? Definition." verwenden!
@@ -2275,7 +2275,7 @@ FORMATTING & RULES
 - Stick exactly to the hierarchy (#, ##, ###).
 
 PLANNED OUTLINE for this chapter:
-${chapterTask.subChapters ? chapterTask.subChapters.map(s => `- ${s}`).join('\n') : '(No subchapters, just text)'}
+${(chapter.sections && chapter.sections.length > 0) ? chapter.sections.map(s => '- ' + s.number + ' ' + s.title).join('\n') : '(No subchapters, just text)'}
 
 **⚠️ IMPORTANT - FORMATTING ⚠️**
 - New headings (##, ###) MUST always start on a new line, preceded by a blank line.
@@ -6688,9 +6688,9 @@ const worker = new Worker(
     }
   },
   {
-    connection: redisConnection,
+    connection: workerConnection,
     concurrency: 1,
-    lockDuration: 900000, // 15 mins (prevents 'job stalled' errors)
+
     maxStalledCount: 0, // Do not retry if stalled (avoids infinite loops on timeout)
     // REDIS OPTIMIZATION: Reduce polling frequency when idle
     // Default is 5000ms, we use 30000ms (30 seconds) to save commands
