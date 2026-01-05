@@ -2865,9 +2865,13 @@ async function fixChapterContent(
     Das ist wichtig, falls der Report sagt "Lösche das zweite Fazit am Ende". Wenn du Teil ${totalChunks}/${totalChunks} bist, bist du wahrscheinlich dieses Kapitel.
     
     REGELN:
-    1. Wenn der Report sagt "Forschungsfrage in der Einleitung fehlt" und dies IST die Einleitung: FÜGE SIE EIN!
-    2. Wenn der Report sagt "Strukturfehler in Kapitel 3" und dies IST Kapitel 3: KORRIGIERE ES!
-    3. Wenn der Report "Sprache: FEHLERHAFT" ("man", "wir", "Umgangssprache", "Tippfehler") meldet: KORRIGIERE ALLE DIESE FEHLER IM TEXT!
+    1. **KONTEXT-CHECK:** Bist du "Kapitel X" oder "Einleitung"? Wenn ja, und der Report nennt Fehler für "Kapitel X" oder "Einleitung": **DU MUSST SIE KORRIGIEREN!** Ignoriere sie nicht!
+    2. **BEISPIEL (STRUKTURFEHLER):**
+       - REPORT: "Einleitung sagt 5 Kapitel, es sind aber 6." -> FINDE im Text: "fünf Kapitel" -> ÄNDERE zu: "sechs Kapitel". 
+       - REPORT: "Kapitel 5 ist Diskussion, nicht Fazit." -> FINDE im Text: "Das fünfte Kapitel dient als Fazit" -> ÄNDERE zu: "Das fünfte Kapitel diskutiert die Ergebnisse..."
+    3. Wenn der Report sagt "Forschungsfrage in der Einleitung fehlt" und dies IST die Einleitung: FÜGE SIE EIN!
+    4. Wenn der Report sagt "Strukturfehler in Kapitel 3" und dies IST Kapitel 3: KORRIGIERE ES!
+    5. Wenn der Report "Sprache: FEHLERHAFT" ("man", "wir", "Umgangssprache", "Tippfehler") meldet: KORRIGIERE ALLE DIESE FEHLER IM TEXT!
        - Wandle "man" und "wir" in Passiv um.
        - Entferne doppelte Wörter/Punkte.
        - Ersetze Umgangssprache durch Fachsprache.
@@ -2905,9 +2909,13 @@ async function fixChapterContent(
     This is important if the report says "Delete the second Conclusion at the end". If you are chunk ${totalChunks}/${totalChunks}, you are likely that chapter.
     
     RULES:
-    1. If report says "RQ missing in Intro" and this IS the Intro: ADD IT!
-    2. If report says "Structure error in Ch 3" and this IS Ch 3: FIX IT!
-    3. If report says "Language: ISSUES": FIX THEM! (Remove "man", "we", fix typos, formalize tone).
+    1. **CONTEXT CHECK:** Are you "Chapter X" or "Intro"? If yes, and report lists errors for "Chapter X" or "Intro": **YOU MUST FIX THEM!** Do not ignore them.
+    2. **EXAMPLE (STRUCTURE ERROR):**
+       - REPORT: "Intro says 5 chapters, but it's 6." -> FIND in text: "five chapters" -> CHANGE to: "six chapters".
+       - REPORT: "Chapter 5 is Discussion, not Conclusion." -> FIND in text: "The fifth chapter serves as conclusion" -> CHANGE to: "The fifth chapter discusses the results..."
+    3. If report says "RQ missing in Intro" and this IS the Intro: ADD IT!
+    4. If report says "Structure error in Ch 3" and this IS Ch 3: FIX IT!
+    5. If report says "Language: ISSUES": FIX THEM! (Remove "man", "we", fix typos, formalize tone).
     4. If report says "Page Numbers: ISSUES" (e.g. "e359385"): 
        - Find these cryptic numbers and replace them with the TRUE page number based on context.
        - **IMPORTANT:** If the report says "CORRECT PAGE: XX", use exactly that number!
@@ -6576,7 +6584,7 @@ app.get('/jobs/:thesisId', authenticate, async (req: Request, res: Response) => 
     const queryStart = Date.now()
     const { data: thesis, error } = await supabase
       .from('theses')
-      .select('id, status, created_at, updated_at, completed_at, metadata')
+      .select('id, status, created_at, updated_at, completed_at, metadata, critique_report, critique_history')
       .eq('id', thesisId)
       .single()
     const queryDuration = Date.now() - queryStart
