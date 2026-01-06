@@ -6506,8 +6506,8 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         if (critiqueReport && critiqueReport.length > 100) {
           console.log('[Repair] Starting chunked repair...')
 
-          // 1. Split content into chapters
-          const chapters = thesisContent.split(/(?=^# )/gm).filter(c => c.trim().length > 0)
+          // 1. Split content into chapters (Level 2 headers ##, ignoring Level 3 ###)
+          const chapters = thesisContent.split(/(?=^## [^#])/gm).filter(c => c.trim().length > 0)
           console.log(`[Repair] Split thesis into ${chapters.length} chunks for processing`)
 
           // Extract all titles for context
