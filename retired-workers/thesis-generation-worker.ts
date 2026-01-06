@@ -2869,261 +2869,249 @@ async function critiqueThesis(
   fileSearchStoreId: string,
   masterReport?: string
 ): Promise<string> {
-  console.log('[ThesisCritique] Starting comprehensive thesis critique...')
+  console.log('[ThesisCritique] Starting comprehensive thesis critique (Iterative Chapter Mode)...')
 
   // Simplify sources for prompt (Title + Author + Year)
-
   const sourceListShort = sources.map((s, i) => `[${i + 1}] ${s.authors.join(', ')} (${s.year || 'n.d.'}) - ${s.title} `).join('\n')
 
-  // Simplify outline for prompt
-  const outlineShort = outlineChapters.map(c => `${c.number} ${c.title} `).join('\n')
+  // Split thesis into chapters for iterative processing
+  const chapters = thesisText.split(/(?=^## )/gm).filter(c => c.trim().length > 0)
+  console.log(`[ThesisCritique] Split thesis into ${chapters.length} chapters for iterative critique`)
 
-  let prompt = ''
+  const allErrors: any[] = []
 
-  if (masterReport) {
-    // === VERIFICATION MODE ===
-    // Only check if previous errors are fixed. Do NOT find new ones.
-    prompt = isGerman
-      ? `Du bist ein strenger Auditor.Dein Job ist die NACHKONTROLLE von Korrekturen.
+  // Iterate through chapters
+  for (let i = 0; i < chapters.length; i++) {
+    const chapterContent = chapters[i]
+    const chapterTitle = chapterContent.split('\n')[0].replace(/#/g, '').trim()
+    console.log(`[ThesisCritique] Critiquing Chapter ${i + 1}/${chapters.length}: "${chapterTitle}"`)
 
-    SITUATION:
-      Eine Thesis wurde bereits geprüft.Hier ist der "MASTER FEHLER-REPORT" mit den gefundenen Mängeln:
-      
-      <<<< MASTER REPORT BEGINN >>>>
-    ${masterReport}
-      <<<< MASTER REPORT ENDE >>>>
+    // Prepare prompt for this specific chapter
+    let chapterPrompt = ''
 
-    DEINE AUFGABE:
-      Prüfe den UNTENSTEHENDEN TEXT daraufhin, ob DIESE FEHLER behoben wurden.
+    if (masterReport) {
+      // === VERIFICATION MODE (Targeted) ===
+      // Filter errors relevant to this chapter
+      let chapterSpecificErrors = ''
+      try {
+        const reportObj = JSON.parse(masterReport)
+        const errors = reportObj.errors || []
+        // Simple filter: Check if error location matches chapter title or number
+        const relevantErrors = errors.filter((e: any) => {
+          // Heuristic: Does the error location/quote appear in this chapter?
+          // Or does the location string match the chapter title?
+          if (!e.location) return true // If no location, check everywhere
+          const loc = e.location.toLowerCase()
+          const title = chapterTitle.toLowerCase()
+          return title.includes(loc) || loc.includes(title) || chapterContent.includes(e.quote?.substring(0, 20) || '___')
+        })
 
-    REGELN:
-  1. Prüfe NUR die im MASTER REPORT genannten Fehler.
-      2. Suche KEINE neuen Fehler! Dein Job ist NUR, die Liste abzuarbeiten.
-      3. Wenn ein Fehler behoben wurde: Erwähne ihn NICHT mehr.
-      4. Wenn ein Fehler NOCH IMMER da ist: Füge ihn in deinen neuen Report ein.
-      
-      OUTPUT FORMAT(GENAU WIE VORHER):
-      ## 🧐 CRITIQUE REPORT
-    (Liste hier NUR die Fehler auf, die NOCH ÜBRIG sind.Wenn alles korrigiert ist, lass die Liste leer.)
+        if (relevantErrors.length === 0) {
+          console.log(`[ThesisCritique] No previous errors mapped to Chapter ${i + 1}. Skipping verification for this chapter.`)
+          continue;
+        }
 
-  WICHTIG:
-  - Sei gnädig.Wenn der Autor versucht hat, es zu fixen, und es "gut genug" ist, akzeptiere es.
-      - Ziel ist Konvergenz(weniger Fehler).
-      
-      THESIS TEXT(NEU):
-      ${thesisText} `
-      : `You are a strict auditor.Your job is VERIFICATION of corrections.
+        chapterSpecificErrors = JSON.stringify({ errors: relevantErrors }, null, 2)
+      } catch (e) {
+        // Fallback if parsing fails
+        chapterSpecificErrors = masterReport
+      }
 
-    SITUATION:
-      A thesis has already been audited.Here is the "MASTER CRITIQUE REPORT" with the found issues:
-      
-      <<<< MASTER REPORT START >>>>
-    ${masterReport}
-      <<<< MASTER REPORT END >>>>
+      chapterPrompt = isGerman
+        ? `Du bist ein strenger Auditor (Reviewer). Dein Job ist die NACHKONTROLLE von Korrekturen für dieses KAPITEL.
 
-    YOUR TASK:
-      Check the TEXT BELOW to see if THESE ERRORS have been fixed.
+      SITUATION:
+        Eine Thesis wurde bereits geprüft. Hier sind die Mängel, die in DIESEM KAPITEL gefunden wurden:
+        
+        <<<< FEHLER-LISTE FÜR DIESES KAPITEL >>>>
+        ${chapterSpecificErrors}
+        <<<< ENDE FEHLER-LISTE >>>>
 
-    RULES:
-  1. Check ONLY the errors listed in the MASTER REPORT.
-      2. Do NOT look for new errors! Your job is only to work down the list.
-      3. If an error is fixed: Do NOT mention it again.
-      4. If an error is STILL present: Include it in your new report.
-      
-      OUTPUT FORMAT(SAME AS BEFORE):
-      ## 🧐 CRITIQUE REPORT
-    (List here ONLY the errors that REMAIN.If everything is fixed, leave the list empty.)
+      DEINE AUFGABE:
+        Prüfe den UNTENSTEHENDEN KAPITEL-TEXT daraufhin, ob DIESE FEHLER behoben wurden.
 
-  IMPORTANT:
-  - Be lenient.If the author tried to fix it and it's "good enough", accept it.
-    - Goal is convergence(fewer errors).
-      
-      THESIS TEXT(NEW):
-      ${thesisText} `
-  } else {
-    // === FULL CRITIQUE MODE (Original Logic) ===
-    prompt = isGerman
-      ? `Du bist ein akademischer Prüfer im Jahre 2026. Überprüfe die folgende Thesis VOLLSTÄNDIG und erstelle eine Report mit ALLEN Fehlern.
-
-    PRÜFUNGSKRITERIEN:
-  1. ** STRUKTUR:** Entsprechen die Kapitelüberschriften exakt der Vorgabe ?
-    VORGABE :
-    ${outlineShort}
-       - ** PRÜFE GENAU:** Hat jedes Unterkapitel seine Nummer ? "1.1 Begriff" MUSS "1.1" haben.
-       - FEHLER: "Begriff"(ohne Nummer).LÖSUNG: "Füge Nummer 1.1 hinzu."
-    - Stimmt der tatsächliche Aufbau oder Gang der Untersuchung der Arbeit mit dem in der Einleitung beschriebenen Aufbau oder Gang der Untersuchung überein ?
-      - Prüfe auf DOPPELTE KAPITEL(z.B.zweimal "Fazit").
-       - WENN DU DOPPELTE KAPITEL FINDEST: VERGLEICHE SIE.Entscheide, welches besser ist(z.B.Unterkapitel hat, dem Outline entspricht).
-       - Das SCHLECHTERE / FALSCHE Kapitel muss gelöscht werden.
-       - GIB EINE KLARE ANWEISUNG: "Lösche das zweite Kapitel 6 am Ende des Textes" oder "Lösche das Kapitel 'Fazit', das keine Unterkapitel hat".
-       - Strukturelle Probleme(falsche Reihenfolge, fehlende Kapitel).
-    
-    2. ** FORSCHUNGSFRAGE:** Wird die folgende Forschungsfrage explizit und schlüssig beantwortet ?
-    FRAGE : "${researchQuestion}"
-      (Schaue besonders auf Einleitung und Fazit)
-
-  3. ** QUELLEN - CHECK:** Werden Quellen zitiert, die NICHT in der erlaubten Liste stehen ? (Halluzinations - Check)
-       ERLAUBTE QUELLEN:
-       ${sourceListShort}
-       
-       ** WICHTIG:** Nutze das 'fileSearch' Tool, um ** ALLE ** Zitationen zu überprüfen!
-    - Gehe jede einzelne Zitation durch.
-       - ** JAHR - CHECK(WICHTIG):** Vergleiche das Jahr im Text mit der "ERLAUBTE QUELLEN" Liste oben.
-       - Steht im Text "(Müller, 2025)", aber in der Liste "[1] Müller (2015)" ? -> DANN IST 2025 EINE HALLUZINATION!
-    - REPORT: "Falsches Jahr 2025 (Halluzination). Korrektes Jahr laut Metadaten: 2015." -> LÖSUNG: "Ändere Jahr auf 2015."
-      - Suche die Stelle im PDF, die zitiert wurde. 
-       - Sei nicht zu streng bei Überprüfung der Zitation.Wichtig ist, ob der zitierte Inhalt auf die Zitation passt.Wenn nicht, gib das an.
-       - Stimmt die Seitenzahl ? Wenn nein -> REPORT!
-    - Suche die richtige Seitenzahl oder mache einen Vorschlag zur Umformulierung, sodass die Zitation passt.
-       - ** FALLS GEFUNDEN:** Gib die KORREKTE Seitenzahl an!(z.B. "Gefunden auf S. 12").
-
-    4. ** SPRACHE & TON:**
-    - Enthält der Text das Wort "man" oder "wir" ? (VERBOTEN)
-      - Ist der Stil zu umgangssprachlich ?
-        - Gibt es Flüchtigkeitsfehler(z.B. "Jahrhunderts. Jahrhunderts." oder "..") ?
-       - ** VERBOTENE FRAGE - MUSTER:** Prüfe auf "Thema? Aussage." Muster(z.B. "Der Grund? Einfach.").Das ist VERBOTEN.
-       - ** RHETORISCHE FRAGEN:** Sind rhetorische Fragen enthalten ? (VERBOTEN)
-    - ** TON :** Zu emotional ? Zu umgangssprachlich("halt", "eben", "quasi") ?
-
-      5. ** SEITENZAHLEN - CHECK :**
-      - Prüfe Zitationen auf kryptische Seitenzahlen wie "e359385", "e1234", "Article 5".Das ist FALSCH.
-       - Seitenzahlen müssen das Format "S. XX", "S. XXf.", "S. XXff." oder "S. XX-YY" haben.
-       - Zitationen OHNE Seitenzahl sind ein FEHLER.
-       - ** WICHTIG(SUCHE):** Wenn eine Seitenzahl fehlt oder falsch ist("e12345"), NUTZE DAS 'fileSearch' WERKZEUG, um die Stelle im Text zu finden!
-    - ** LÖSUNG MUSS KONKRET SEIN:** Schreibe NICHT "Füge eine Seitenzahl hinzu." Schreibe: "LÖSUNG: Ergänze Seitenzahl S. 12 (gefunden im PDF)."
-      - Wenn du die Seite nicht finden kannst, schlage S. 1 vor oder markiere es zur manuellen Prüfung.Aber versuche erst zu SUCHEN.
-       - ** WICHTIG:** Schlage NIEMALS vor, die Seitenzahl zu löschen! Jede Zitation MUSS eine Seite haben.
-    
-    THESIS TEXT:
-    ${thesisText} 
-    
-    ANTWORTE NUR ALS JSON-OBJEKT:
-    {
-      "errors": [
+      REGELN:
+        1. Prüfe NUR die oben genannten Fehler.
+        2. Suche KEINE neuen Fehler!
+        3. Wenn ein Fehler behoben wurde: Erwähne ihn NICHT mehr.
+        4. Wenn ein Fehler NOCH IMMER da ist: Füge ihn in deinen Report ein.
+        
+        OUTPUT FORMAT (JSON):
         {
-          "location": "1.2" (oder "Einleitung", "Fazit"), 
-          "quote": "Der Textabschnitt, der falsch ist (optional, hilft beim Finden)",
-          "error": "Beschreibung des Fehlers",
-          "solution": "GENAUE Anweisung, wie der Text geändert werden muss"
-        },
-        ...
-      ]
-    }
-    `
+          "errors": [
+            {
+              "location": "Kapitel X...",
+              "quote": "Zitierter Text...",
+              "error": "Fehlerbeschreibung...",
+              "solution": "Lösung..."
+            }
+          ]
+        }
+        (Lass das Array leer [], wenn alles korrigiert ist.)
 
-      : `You are a strict academic auditor.Critique the following thesis(excerpt / summary) rigorously.
+      KAPITEL TEXT:
+      ${chapterContent}`
+        : `You are a strict auditor. Your job is VERIFICATION of corrections for this CHAPTER.
 
-    CRITERIA:
-  1. ** STRUCTURE:** Do the chapter headings match the outline exactly ?
-    OUTLINE :
-    ${outlineShort}
-       - ** CHECK CAREFULLY:** Does every subchapter have its number ? "1.1 Term" MUST have "1.1".
-       - ERROR: "Term"(without number).SOLUTION: "Add number 1.1."
-    - Check for DUPLICATE CHAPTERS(e.g.two "Conclusion" chapters).
-       - IF YOU FIND DUPLICATES: COMPARE THEM.Decide which one is better / correct.
-       - The WORSE / INCORRECT chapter must be deleted.
-       - GIVE CLEAR INSTRUCTION: "Delete the second Chapter 6 at the end" or "Delete the 'Conclusion' chapter that has no subchapters".
-       - Structural issues(wrong order, missing sections).
-    
-    2. ** RESEARCH QUESTION:** Is the following Research Question explicitly and coherently answered ?
-    QUESTION : "${researchQuestion}"
-      (Focus on Intro and Conclusion)
+      SITUATION:
+        A thesis has already been audited. Here are the issues found in THIS CHAPTER:
+        
+        <<<< ERROR LIST FOR THIS CHAPTER >>>>
+        ${chapterSpecificErrors}
+        <<<< END LIST >>>>
 
-  3. ** SOURCE CHECK:** No fake sources ?
-    ALLOWED SOURCES:
-       ${sourceListShort}
+      YOUR TASK:
+        Check the CHAPTER TEXT BELOW to see if THESE ERRORS have been fixed.
 
-       ** IMPORTANT:** Use the 'fileSearch' tool to verify ** ALL ** citations!
-    - Check every single citation.
-       - ** Incorrect usage of "et al." ?** (Only valid for > 2 authors! For 2 authors: "Name & Name".)
-  - Is format correct ? (Author, Year, p.XX) -> "p. 336f." is okay.
-       - ** IMPORTANT(SEARCH):** If a citation lacks a page number or has an article ID("e12345"), USE THE 'fileSearch' TOOL to find the content!
-    - ** SOLUTION MUST BE CONCRETE:** Do NOT write "Add a page number." Write: "SOLUTION: Add page number p. 12 (found in PDF)."
-      - If you cannot find the page, suggest p. 1 or mark for manual review.But SEARCH first.
-       - ** IF FOUND:** Provide the CORRECT page number!(e.g. "Found on p. 12").
-
-    4. ** LANGUAGE & TONE:**
-    - Any usage of "man", "we", "I" ? (FORBIDDEN)
-      - Sloppy errors(double words / punctuation) ?
-       - ** BANNED PATTERNS:** Check for "Topic? Statement."(e.g. "The reason? Simple.").FORBIDDEN.
-       - ** RHETORICAL QUESTIONS:** Are there any ? (FORBIDDEN)
-    - Is the tone too emotional or colloquial ?
-
-      5. **HEADLINES ARE SACRED:** 
-         - Do not criticize the specific wording of headlines.
-         - Do not suggest renaming them unless they are completely wrong (e.g. "Chapter 1" content is "Conclusion").
-         - If the headline matches the outline, accept it.
-
-      6. **PRESERVE CITATIONS:** Check citations for accuracy, but do not hallucinate errors.
-
-      7. ** PAGE NUMBER CHECK:**
-        - Check citations for cryptic page numbers like "e359385", "e1234", "Article 5".This is WRONG.
-       - Page numbers must format as "p. XX", "p. XXf.", "p. XXff." or "p. XX-YY".
-       - Citations WITHOUT page numbers are also an ERROR.
-    
-    
-    THESIS TEXT(Excerpt):
-    ${thesisText}
-    
-    CRITICAL RULE: NEVER SUGGEST REMOVING A PAGE NUMBER.EVERY CITATION MUST HAVE ONE.
-    If you cannot find the page, suggest "p. 1" as a fallback. "Remove page" is FORBIDDEN.
-    
-    OUTPUT ONLY AS A JSON OBJECT:
-    {
-      "errors": [
+      RULES:
+        1. Check ONLY the errors listed above.
+        2. Do NOT look for new errors!
+        3. If an error is fixed: Do NOT mention it again.
+        4. If an error is STILL present: Include it in your report.
+        
+        OUTPUT FORMAT (JSON):
         {
-          "location": "1.2" (or "Intro", "Conclusion"),
-          "quote": "Text snippet containing the error (optional)",
-          "error": "Description of error",
-          "solution": "PRECISE instruction on how to change the text"
-        },
-        ...
-      ]
-    }
-    `
+          "errors": [ ... ]
+        }
+        (Leave array empty [] if all fixed.)
 
-    if (isGerman) {
-      prompt += `
+      CHAPTER TEXT:
+      ${chapterContent}`
 
-  ZUSATZREGEL:
-    Prüfe die Überschriften der Kapitel EXAKT.Wenn das Outline sagt "1. Einleitung" und im Text steht "Einleitung"(ohne Nummer) oder "1. Einführung"(falsches Wort), dann ist das ein STRUKTURFEHLER.
-    Die Überschriften müssen ZEICHEN - FÜR - ZEICHEN übereinstimmen.`
     } else {
-      prompt += `
-    
-    ADDITIONAL RULE:
-    Check chapter headings EXACTLY.If outline says "1. Introduction" and text says "Introduction"(no number) or "1. Intro"(wrong word), that is a STRUCTURE ERROR.
-    Headings must match CHARACTER - FOR - CHARACTER.`
+      // === FULL CRITIQUE MODE (Standard) ===
+      chapterPrompt = isGerman
+        ? `Du bist ein akademischer Prüfer (Reviewer). Überprüfe dieses KAPITEL auf Fehler.
+
+      KONTEXT:
+      - Dies ist Kapitel ${i + 1} von ${chapters.length}.
+      - Titel: "${chapterTitle}"
+      
+      PRÜFUNGSKRITERIEN FÜR DIESES KAPITEL:
+      
+      1. **FORSCHUNGSFRAGE:** Trägt dieses Kapitel zur Beantwortung bei?
+         FRAGE: "${researchQuestion}"
+
+      2. **QUELLEN-CHECK & HALLUZINATIONEN (WICHTIG!):**
+         - Vergleiche JEDE Zitation im Text mit der "ERLAUBTE QUELLEN" Liste unten.
+         - ERLAUBTE QUELLEN:
+         ${sourceListShort}
+         
+         - **JAHR-CHECK:** Stimmt das Jahr? (Text: 2025 vs Liste: 2015 -> FEHLER!)
+         - **SEITENZAHLEN:** Fehlen Seitenzahlen? (Fehler!) Sind sie kryptisch ("e1234")? (Fehler!)
+         - NUTZE DAS 'fileSearch' TOOL um Zitationen und Seitenzahlen zu verifizieren!
+
+      3. **SPRACHE & STIL:**
+         - Keine "man", "wir", "ich".
+         - Keine rhetorischen Fragen.
+         - Keine Umgangssprache ("halt", "quasi").
+
+      KAPITEL TEXT:
+      ${chapterContent}
+
+      ANTWORTE NUR ALS JSON-OBJEKT:
+      {
+        "errors": [
+          {
+            "location": "${chapterTitle}",
+            "quote": "Der fehlerhafte Textauschnitt",
+            "error": "Beschreibung des Fehlers",
+            "solution": "KONKRETE Lösungsanweisung (z.B. 'Ändere Jahr auf 2015')"
+          }
+        ]
+      }
+      (Lass das Array leer [], wenn keine Fehler gefunden wurden.)`
+
+        : `You are an academic reviewer. Critique this CHAPTER for errors.
+
+      CONTEXT:
+      - This is Chapter ${i + 1} of ${chapters.length}.
+      - Title: "${chapterTitle}"
+      
+      CRITERIA FOR THIS CHAPTER:
+      
+      1. **RESEARCH QUESTION:** Does this chapter contribute?
+         QUESTION: "${researchQuestion}"
+
+      2. **SOURCE CHECK & HALLUCINATIONS (IMPORTANT!):**
+         - Compare EVERY citation with the "ALLOWED SOURCES" list below.
+         - ALLOWED SOURCES:
+         ${sourceListShort}
+         
+         - **YEAR CHECK:** Does year match?
+         - **PAGE NUMBERS:** Missing? Cryptic ("e1234")?
+         - USE 'fileSearch' TOOL to verify citations!
+
+      3. **LANGUAGE & STYLE:**
+         - No "we", "I", "you".
+         - No rhetorical questions.
+         - Academic tone.
+
+      CHAPTER TEXT:
+      ${chapterContent}
+
+      OUTPUT ONLY AS JSON OBJECT:
+      {
+        "errors": [
+          {
+            "location": "${chapterTitle}",
+            "quote": "The problematic text",
+            "error": "Error description",
+            "solution": "CONCRETE solution instruction"
+          }
+        ]
+      }
+      (Leave array empty [] if no errors.)`
     }
 
-  }
+    // Call Model (Gemini 2.5 Flash)
+    try {
+      // Small delay to avoid rate limits
+      if (i > 0) await new Promise(r => setTimeout(r, 500))
 
-  try {
-    // Use efficient strong model for critique
-    const response = await retryApiCall(() => ai.models.generateContent({
-      model: 'gemini-2.5-pro', // Switched to Stable Pro as requested (2.5 may vary by region)
-      contents: prompt,
-      config: {
-        maxOutputTokens: 50000,
-        temperature: 0.1,
-        tools: [{
-          fileSearch: {
-            fileSearchStoreNames: [fileSearchStoreId],
-          },
-        }],
-      }, // Max output for 1.5 Pro is typically 8k
-    }), 'Critique Thesis')
+      const response = await retryApiCall(() => ai.models.generateContent({
+        model: 'gemini-2.5-flash', // Use Flash as requested
+        contents: chapterPrompt,
+        config: {
+          responseMimeType: 'application/json',
+          temperature: 0.1, // High precision
+          tools: fileSearchStoreId ? [{
+            fileSearch: {
+              fileSearchStoreNames: [fileSearchStoreId],
+            },
+          }] : undefined,
+        },
+      }), `Critique Chapter ${i + 1}`)
 
-    if (!response.text) {
-      console.error('[ThesisCritique] API returned empty text. Full response:', JSON.stringify(response))
-      throw new Error('Critique API returned empty text (MAX_TOKENS or filter?)')
+      const responseText = response.text || '{}'
+      try {
+        const json = JSON.parse(responseText.replace(/```json\n?|\n?```/g, '').trim())
+        if (json.errors && Array.isArray(json.errors)) {
+          // Add chapter context to location if missing
+          const enrichedErrors = json.errors.map((e: any) => ({
+            ...e,
+            location: e.location ? e.location : chapterTitle // Ensure location is set
+          }))
+          allErrors.push(...enrichedErrors)
+          console.log(`[ThesisCritique] Chapter ${i + 1}: Found ${enrichedErrors.length} errors`)
+        }
+      } catch (parseError) {
+        console.warn(`[ThesisCritique] Failed to parse JSON for Chapter ${i + 1}`, parseError)
+      }
+
+    } catch (apiError) {
+      console.error(`[ThesisCritique] Error critiquing Chapter ${i + 1}`, apiError)
     }
-    return response.text
-  } catch (error) {
-    console.error('[ThesisCritique] Failed to generate critique:', error)
-    // Return a special error marker that the loop can detect
-    return 'CRITIQUE_GENERATION_FAILED_ERROR'
   }
+
+  // Aggregate results
+  const finalReport = {
+    errors: allErrors
+  }
+
+  console.log(`[ThesisCritique] Completed. Total errors found: ${allErrors.length}`)
+  return JSON.stringify(finalReport, null, 2)
+
 }
 
 /**
@@ -3290,7 +3278,7 @@ async function fixChapterContent(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const response = await retryApiCall(() => ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
           maxOutputTokens: 50000,
@@ -6482,7 +6470,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     try {
       if (thesisContent && thesisContent.length > 100) {
         const chapters = thesisContent.split(/(?=^## )/gm).filter(c => c.trim().length > 0)
-
+ 
         // 1. Build Actual Structure Summary
         const actualStructure = chapters.map((c, idx) => {
           const lines = c.split('\n')
@@ -6491,10 +6479,10 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           const contentSnippet = lines.slice(1).join(' ').replace(/\s+/g, ' ').substring(0, 600) + '...'
           return `Kapitel ${idx + 1}: ${title}\n   Inhalt: ${contentSnippet}`
         }).join('\n\n')
-
+ 
         console.log('[StructureSync] Actual structure extracted:')
         console.log(actualStructure)
-
+ 
         // 2. Rewrite Introduction's "Structure" section
         // Note: The first chapter (chapters[0]) is assumed to be the Introduction
         // Check if title contains "Einleitung" or "Introduction"
@@ -6588,16 +6576,34 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       }
 
       // --- CHECK PHASE ---
-      // Check if the report contains error markers
-      const hasErrors = critiqueReport.includes('[FEHLER]') ||
-        critiqueReport.includes('[FEHLERHAFT]') ||
-        critiqueReport.includes('[HALLUZINATIONEN]') ||
-        critiqueReport.includes('Error') ||
-        critiqueReport.includes('Mangel') ||
-        critiqueReport.includes('FEHLER:') || // Catch detailed errors even if status is clean
-        critiqueReport.includes('**FEHLER') ||
-        critiqueReport.includes('LÖSUNG:') || // If there is a solution proposed, there is an error
-        critiqueReport.includes('SOLUTION:')
+      // Try to parse JSON report first to detect errors
+      let hasErrors = false
+      let parsedJsonErrors: any[] = []
+
+      try {
+        const jsonStr = critiqueReport.replace(/```json\n?|\n?```/g, '').trim()
+        const reportObj = JSON.parse(jsonStr)
+        if (reportObj.errors && Array.isArray(reportObj.errors) && reportObj.errors.length > 0) {
+          hasErrors = true
+          parsedJsonErrors = reportObj.errors
+          console.log(`[Loop] Parsed ${parsedJsonErrors.length} errors from JSON report`)
+        }
+      } catch (e) {
+        // Not valid JSON, fall back to string checks
+      }
+
+      // Check if the report contains error markers (fallback)
+      if (!hasErrors) {
+        hasErrors = critiqueReport.includes('[FEHLER]') ||
+          critiqueReport.includes('[FEHLERHAFT]') ||
+          critiqueReport.includes('[HALLUZINATIONEN]') ||
+          critiqueReport.includes('Error') ||
+          critiqueReport.includes('Mangel') ||
+          critiqueReport.includes('FEHLER:') || // Catch detailed errors even if status is clean
+          critiqueReport.includes('**FEHLER') ||
+          critiqueReport.includes('LÖSUNG:') || // If there is a solution proposed, there is an error
+          critiqueReport.includes('SOLUTION:')
+      }
 
       // Check for technical failure
       const isTechnicalFailure = critiqueReport.includes('CRITIQUE_GENERATION_FAILED_ERROR')
@@ -7242,7 +7248,6 @@ const worker = new Worker(
     // REDIS OPTIMIZATION: Reduce polling frequency when idle
     // Default is 5000ms, we use 30000ms (30 seconds) to save commands
     drainDelay: 30000, // Wait 30 seconds between drain checks when queue is empty
-    lockDuration: 600000, // 10 minutes lock (thesis generation takes long)
     lockRenewTime: 300000, // Renew lock every 5 minutes
     stalledInterval: 600000, // Check for stalled jobs every 10 minutes (not default 30s)
     // Remove limiter - not needed with concurrency 1
