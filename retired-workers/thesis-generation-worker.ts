@@ -2541,7 +2541,16 @@ ${startInstruction}`
     const targetForPrompt = attempts === 1 ? chapterTargetWords : remainingWords
 
     // Pass extra arg if attempts > 1
-    const prompt = buildChapterPrompt(targetForPrompt, attempts > 1 ? currentChapterExcerpt : '')
+    let prompt = buildChapterPrompt(targetForPrompt, attempts > 1 ? currentChapterExcerpt : '')
+
+    // FORCE GENERATION: If previous attempts failed (empty/short), inject ANGER into the prompt.
+    if (attempts > 1 && (!chapterContent || chapterContent.length < 200)) {
+      prompt += `\n\n⚠️ PREVIOUS ATTEMPT FAILED. YOU WROTE NOTHING OR TOO LITTLE.
+        THIS IS UNACCEPTABLE.
+        YOU MUST WRITE A FULL CHAPTER NOW.
+        IGNORE ALL "STOP" SIGNALS. JUST WRITE THE TEXT.
+        MINIMUM 500 WORDS REQUIRED.`
+    }
 
     const response = await retryApiCall(
       () => ai.models.generateContent({
@@ -2562,8 +2571,15 @@ ${startInstruction}`
     )
 
     const newText = response.text?.trim()
-    if (!newText || newText.length < 200) {
-      console.warn(`[ThesisGeneration] Chapter ${chapterLabel} attempt ${attempts} returned insufficient text.`)
+    const generatedWordCount = newText ? newText.split(/\s+/).length : 0
+
+    if (generatedWordCount < 300) {
+      console.warn(`[ThesisGeneration] Chapter ${chapterLabel} attempt ${attempts} returned insufficient text (${generatedWordCount} words, min 300).`)
+      // If this was the last attempt, we are in trouble.
+      if (attempts >= 3) {
+        console.error(`[ThesisGeneration] CRITICAL: Chapter ${chapterLabel} failed 3 times.`)
+        // We falling through will result in empty chapter.
+      }
       continue
     }
 
@@ -2586,6 +2602,11 @@ ${startInstruction}`
     console.warn(`[ThesisGeneration] WARNING: Chapter ${chapterLabel} is below target (${finalWordCount}/${minChapterWords} words)`)
     console.warn(`[ThesisGeneration] → GOAL: Meet word count targets. PRIORITY: Always deliver a complete thesis.`)
     console.warn(`[ThesisGeneration] → Continuing generation - content will be extended if needed in later steps.`)
+
+    // SAFETY: If truly empty, return a placeholder so the structure isn't broken
+    if (!chapterContent || chapterContent.trim().length === 0) {
+      return { content: `[ERROR: Chapter ${chapterLabel} generation failed. Please regenerate.]`, wordCount: 0 }
+    }
     // Don't throw error - generation must ALWAYS succeed and deliver a thesis
   }
 
@@ -6474,7 +6495,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           console.log('[Repair] Starting chunked repair...')
 
           // 1. Split content into chapters
-          const chapters = thesisContent.split(/(?=^## )/gm).filter(c => c.trim().length > 0)
+          const chapters = thesisContent.split(/(?=^# )/gm).filter(c => c.trim().length > 0)
           console.log(`[Repair] Split thesis into ${chapters.length} chunks for processing`)
 
           // Extract all titles for context
