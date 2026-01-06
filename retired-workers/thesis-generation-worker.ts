@@ -3098,7 +3098,12 @@ async function fixChapterContent(
     - REPORT: "Einleitung sagt 5 Kapitel, es sind aber 6." -> FINDE im Text: "fünf Kapitel" -> ÄNDERE zu: "sechs Kapitel". 
        - REPORT: "Kapitel 5 ist Diskussion, nicht Fazit." -> FINDE im Text: "Das fünfte Kapitel dient als Fazit" -> ÄNDERE zu: "Das fünfte Kapitel diskutiert die Ergebnisse..."
   3. Wenn der Report sagt "Forschungsfrage in der Einleitung fehlt" und dies IST die Einleitung: FÜGE SIE EIN!
-  4. Wenn der Report sagt "Strukturfehler in Kapitel 3" und dies IST Kapitel 3: KORRIGIERE ES!
+  3. Wenn der Report sagt "Forschungsfrage in der Einleitung fehlt" und dies IST die Einleitung: FÜGE SIE EIN!
+  4. **STRUKTUR-PROTOKOLL (WICHTIG):** Wenn der Report sagt "Strukturfehler" oder "Aufbau stimmt nicht" (besonders in der Einleitung/1.2):
+     - LÖSCHE den alten Absatz "Der Aufbau der Arbeit...".
+     - SCHREIBE IHN KOMPLETT NEU basierend auf der **LISTE ALLER KAPITEL** (siehe oben im Kontext).
+     - Beschreibe exakt, was Kapitel 1, 2, 3... tun, basierend auf ihren TITELN. Halluziniere nichts!
+  5. Wenn der Report sagt "Strukturfehler in Kapitel 3" und dies IST Kapitel 3: KORRIGIERE ES!
   5. Wenn der Report "Sprache: FEHLERHAFT"("man", "wir", "Umgangssprache", "Tippfehler") meldet: KORRIGIERE ALLE DIESE FEHLER IM TEXT!
     - Wandle "man" und "wir" in Passiv um.
        - Entferne doppelte Wörter / Punkte.
@@ -3108,6 +3113,7 @@ async function fixChapterContent(
   - Stimmt das Format ? (Autor, Jahr, S.XX) -> "S. 336f." ist okay, "S. 336ff." ist okay.
        - ** WICHTIG:** Wenn die Seite "e12345"(Artikelnummer) ist -> REPORT! Fordere "S. 1" oder die echte Seite im PDF.
        - ERFINDE KEINE ZAHLEN! "S. 1" oder "1" als Fallback ist VERBOTEN.
+       **AUSNAHME:** Wenn der Critique Report EXPLIZIT sagt, eine Zitation auf "S. 1" zu ändern (z.B. bei Artikel-IDs wie 'e12345'), MUSST DU DIES BEFOLGEN. In diesem spezifischen Fall ist "S. 1" erlaubt.
        - Jede Zitation muss korrekt sein.Wenn die Seite nicht auffindbar ist, ist die Zitation ungültig.
     5. Wenn der Report keine Fehler nennt, die für diesen Text relevant sind: Gib den Text EXAKT SO ZURÜCK WIE ER WAR(keine Änderungen).
     6. Ändere NICHTS am Stil, nur die kritisierten inhaltlichen / strukturellen / sprachlichen Fehler.
@@ -3171,7 +3177,12 @@ async function fixChapterContent(
     - REPORT: "Intro says 5 chapters, but it's 6." -> FIND in text: "five chapters" -> CHANGE to: "six chapters".
        - REPORT: "Chapter 5 is Discussion, not Conclusion." -> FIND in text: "The fifth chapter serves as conclusion" -> CHANGE to: "The fifth chapter discusses the results..."
   3. If report says "RQ missing in Intro" and this IS the Intro: ADD IT!
-  4. If report says "Structure error in Ch 3" and this IS Ch 3: FIX IT!
+  3. If report says "RQ missing in Intro" and this IS the Intro: ADD IT!
+  4. **STRUCTURE PROTOCOL (IMPORTANT):** If report says "Structure error" or "Outline mismatch" (especially in Intro/1.2):
+     - DELETE the old paragraph describing the structure.
+     - REWRITE IT COMPLETELY based on the **LIST OF ALL CHAPTERS** (provided above in context).
+     - Describe exactly what Chapter 1, 2, 3... do, based on their TITLES. Do not hallucinate!
+  5. If report says "Structure error in Ch 3" and this IS Ch 3: FIX IT!
   5. If report says "Language: ISSUES": FIX THEM!(Remove "man", "we", fix typos, formalize tone).
     4. If report says "Page Numbers: ISSUES"(e.g. "e359385"):
        - ** IMPORTANT:** If page is "e12345" (article number) -> REPORT! Not a page.
@@ -3182,6 +3193,7 @@ async function fixChapterContent(
        - Every citation must be correct.  - Find these cryptic numbers and replace them with the TRUE page number based on context.
        - ** IMPORTANT:** If the report says "CORRECT PAGE: XX", use exactly that number!
     - DO NOT INVENT NUMBERS! "p. 1" or "1" as a fallback is FORBIDDEN.
+       **EXCEPTION:** If the Critique Report EXPLICITLY says to change a citation to "S. 1" or "p. 1" (e.g. for article IDs like 'e12345'), YOU MUST FOLLOW THE REPORT. In that specific case, "S. 1" is allowed.
        - Ensure ALL citations have a page number("p. XX") - but only the TRUE one.
     5. If report mentions no errors relevant to this text: Return the text EXACTLY AS IS(no changes).
     6. Do NOT change style, only the criticized errors.
