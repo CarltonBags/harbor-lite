@@ -3028,6 +3028,12 @@ async function critiqueThesis(
       - This is Chapter ${i + 1} of ${chapters.length}.
       - Title: "${chapterTitle}"
       
+      console.log(`[ThesisCritique] Preparing Chapter ${ i + 1 } (${ chapterTitle }) - Length: ${ chapterContent.length } chars`)
+      if (chapterContent.length < 200) {
+        console.warn(`[ThesisCritique] WARNING: Chapter ${ i + 1 } content is suspiciously short!`)
+        console.log(`[ThesisCritique] Content Preview: `, chapterContent)
+      }
+
       CRITERIA FOR THIS CHAPTER:
       
       1. **RESEARCH QUESTION:** Does this chapter contribute?
@@ -3084,9 +3090,21 @@ async function critiqueThesis(
       }), `Critique Chapter ${i + 1}`)
 
       const responseText = response.text || '{}'
-      console.log(`[ThesisCritique] Chapter ${i + 1} Raw Response:`, responseText.substring(0, 500)) // Log first 500 chars
+      console.log(`[ThesisCritique] Chapter ${i + 1} Raw Response:`, responseText.substring(0, 500))
+
       try {
-        const json = JSON.parse(responseText.replace(/```json\n?|\n?```/g, '').trim())
+        let jsonStr = responseText.trim()
+        // 1. Try removing markdown blocks first
+        jsonStr = jsonStr.replace(/```json\n?|\n?```/g, '').trim()
+
+        // 2. If it doesn't start with {, try to find the first { and last }
+        const firstOpen = jsonStr.indexOf('{')
+        const lastClose = jsonStr.lastIndexOf('}')
+        if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
+          jsonStr = jsonStr.substring(firstOpen, lastClose + 1)
+        }
+
+        const json = JSON.parse(jsonStr)
         if (json.errors && Array.isArray(json.errors)) {
           // Add chapter context to location if missing
           const enrichedErrors = json.errors.map((e: any) => ({
@@ -6668,24 +6686,42 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
               console.log(`[Repair] Processing Error ${i + 1}/${errors.length}: ${err.error?.substring(0, 50)}...`)
 
               // Identify target chapter index
-              const targetIndex = ((location: string, titles: string[]): number => {
+              const targetIndex = ((location: string, quote: string, titles: string[], allChapters: string[]): number => {
                 if (!location) return -1
 
-                // Extract number from location (e.g. "1.1")
+                // STRATEGY 1: Strict Number Match (e.g. "1.1")
                 const locNumMatch = location.match(/(\d+(?:\.\d+)*)/)
                 const locNum = locNumMatch ? locNumMatch[1] : null
 
-                for (let idx = 0; idx < titles.length; idx++) {
-                  const title = titles[idx]
-                  // Check number match
-                  if (locNum) {
-                    if (title.startsWith(locNum + ' ') || title === locNum) return idx
+                if (locNum) {
+                  for (let idx = 0; idx < titles.length; idx++) {
+                    // Check if title STARTS with the number (e.g. "1.1 Title") or IS the number
+                    if (titles[idx].startsWith(locNum + ' ') || titles[idx] === locNum) return idx
                   }
-                  // Check string match
-                  if (title.toLowerCase().includes(location.toLowerCase())) return idx
                 }
+
+                // STRATEGY 2: Fuzzy String Match on Title
+                // Check if the location string is contained in the title OR vice versa
+                const locLower = location.toLowerCase()
+                for (let idx = 0; idx < titles.length; idx++) {
+                  const titleLower = titles[idx].toLowerCase()
+                  if (titleLower.includes(locLower) || locLower.includes(titleLower)) return idx
+                }
+
+                // STRATEGY 3: Quote Search (Content Match)
+                // If we have a quote, search for it in the chapter content
+                if (quote && quote.length > 20) {
+                  const cleanQuote = quote.replace(/\s+/g, ' ').trim().substring(0, 50) // Search explicitly for first 50 chars of quote
+                  for (let idx = 0; idx < allChapters.length; idx++) {
+                    if (allChapters[idx].includes(cleanQuote)) {
+                      console.log(`[Repair] Found quote in chapter ${idx + 1}, using that as target.`)
+                      return idx
+                    }
+                  }
+                }
+
                 return -1
-              })(err.location, chapterTitles)
+              })(err.location, err.quote, chapterTitles, chapters)
 
               if (targetIndex === -1) {
                 console.warn(`[Repair] Could not map location "${err.location}" to a chapter. Skipping error.`)
@@ -6711,294 +6747,300 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
               )
 
               if (repairedChunk.trim() === '[DELETE_CHAPTER]') {
+                console.warn(`[Repair] Agent requested DELETE for Chapter ${targetIndex + 1}`)
                 chapters[targetIndex] = ''
               } else {
-                if (repairedChunk.length < chunk.length * 0.5 && chunk.length > 200) {
+                console.log(`[Repair] Update Check: Original ${chunk.length} chars -> repaired ${repairedChunk.length} chars`)
+                if (repairedChunk.length < 200 && chunk.length > 500) {
+                  console.error(`[Repair] CRITICAL: Repair result is suspiciously short (${repairedChunk.length} vs ${chunk.length}). Reverting!`)
+                  // Do not update
+                } else if (repairedChunk.length < chunk.length * 0.5 && chunk.length > 200) {
                   console.warn(`[Repair] Fix result dangerously short. Reverting.`)
                 } else {
                   chapters[targetIndex] = repairedChunk
                 }
               }
             }
-
-            // 4. Reassemble
-            thesisContent = chapters.filter(c => c.length > 0).join('\n\n')
-            console.log('[Repair] All errors processed. Thesis reassembled.')
-
-          } else {
-            console.log('[Repair] No errors parsed to fix (or parsing failed).')
           }
 
-        } else {
-          console.log('[Repair] No critique report available. Skipping repair.')
-        }
-      } catch (error) {
-        console.error('[PROCESS] ERROR in Thesis Repair:', error)
-        console.warn('[Repair] Continuing with original content (repair failed)')
-      }
+          // 4. Reassemble
+          thesisContent = chapters.filter(c => c.length > 0).join('\n\n')
+          console.log('[Repair] All errors processed. Thesis reassembled.')
 
-      if (currentIteration === MAX_REPAIR_ITERATIONS) {
-        console.log('[Loop] Max iterations reached. Proceeding with current content.')
+        } else {
+          console.log('[Repair] No errors parsed to fix (or parsing failed).')
+        }
+
+      } else {
+        console.log('[Repair] No critique report available. Skipping repair.')
       }
+    } catch (error) {
+      console.error('[PROCESS] ERROR in Thesis Repair:', error)
+      console.warn('[Repair] Continuing with original content (repair failed)')
     }
+
+    if (currentIteration === MAX_REPAIR_ITERATIONS) {
+      console.log('[Loop] Max iterations reached. Proceeding with current content.')
+    }
+  }
 
     // Step 7.4: Winston AI Check & Sentence Rewrite
     console.log('\n[PROCESS] ========== Step 7.4: Winston AI Check & Sentence Rewrite ==========')
-    const winstonCheckStart = Date.now()
-    let winstonResult: any = null
-    try {
-      const result = await ensureHumanLikeContent(thesisContent, thesisData)
-      thesisContent = result.content
-      winstonResult = result.winstonResult
-      const winstonCheckDuration = Date.now() - winstonCheckStart
-      console.log(`[PROCESS] Winston check and rewrite completed in ${winstonCheckDuration}ms`)
-      if (winstonResult) {
-        console.log(`[PROCESS] Final Winston score: ${winstonResult.score}% human`)
-      }
-    } catch (error) {
-      console.error('[PROCESS] ERROR in Winston check/rewrite:', error)
-      console.warn('[PROCESS] Continuing with original content (Winston check failed)')
-      // Continue with original content if check fails
-    }
-
-    // Step 7.5: Humanize the text to avoid AI detection
-    // SKIP if Step 7.4 already achieved a good score (>= 75%)
-    const humanScoreThreshold = 75
-    const alreadyHumanEnough = winstonResult && winstonResult.score >= humanScoreThreshold
-
-    if (alreadyHumanEnough) {
-      console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
-      console.log(`[PROCESS] ✓ SKIPPING humanization - content already scored ${winstonResult.score}% human (>= ${humanScoreThreshold}%)`)
-      console.log('[PROCESS] No additional humanization needed')
-    } else {
-      console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
-      if (winstonResult) {
-        console.log(`[PROCESS] Content scored ${winstonResult.score}% human - running additional humanization`)
-      } else {
-        console.log('[PROCESS] No Winston score available - running humanization as fallback')
-      }
-      const humanizeStart = Date.now()
-      try {
-        thesisContent = await humanizeThesisContent(thesisContent, thesisData)
-        const humanizeDuration = Date.now() - humanizeStart
-        console.log(`[PROCESS] Humanization completed in ${humanizeDuration}ms`)
-      } catch (error) {
-        console.error('[PROCESS] ERROR in humanization:', error)
-        console.warn('[PROCESS] Continuing with original content (humanization failed)')
-        // Continue with original content if humanization fails
-      }
-    }
-
-    // Step 7.6: Plagiarism Check & Auto-Fix (Winston AI)
-    console.log('\n[PROCESS] ========== Step 7.6: Plagiarism Check & Auto-Fix (Winston AI) ==========')
-    let plagiarismResult: any = null
-    try {
-      if (WINSTON_API_KEY) {
-        // Max 3 attempts (Original + 2 repairs)
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          plagiarismResult = await checkPlagiarismWithWinston(thesisContent)
-
-          if (!plagiarismResult) {
-            console.warn('[Plagiarism] Check failed or returned null.')
-            break
-          }
-
-          console.log(`[Plagiarism] Attempt ${attempt}: ${plagiarismResult.originalityPercentage}% Originality (Score: ${plagiarismResult.plagiarismScore})`)
-
-          if (plagiarismResult.originalityPercentage >= 90) {
-            console.log('[Plagiarism] Passed > 90% threshold.')
-            break
-          }
-
-          if (attempt < 3) {
-            console.log('[Plagiarism] Originality < 90%. Attempting auto-repair via substitution...')
-            const repaired = await repairPlagiarism(thesisContent, plagiarismResult.winstonResult)
-
-            if (repaired === thesisContent) {
-              console.log('[Plagiarism] Repair yielded no changes. Aborting loop.')
-              break
-            }
-            thesisContent = repaired
-          } else {
-            console.warn('[Plagiarism] Max auto-fix attempts reached.')
-          }
-        }
-      } else {
-        console.warn('[PROCESS] WINSTON_API_KEY not set - skipping plagiarism check')
-      }
-    } catch (error) {
-      console.error('[PROCESS] ERROR in plagiarism check:', error)
-      console.warn('[PROCESS] Continuing without plagiarism check result')
-    }
-
-    // Step 7.7: ZeroGPT Detection Check - Now done in Step 7.4
-    // ZeroGPT check result is available from Step 7.4
-    console.log('\n[PROCESS] ========== Step 7.7: ZeroGPT Detection Check ==========')
-    console.log('[PROCESS] ZeroGPT check completed in Step 7.4 - result will be saved to metadata')
-
-    // Step 7.8: Winston AI Detection Check - ALREADY DONE IN 7.4
-    // We reuse winstonResult from Step 7.4
-    // But if Step 7.4 failed or was skipped (unlikely), we could re-run.
-    // However, 7.4 is robust. So let's just log.
-    console.log('\n[PROCESS] ========== Step 7.8: Winston AI Detection Result Log ==========')
+  const winstonCheckStart = Date.now()
+  let winstonResult: any = null
+  try {
+    const result = await ensureHumanLikeContent(thesisContent, thesisData)
+    thesisContent = result.content
+    winstonResult = result.winstonResult
+    const winstonCheckDuration = Date.now() - winstonCheckStart
+    console.log(`[PROCESS] Winston check and rewrite completed in ${winstonCheckDuration}ms`)
     if (winstonResult) {
-      console.log(`[Winston] Detection result from Step 7.4: ${winstonResult.score}/100 human score`)
-    } else {
-      console.log('[Winston] No result available from Step 7.4')
+      console.log(`[PROCESS] Final Winston score: ${winstonResult.score}% human`)
     }
-
-
-
-
-
-    // Process footnotes for German citation style - REMOVED
-    let processedContent = thesisContent
-    let footnotes: Record<number, string> = {}
-
-    // Footnote extraction removed. Standard citations only.
-
-    // Update thesis in database
-    console.log('[PROCESS] Updating thesis in database with generated content...')
-    const dbUpdateStart = Date.now()
-
-    // Identify used sources for metadata (Strict Compliance)
-    // NOTE: We do NOT append bibliography text here anymore, as it interferes with auto-generation.
-    const bibResult = generateBibliography(
-      processedContent,
-      sourcesForGeneration || [],
-      thesisData.citationStyle,
-      thesisData.language,
-      footnotes
-    )
-
-    // Just use processed content without bibliography text
-    let finalContent = processedContent
-    console.log('[PROCESS] Identified used sources matching strict criteria.')
-
-    // Generate clean Markdown version for exports
-    console.log('[PROCESS] Generating clean Markdown version for exports...')
-    const { convertToCleanMarkdown } = await import('../lib/markdown-utils.js')
-    const cleanMarkdownContent = convertToCleanMarkdown(finalContent)
-    console.log(`[PROCESS] Clean Markdown generated: ${cleanMarkdownContent.length} characters`)
-
-    await retryApiCall(
-      async () => {
-        // Ensure structure is available
-        if (!thesisStructure && finalContent) {
-          console.log('[PROCESS] Re-parsing content to structure for saving...')
-          try {
-            thesisStructure = parseContentToStructure(finalContent, thesisData.outline as any[])
-          } catch (err) {
-            console.error('[PROCESS] Failed to parse content to structure:', err)
-          }
-        }
-
-        const updateData: any = {
-          latex_content: finalContent, // Maps to 'content' column in older versions of code?
-          // Actually, let's verify if 'latex_content' is the right column. 
-          // Previous code updates 'latex_content'.
-          // We ADD 'content_json'.
-          content_json: thesisStructure,
-          clean_markdown_content: cleanMarkdownContent,
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-        }
-
-        // Store footnotes and metadata
-        const { data: existingThesis } = await supabase
-          .from('theses')
-          .select('metadata')
-          .eq('id', thesisId)
-          .single()
-
-        const existingMetadata = existingThesis?.metadata || {}
-        updateData.metadata = {
-          ...existingMetadata,
-        }
-
-        // Add used sources to metadata
-        // IMPORTANT: Save FULL source objects for Frontend "Sources" tab
-        updateData.metadata.used_sources = bibResult.usedSources
-        updateData.metadata.bibliography_sources = bibResult.usedSourceIds
-
-
-        // Footnote metadata saving removed
-
-        // Save Winston Result (Replaces ZeroGPT)
-        if (winstonResult) {
-          updateData.metadata.winstonResult = winstonResult
-          // Map to zeroGptResult format for backward compatibility if needed?
-          // Or just let frontend adapt. Assuming frontend expects winstonResult.
-          updateData.metadata.zeroGptResult = {
-            isHumanWritten: winstonResult.score,
-            isGptGenerated: 100 - winstonResult.score,
-            checkedAt: winstonResult.checkedAt
-          }
-        }
-
-        if (plagiarismResult) {
-          updateData.metadata.plagiarismResult = plagiarismResult
-        }
-
-        const result = await supabase.from('theses').update(updateData).eq('id', thesisId)
-        if (result.error) throw result.error
-        return result
-      },
-      `Update thesis status (completed): ${thesisId}`
-    )
-
-    const dbUpdateDuration = Date.now() - dbUpdateStart
-    console.log(`[PROCESS] Database updated in ${dbUpdateDuration}ms`)
-
-    // Step 8: Chunk thesis and store in vector DB
-    console.log('\n[PROCESS] ========== Step 8: Chunk Thesis and Store in Vector DB ==========')
-    const step8Start = Date.now()
-    try {
-      await chunkAndStoreThesis(thesisId, thesisContent, thesisData.outline)
-      const step8Duration = Date.now() - step8Start
-      console.log(`[PROCESS] Step 8 completed in ${step8Duration}ms`)
-    } catch (error) {
-      console.error('[PROCESS] ERROR chunking thesis:', error)
-      // Don't fail the whole process if chunking fails
-    }
-
-    // Step 9: Email notification
-    // The email is automatically sent via database trigger when status = 'completed'
-    // The trigger (005_thesis_completion_email_trigger.sql) handles everything
-    console.log('\n[PROCESS] ========== Step 9: Email Notification ==========')
-    console.log('[PROCESS] Email will be sent automatically via database trigger')
-
-    const processDuration = Date.now() - processStartTime
-    console.log('\n[PROCESS] ========== Thesis Generation Complete ==========')
-    console.log(`[PROCESS] Total processing time: ${Math.round(processDuration / 1000)}s (${processDuration}ms)`)
-    console.log(`[PROCESS] Thesis generation completed for thesis ${thesisId}`)
-    console.log('='.repeat(80))
-
-    return { success: true }
   } catch (error) {
-    const processDuration = Date.now() - processStartTime
-    console.error('\n[PROCESS] ========== ERROR in Thesis Generation ==========')
-    console.error(`[PROCESS] Error after ${Math.round(processDuration / 1000)}s (${processDuration}ms)`)
-    console.error('[PROCESS] Error details:', error)
-    console.error('='.repeat(80))
-
-    // Update thesis status to draft on error
-    await retryApiCall(
-      async () => {
-        const result = await supabase
-          .from('theses')
-          .update({ status: 'draft' })
-          .eq('id', thesisId)
-        if (result.error) throw result.error
-        return result
-      },
-      `Update thesis status (error): ${thesisId}`
-    ).catch(err => {
-      console.error('Failed to update thesis status on error:', err)
-    })
-
-    throw error
+    console.error('[PROCESS] ERROR in Winston check/rewrite:', error)
+    console.warn('[PROCESS] Continuing with original content (Winston check failed)')
+    // Continue with original content if check fails
   }
+
+  // Step 7.5: Humanize the text to avoid AI detection
+  // SKIP if Step 7.4 already achieved a good score (>= 75%)
+  const humanScoreThreshold = 75
+  const alreadyHumanEnough = winstonResult && winstonResult.score >= humanScoreThreshold
+
+  if (alreadyHumanEnough) {
+    console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
+    console.log(`[PROCESS] ✓ SKIPPING humanization - content already scored ${winstonResult.score}% human (>= ${humanScoreThreshold}%)`)
+    console.log('[PROCESS] No additional humanization needed')
+  } else {
+    console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
+    if (winstonResult) {
+      console.log(`[PROCESS] Content scored ${winstonResult.score}% human - running additional humanization`)
+    } else {
+      console.log('[PROCESS] No Winston score available - running humanization as fallback')
+    }
+    const humanizeStart = Date.now()
+    try {
+      thesisContent = await humanizeThesisContent(thesisContent, thesisData)
+      const humanizeDuration = Date.now() - humanizeStart
+      console.log(`[PROCESS] Humanization completed in ${humanizeDuration}ms`)
+    } catch (error) {
+      console.error('[PROCESS] ERROR in humanization:', error)
+      console.warn('[PROCESS] Continuing with original content (humanization failed)')
+      // Continue with original content if humanization fails
+    }
+  }
+
+  // Step 7.6: Plagiarism Check & Auto-Fix (Winston AI)
+  console.log('\n[PROCESS] ========== Step 7.6: Plagiarism Check & Auto-Fix (Winston AI) ==========')
+  let plagiarismResult: any = null
+  try {
+    if (WINSTON_API_KEY) {
+      // Max 3 attempts (Original + 2 repairs)
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        plagiarismResult = await checkPlagiarismWithWinston(thesisContent)
+
+        if (!plagiarismResult) {
+          console.warn('[Plagiarism] Check failed or returned null.')
+          break
+        }
+
+        console.log(`[Plagiarism] Attempt ${attempt}: ${plagiarismResult.originalityPercentage}% Originality (Score: ${plagiarismResult.plagiarismScore})`)
+
+        if (plagiarismResult.originalityPercentage >= 90) {
+          console.log('[Plagiarism] Passed > 90% threshold.')
+          break
+        }
+
+        if (attempt < 3) {
+          console.log('[Plagiarism] Originality < 90%. Attempting auto-repair via substitution...')
+          const repaired = await repairPlagiarism(thesisContent, plagiarismResult.winstonResult)
+
+          if (repaired === thesisContent) {
+            console.log('[Plagiarism] Repair yielded no changes. Aborting loop.')
+            break
+          }
+          thesisContent = repaired
+        } else {
+          console.warn('[Plagiarism] Max auto-fix attempts reached.')
+        }
+      }
+    } else {
+      console.warn('[PROCESS] WINSTON_API_KEY not set - skipping plagiarism check')
+    }
+  } catch (error) {
+    console.error('[PROCESS] ERROR in plagiarism check:', error)
+    console.warn('[PROCESS] Continuing without plagiarism check result')
+  }
+
+  // Step 7.7: ZeroGPT Detection Check - Now done in Step 7.4
+  // ZeroGPT check result is available from Step 7.4
+  console.log('\n[PROCESS] ========== Step 7.7: ZeroGPT Detection Check ==========')
+  console.log('[PROCESS] ZeroGPT check completed in Step 7.4 - result will be saved to metadata')
+
+  // Step 7.8: Winston AI Detection Check - ALREADY DONE IN 7.4
+  // We reuse winstonResult from Step 7.4
+  // But if Step 7.4 failed or was skipped (unlikely), we could re-run.
+  // However, 7.4 is robust. So let's just log.
+  console.log('\n[PROCESS] ========== Step 7.8: Winston AI Detection Result Log ==========')
+  if (winstonResult) {
+    console.log(`[Winston] Detection result from Step 7.4: ${winstonResult.score}/100 human score`)
+  } else {
+    console.log('[Winston] No result available from Step 7.4')
+  }
+
+
+
+
+
+  // Process footnotes for German citation style - REMOVED
+  let processedContent = thesisContent
+  let footnotes: Record<number, string> = {}
+
+  // Footnote extraction removed. Standard citations only.
+
+  // Update thesis in database
+  console.log('[PROCESS] Updating thesis in database with generated content...')
+  const dbUpdateStart = Date.now()
+
+  // Identify used sources for metadata (Strict Compliance)
+  // NOTE: We do NOT append bibliography text here anymore, as it interferes with auto-generation.
+  const bibResult = generateBibliography(
+    processedContent,
+    sourcesForGeneration || [],
+    thesisData.citationStyle,
+    thesisData.language,
+    footnotes
+  )
+
+  // Just use processed content without bibliography text
+  let finalContent = processedContent
+  console.log('[PROCESS] Identified used sources matching strict criteria.')
+
+  // Generate clean Markdown version for exports
+  console.log('[PROCESS] Generating clean Markdown version for exports...')
+  const { convertToCleanMarkdown } = await import('../lib/markdown-utils.js')
+  const cleanMarkdownContent = convertToCleanMarkdown(finalContent)
+  console.log(`[PROCESS] Clean Markdown generated: ${cleanMarkdownContent.length} characters`)
+
+  await retryApiCall(
+    async () => {
+      // Ensure structure is available
+      if (!thesisStructure && finalContent) {
+        console.log('[PROCESS] Re-parsing content to structure for saving...')
+        try {
+          thesisStructure = parseContentToStructure(finalContent, thesisData.outline as any[])
+        } catch (err) {
+          console.error('[PROCESS] Failed to parse content to structure:', err)
+        }
+      }
+
+      const updateData: any = {
+        latex_content: finalContent, // Maps to 'content' column in older versions of code?
+        // Actually, let's verify if 'latex_content' is the right column. 
+        // Previous code updates 'latex_content'.
+        // We ADD 'content_json'.
+        content_json: thesisStructure,
+        clean_markdown_content: cleanMarkdownContent,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      }
+
+      // Store footnotes and metadata
+      const { data: existingThesis } = await supabase
+        .from('theses')
+        .select('metadata')
+        .eq('id', thesisId)
+        .single()
+
+      const existingMetadata = existingThesis?.metadata || {}
+      updateData.metadata = {
+        ...existingMetadata,
+      }
+
+      // Add used sources to metadata
+      // IMPORTANT: Save FULL source objects for Frontend "Sources" tab
+      updateData.metadata.used_sources = bibResult.usedSources
+      updateData.metadata.bibliography_sources = bibResult.usedSourceIds
+
+
+      // Footnote metadata saving removed
+
+      // Save Winston Result (Replaces ZeroGPT)
+      if (winstonResult) {
+        updateData.metadata.winstonResult = winstonResult
+        // Map to zeroGptResult format for backward compatibility if needed?
+        // Or just let frontend adapt. Assuming frontend expects winstonResult.
+        updateData.metadata.zeroGptResult = {
+          isHumanWritten: winstonResult.score,
+          isGptGenerated: 100 - winstonResult.score,
+          checkedAt: winstonResult.checkedAt
+        }
+      }
+
+      if (plagiarismResult) {
+        updateData.metadata.plagiarismResult = plagiarismResult
+      }
+
+      const result = await supabase.from('theses').update(updateData).eq('id', thesisId)
+      if (result.error) throw result.error
+      return result
+    },
+    `Update thesis status (completed): ${thesisId}`
+  )
+
+  const dbUpdateDuration = Date.now() - dbUpdateStart
+  console.log(`[PROCESS] Database updated in ${dbUpdateDuration}ms`)
+
+  // Step 8: Chunk thesis and store in vector DB
+  console.log('\n[PROCESS] ========== Step 8: Chunk Thesis and Store in Vector DB ==========')
+  const step8Start = Date.now()
+  try {
+    await chunkAndStoreThesis(thesisId, thesisContent, thesisData.outline)
+    const step8Duration = Date.now() - step8Start
+    console.log(`[PROCESS] Step 8 completed in ${step8Duration}ms`)
+  } catch (error) {
+    console.error('[PROCESS] ERROR chunking thesis:', error)
+    // Don't fail the whole process if chunking fails
+  }
+
+  // Step 9: Email notification
+  // The email is automatically sent via database trigger when status = 'completed'
+  // The trigger (005_thesis_completion_email_trigger.sql) handles everything
+  console.log('\n[PROCESS] ========== Step 9: Email Notification ==========')
+  console.log('[PROCESS] Email will be sent automatically via database trigger')
+
+  const processDuration = Date.now() - processStartTime
+  console.log('\n[PROCESS] ========== Thesis Generation Complete ==========')
+  console.log(`[PROCESS] Total processing time: ${Math.round(processDuration / 1000)}s (${processDuration}ms)`)
+  console.log(`[PROCESS] Thesis generation completed for thesis ${thesisId}`)
+  console.log('='.repeat(80))
+
+  return { success: true }
+} catch (error) {
+  const processDuration = Date.now() - processStartTime
+  console.error('\n[PROCESS] ========== ERROR in Thesis Generation ==========')
+  console.error(`[PROCESS] Error after ${Math.round(processDuration / 1000)}s (${processDuration}ms)`)
+  console.error('[PROCESS] Error details:', error)
+  console.error('='.repeat(80))
+
+  // Update thesis status to draft on error
+  await retryApiCall(
+    async () => {
+      const result = await supabase
+        .from('theses')
+        .update({ status: 'draft' })
+        .eq('id', thesisId)
+      if (result.error) throw result.error
+      return result
+    },
+    `Update thesis status (error): ${thesisId}`
+  ).catch(err => {
+    console.error('Failed to update thesis status on error:', err)
+  })
+
+  throw error
+}
 }
 
 // API endpoint to start thesis generation job
