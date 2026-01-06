@@ -3073,7 +3073,7 @@ async function critiqueThesis(
         model: 'gemini-2.5-flash', // Use Flash as requested
         contents: chapterPrompt,
         config: {
-          responseMimeType: 'application/json',
+          responseMimeType: fileSearchStoreId ? undefined : 'application/json',
           temperature: 0.1, // High precision
           tools: fileSearchStoreId ? [{
             fileSearch: {
