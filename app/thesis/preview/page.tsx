@@ -442,6 +442,17 @@ const ThesisPreviewContent = () => {
     }).join('\n')
   }
 
+  // Helper to remove stray empty headers and excessive whitespace
+  const cleanThesisContent = (text: string): string => {
+    if (!text) return ''
+    return text
+      // Remove lines that are just hashes and whitespace (empty headers)
+      .replace(/^\s*#{1,6}\s*$/gm, '')
+      // Remove double blank lines (keep max one blank line = 2 newlines)
+      // This fixes the "huge gaps" issue
+      .replace(/\n{3,}/g, '\n\n')
+  }
+
   const loadThesis = async () => {
     if (!thesisId) return
 
@@ -460,6 +471,9 @@ const ThesisPreviewContent = () => {
       // Fix formatting issues immediately on load
       thesisContent = ensureHeadingsOnNewLines(thesisContent)
       thesisContent = normalizeHeadingLevels(thesisContent)
+
+      // Sanitize: clean up stray headers and excessive gaps
+      thesisContent = cleanThesisContent(thesisContent)
 
       setContent(thesisContent)
       setOriginalContent(thesisContent)

@@ -2139,6 +2139,24 @@ ${mandatorySources.map((s, i) => `[MANDATORY] "${s.title}" (${s.authors.slice(0,
          Diese Frage muss EXAKT so verwendet werden. Formuliere sie niemals um.
          **REGEL:** Beantworte diese Frage in DIESEM Kapitel NICHT endgültig (außer es ist das Fazit). Deine Aufgabe ist Analyse und Exploration. Die Antwort gehört ins Fazit.
 
+          ${(chapter.title.toLowerCase().includes('fazit') || chapter.title.toLowerCase().includes('conclusion') || chapter.title.toLowerCase().includes('resümee')) ? `
+          **⚠️ ACHTUNG - FAZIT/SCHLUSSTEIL (EXTREM WICHTIG) ⚠️**
+          Dies ist das wichtigste Kapitel. Du MUSST jetzt die Forschungsfrage endgültig beantworten.
+          - Fasse die wichtigsten Ergebnisse aller vorherigen Kapitel zusammen.
+          - Ordne die Ergebnisse in den Forschungsstand ein.
+          - Gib einen Ausblick.
+          - SCHREIBE MINDESTENS 400-500 WÖRTER. Sei nicht faul!
+          - Ein kurzes Fazit ist inakzeptabel.` : ''}
+
+          ${(chapter.title.toLowerCase().includes('diskussion') || chapter.title.toLowerCase().includes('discussion') || chapter.title.toLowerCase().includes('synthese')) ? `
+          **⚠️ ACHTUNG - DISKUSSION (EXTREM WICHTIG) ⚠️**
+          Dies ist der Diskussionsteil.
+          - Wiederhole nicht nur Ergebnisse, sondern SYNTHETISIERE sie.
+          - Vergleiche deine Erkenntnisse mit der Literatur.
+          - Diskutiere Implikationen.
+          - SCHREIBE MINDESTENS 500 WÖRTER.
+          - Keine Spiegelstriche - fließender Text!` : ''}
+
          **WICHTIG - KEINE REDUNDANZ:**
          Prüfe die "Zusammenfassung der vorherigen Kapitel" oder den "Vorherigen Textausschnitt". Wenn ein Begriff (z.B. "KI") bereits definiert wurde, definieren ihn NICHT erneut. Setze das Wissen beim Leser voraus.`
       : `You are writing the chapter "${chapterLabel}" of an academic thesis titled "${thesisData.title}".${isExtension ? ' You have already written the first part of the chapter. Your task is now to CONTINUE and complete the chapter.' : ''}
@@ -2322,7 +2340,8 @@ ${availableSourcesList}
 - **RULE 6: ONLY EXISTING PAGE NUMBERS**
   - If source list says "pp. 1-10", you MUST NOT cite "p. 1585"!
   - Article numbers (e1293) are NOT page numbers.
-  - If unsure, use "p. 1" (only in emergency) or omit page, but DO NOT invent "e-numbers".
+  - Article numbers (e1293) are NOT page numbers.
+  - If unsure, stick to (Author, Year) without page. DO NOT INVENT PAGE NUMBERS. DO NOT USE "p. 1".
 
 **🚫 ABSOLUTELY FORBIDDEN: QUESTIONS & Q&A PATTERNS 🚫**
 - NEVER use constructions like "Term? Definition."!
@@ -2939,13 +2958,11 @@ function applySearchReplace(originalText: string, patchText: string): string {
     // If no patch markers found, check if it's just the full text or empty
     if (patchText.trim() === '[DELETE_CHAPTER]') return '[DELETE_CHAPTER]'
 
-    // If output is very long (close to original length), assume it's a full rewrite (fallback)
-    // But be careful: if we asked for a patch and got full text, it might be a failure to follow instructions.
-    // However, for safety, if it looks like a valid chapter (starts with #), we accept it.
-    if (patchText.length > 50 && patchText.includes('# ')) {
-      console.log('[DiffPatches] No markers found, but looks like full chapter. Accepting as full rewrite.')
-      return patchText
-    }
+    // If output is very long but HAS NO markers, it's likely a failure to follow patch format.
+    // We REJECT potential full rewrites here because they often contain leaked markers or hallucinations.
+    // Better to safe-fail (return original) than to corrupt the thesis.
+    console.warn('[DiffPatches] No markers found. Rejecting output to prevent corruption. Keeping original text.')
+    return originalText
 
     // Otherwise, assume no changes needed or invalid output
     return originalText
@@ -3027,6 +3044,11 @@ async function fixChapterContent(
     5. Wenn du das GESAMTE Kapitel löschen willst(Duplikat), schreibe NUR: [DELETE_CHAPTER]
     
     Dein Ziel: Repariere NUR die Fehler, die im "CRITIQUE REPORT" genannt sind.
+    
+    WARNUNG VOR DEM AUDITOR:
+    Ein STRENGER AUDITOR prüft deinen Output.
+    Erfinde KEINE Seitenzahlen ("S. 1" als Platzhalter ist VERBOTEN).
+    Wenn keine Seite da ist: Lasse sie weg -> (Autor, Jahr). Das ist besser als eine Lüge.
 
     KONTEXT: Du bearbeitest gerade Teil ${chunkIndex + 1} von ${totalChunks} des gesamten Textes.
     Das ist wichtig, falls der Report sagt "Lösche das zweite Fazit am Ende".Wenn du Teil ${totalChunks}/${totalChunks} bist, bist du wahrscheinlich dieses Kapitel.
@@ -3131,7 +3153,12 @@ async function fixChapterContent(
   4. If report says "Structure error in Ch 3" and this IS Ch 3: FIX IT!
   5. If report says "Language: ISSUES": FIX THEM!(Remove "man", "we", fix typos, formalize tone).
     4. If report says "Page Numbers: ISSUES"(e.g. "e359385"):
-  - Find these cryptic numbers and replace them with the TRUE page number based on context.
+       - ** IMPORTANT:** If page is "e12345" (article number) -> REPORT! Not a page.
+       - **AUDITOR WARNING:**
+         - A STRICT AUDITOR checks your output.
+         - DO NOT INVENT PAGE NUMBERS ("p. 1" placeholder is FORBIDDEN).
+         - If no page found: Omit it -> (Author, Year). Better than a lie.
+       - Every citation must be correct.  - Find these cryptic numbers and replace them with the TRUE page number based on context.
        - ** IMPORTANT:** If the report says "CORRECT PAGE: XX", use exactly that number!
     - DO NOT INVENT NUMBERS! "p. 1" or "1" as a fallback is FORBIDDEN.
        - Ensure ALL citations have a page number("p. XX") - but only the TRUE one.
@@ -3612,9 +3639,13 @@ ${availableSourcesList}
 - Die Seitenzahl muss die TATSÄCHLICHE Seite sein, auf der der zitierte Text/Inhalt im Dokument steht
 - NIEMALS Seitenzahlen erfinden, schätzen oder zufällig wählen!
 - NIEMALS eine Seitenzahl verwenden, nur weil sie im gültigen Bereich liegt - sie muss EXAKT sein!
-- Beispiel FALSCH: Quelle hat Seiten 2-4, du zitierst S. 3, obwohl der Inhalt auf S. 2 steht → FALSCH!
-- Beispiel RICHTIG: Quelle hat Seiten 2-4, FileSearchStore zeigt Inhalt auf S. 2 → verwende S. 2!
-- Wenn der FileSearchStore keine Seitenzahl liefert, lasse die Seitenzahl KOMPLETT weg - schreibe NICHT "S. [keine Angabe]" oder ähnliches!
+- **WARNUNG VOR DEM AUDITOR:**
+  - Ein STRENGER AUDITOR-ALGORITHMUS wird deinen Text sofort überprüfen.
+  - Wenn er **EINE** erfundene Seitenzahl findet (z.B. "S. 1" als Platzhalter), fällt die gesamte Thesis durch!
+  - Es ist BESSER, die Seitenzahl wegzulassen (Autor, Jahr), als eine flasche zu erfinden.
+  - "(Autor, Jahr, S. 1)" -> AUDITOR FAIL (wenn falsch).
+  - "(Autor, Jahr)" -> AUDITOR PASS (akzeptabel).
+- Wenn der FileSearchStore keine Seitenzahl liefert, lasse die Seitenzahl KOMPLETT weg. Erfinde NICHTS!
 - Prüfe IMMER: Ist die verwendete Seitenzahl die EXAKTE Seite, die der FileSearchStore für diesen Inhalt anzeigt?
 
 
@@ -6451,6 +6482,36 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           for (let i = 0; i < chapters.length; i++) {
             const chunk = chapters[i]
             const chunkTitle = chunk.split('\n')[0].replace(/#/g, '').trim()
+
+            // SMART SKIP LOGIC:
+            // Check if this chunk is even mentioned in the critique report.
+            const isMentionedInProp = ((title: string, report: string): boolean => {
+              // 1. Extract chapter number (e.g. "1.1", "2.")
+              const numberMatch = title.match(/^(\d+(?:\.\d+)*)/)
+              const number = numberMatch ? numberMatch[1] : null
+
+              // 2. Simple text check for location markers
+              // If report has NO location markers at all, assume global errors -> processed
+              if (!report.includes('Ort:') && !report.includes('Loc:')) return true
+
+              // 3. Check for specific mentions
+              // "Ort: 1.1" or "Ort: 1.3" or "Loc: 2.1"
+              if (number && (report.includes(`Ort: ${number}`) || report.includes(`Loc: ${number}`))) return true
+
+              // 4. Check for title mentions (fuzzy)
+              // e.g. "Ort: Einleitung"
+              const cleanTitle = title.replace(/^\d+(?:\.\d+)*\s*/, '').substring(0, 15) // First 15 chars of title
+              if (cleanTitle && report.includes(cleanTitle)) return true
+
+              return false
+            })(chunkTitle, critiqueReport)
+
+            if (!isMentionedInProp) {
+              console.log(`[Repair] Skipping chunk ${i + 1}/${chapters.length} ("${chunkTitle.substring(0, 20)}...") - NOT cited in Critique Report.`)
+              repairedChapters.push(chunk)
+              continue
+            }
+
             console.log(`[Repair] Repairing chunk ${i + 1}/${chapters.length}: "${chunkTitle.substring(0, 50)}..."`)
 
             const repairedChunk = await fixChapterContent(
