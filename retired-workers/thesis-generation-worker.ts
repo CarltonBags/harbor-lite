@@ -1255,6 +1255,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
       console.log(`[DocUpload] Extracting PDF page count for FileSearchStore mapping...`)
       const pageExtractStart = Date.now()
       try {
+        const pageNumbers = await extractPageNumbers(docBuffer)
         // STRICT VALIDATION & CLEANUP: PDF extraction must return numeric strings only
         const pStart = pageNumbers.pageStart ? pageNumbers.pageStart.trim() : null
         const pEnd = pageNumbers.pageEnd ? pageNumbers.pageEnd.trim() : null
