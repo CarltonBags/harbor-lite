@@ -2118,13 +2118,13 @@ async function generateChapterContent({
 Der Nutzer hat folgende Quellen als ESSENTIELL markiert.
 Prüfe dringend, ob sie thematisch zu diesem Kapitel passen.
 FALLS JA: Du MUSST diese Quellen zitieren! Ignoriere sie auf keinen Fall, wenn sie relevant sind.
-${mandatorySources.map((s, i) => `[MANDATORY] "${s.title}" (${s.authors.slice(0, 2).join(', ')})`).join('\n')}
+${mandatorySources.map((s, i) => `[MANDATORY] "${s.title}" (${s.authors.slice(0, 2).join(', ')}, ${s.year || 'n.d.'})`).join('\n')}
 ` : `
 **⚠️ MANDATORY SOURCES - MUST CITE ⚠️**
 The user has marked the following sources as ESSENTIAL.
 Check urgently if they fit strictly into this chapter's topic.
 IF YES: You MUST cite these sources! Do not ignore them if they are relevant.
-${mandatorySources.map((s, i) => `[MANDATORY] "${s.title}" (${s.authors.slice(0, 2).join(', ')})`).join('\n')}
+${mandatorySources.map((s, i) => `[MANDATORY] "${s.title}" (${s.authors.slice(0, 2).join(', ')}, ${s.year || 'n.d.'})`).join('\n')}
 `
   ) : ''
 
@@ -2652,169 +2652,249 @@ async function critiqueThesis(
   researchQuestion: string,
   sources: Source[],
   isGerman: boolean,
-  fileSearchStoreId: string
+  fileSearchStoreId: string,
+  masterReport?: string
 ): Promise<string> {
   console.log('[ThesisCritique] Starting comprehensive thesis critique...')
 
-  // Simplify sources for prompt (Title + Author only)
-  const sourceListShort = sources.map((s, i) => `[${i + 1}] ${s.authors.join(', ')} - ${s.title}`).join('\n')
+  // Simplify sources for prompt (Title + Author + Year)
+
+  const sourceListShort = sources.map((s, i) => `[${i + 1}] ${s.authors.join(', ')} (${s.year || 'n.d.'}) - ${s.title} `).join('\n')
 
   // Simplify outline for prompt
-  const outlineShort = outlineChapters.map(c => `${c.number} ${c.title}`).join('\n')
+  const outlineShort = outlineChapters.map(c => `${c.number} ${c.title} `).join('\n')
 
-  let prompt = isGerman
-    ? `Du bist ein akademischer Prüfer. Überprüfe die folgende Thesis VOLLSTÄNDIG und erstelle eine Report mit ALLEN Fehlern.
-    
+  let prompt = ''
+
+  if (masterReport) {
+    // === VERIFICATION MODE ===
+    // Only check if previous errors are fixed. Do NOT find new ones.
+    prompt = isGerman
+      ? `Du bist ein strenger Auditor.Dein Job ist die NACHKONTROLLE von Korrekturen.
+
+    SITUATION:
+      Eine Thesis wurde bereits geprüft.Hier ist der "MASTER FEHLER-REPORT" mit den gefundenen Mängeln:
+      
+      <<<< MASTER REPORT BEGINN >>>>
+    ${masterReport}
+      <<<< MASTER REPORT ENDE >>>>
+
+    DEINE AUFGABE:
+      Prüfe den UNTENSTEHENDEN TEXT daraufhin, ob DIESE FEHLER behoben wurden.
+
+    REGELN:
+  1. Prüfe NUR die im MASTER REPORT genannten Fehler.
+      2. Suche KEINE neuen Fehler! Dein Job ist NUR, die Liste abzuarbeiten.
+      3. Wenn ein Fehler behoben wurde: Erwähne ihn NICHT mehr.
+      4. Wenn ein Fehler NOCH IMMER da ist: Füge ihn in deinen neuen Report ein.
+      
+      OUTPUT FORMAT(GENAU WIE VORHER):
+      ## 🧐 CRITIQUE REPORT
+    (Liste hier NUR die Fehler auf, die NOCH ÜBRIG sind.Wenn alles korrigiert ist, lass die Liste leer.)
+
+  WICHTIG:
+  - Sei gnädig.Wenn der Autor versucht hat, es zu fixen, und es "gut genug" ist, akzeptiere es.
+      - Ziel ist Konvergenz(weniger Fehler).
+      
+      THESIS TEXT(NEU):
+      ${thesisText} `
+      : `You are a strict auditor.Your job is VERIFICATION of corrections.
+
+    SITUATION:
+      A thesis has already been audited.Here is the "MASTER CRITIQUE REPORT" with the found issues:
+      
+      <<<< MASTER REPORT START >>>>
+    ${masterReport}
+      <<<< MASTER REPORT END >>>>
+
+    YOUR TASK:
+      Check the TEXT BELOW to see if THESE ERRORS have been fixed.
+
+    RULES:
+  1. Check ONLY the errors listed in the MASTER REPORT.
+      2. Do NOT look for new errors! Your job is only to work down the list.
+      3. If an error is fixed: Do NOT mention it again.
+      4. If an error is STILL present: Include it in your new report.
+      
+      OUTPUT FORMAT(SAME AS BEFORE):
+      ## 🧐 CRITIQUE REPORT
+    (List here ONLY the errors that REMAIN.If everything is fixed, leave the list empty.)
+
+  IMPORTANT:
+  - Be lenient.If the author tried to fix it and it's "good enough", accept it.
+    - Goal is convergence(fewer errors).
+      
+      THESIS TEXT(NEW):
+      ${thesisText} `
+  } else {
+    // === FULL CRITIQUE MODE (Original Logic) ===
+    prompt = isGerman
+      ? `Du bist ein akademischer Prüfer im Jahre 2026. Überprüfe die folgende Thesis VOLLSTÄNDIG und erstelle eine Report mit ALLEN Fehlern.
+
     PRÜFUNGSKRITERIEN:
-    1. **STRUKTUR:** Entsprechen die Kapitelüberschriften exakt der Vorgabe?
-       VORGABE:
-       ${outlineShort}
-       - **PRÜFE GENAU:** Hat jedes Unterkapitel seine Nummer? "1.1 Begriff" MUSS "1.1" haben.
-       - FEHLER: "Begriff" (ohne Nummer). LÖSUNG: "Füge Nummer 1.1 hinzu."
-       - Stimmt der tatsächliche Aufbau oder Gang der Untersuchung der Arbeit mit dem in der Einleitung beschriebenen Aufbau oder Gang der Untersuchung überein?
-       - Prüfe auf DOPPELTE KAPITEL (z.B. zweimal "Fazit").
-       - WENN DU DOPPELTE KAPITEL FINDEST: VERGLEICHE SIE. Entscheide, welches besser ist (z.B. Unterkapitel hat, dem Outline entspricht).
-       - Das SCHLECHTERE/FALSCHE Kapitel muss gelöscht werden.
+  1. ** STRUKTUR:** Entsprechen die Kapitelüberschriften exakt der Vorgabe ?
+    VORGABE :
+    ${outlineShort}
+       - ** PRÜFE GENAU:** Hat jedes Unterkapitel seine Nummer ? "1.1 Begriff" MUSS "1.1" haben.
+       - FEHLER: "Begriff"(ohne Nummer).LÖSUNG: "Füge Nummer 1.1 hinzu."
+    - Stimmt der tatsächliche Aufbau oder Gang der Untersuchung der Arbeit mit dem in der Einleitung beschriebenen Aufbau oder Gang der Untersuchung überein ?
+      - Prüfe auf DOPPELTE KAPITEL(z.B.zweimal "Fazit").
+       - WENN DU DOPPELTE KAPITEL FINDEST: VERGLEICHE SIE.Entscheide, welches besser ist(z.B.Unterkapitel hat, dem Outline entspricht).
+       - Das SCHLECHTERE / FALSCHE Kapitel muss gelöscht werden.
        - GIB EINE KLARE ANWEISUNG: "Lösche das zweite Kapitel 6 am Ende des Textes" oder "Lösche das Kapitel 'Fazit', das keine Unterkapitel hat".
-       - Strukturelle Probleme (falsche Reihenfolge, fehlende Kapitel).
+       - Strukturelle Probleme(falsche Reihenfolge, fehlende Kapitel).
     
-    2. **FORSCHUNGSFRAGE:** Wird die folgende Forschungsfrage explizit und schlüssig beantwortet?
-       FRAGE: "${researchQuestion}"
-       (Schaue besonders auf Einleitung und Fazit)
-    
-    3. **QUELLEN-CHECK:** Werden Quellen zitiert, die NICHT in der erlaubten Liste stehen? (Halluzinations-Check)
+    2. ** FORSCHUNGSFRAGE:** Wird die folgende Forschungsfrage explizit und schlüssig beantwortet ?
+    FRAGE : "${researchQuestion}"
+      (Schaue besonders auf Einleitung und Fazit)
+
+  3. ** QUELLEN - CHECK:** Werden Quellen zitiert, die NICHT in der erlaubten Liste stehen ? (Halluzinations - Check)
        ERLAUBTE QUELLEN:
        ${sourceListShort}
        
-       **WICHTIG:** Nutze das 'fileSearch' Tool, um **ALLE** Zitationen zu überprüfen!
-       - Gehe jede einzelne Zitation durch.
-       - Suche die Stelle im PDF, die zitiert wurde. 
-       - Sei nicht zu streng bei Überprüfung der Zitation. Wichtig ist, ob der zitierte Inhalt auf die Zitation passt. Wenn nicht, gib das an.
-       - Stimmt die Seitenzahl? Wenn nein -> REPORT!
-       - Suche die richtige Seitenzahl oder mache einen Vorschlag zur Umformulierung, sodass die Zitation passt.
-       - **FALLS GEFUNDEN:** Gib die KORREKTE Seitenzahl an! (z.B. "Gefunden auf S. 12").
+       ** WICHTIG:** Nutze das 'fileSearch' Tool, um ** ALLE ** Zitationen zu überprüfen!
+    - Gehe jede einzelne Zitation durch.
+       - ** JAHR - CHECK(WICHTIG):** Vergleiche das Jahr im Text mit der "ERLAUBTE QUELLEN" Liste oben.
+       - Steht im Text "(Müller, 2025)", aber in der Liste "[1] Müller (2015)" ? -> DANN IST 2025 EINE HALLUZINATION!
+    - REPORT: "Falsches Jahr 2025 (Halluzination). Korrektes Jahr laut Metadaten: 2015." -> LÖSUNG: "Ändere Jahr auf 2015."
+      - Suche die Stelle im PDF, die zitiert wurde. 
+       - Sei nicht zu streng bei Überprüfung der Zitation.Wichtig ist, ob der zitierte Inhalt auf die Zitation passt.Wenn nicht, gib das an.
+       - Stimmt die Seitenzahl ? Wenn nein -> REPORT!
+    - Suche die richtige Seitenzahl oder mache einen Vorschlag zur Umformulierung, sodass die Zitation passt.
+       - ** FALLS GEFUNDEN:** Gib die KORREKTE Seitenzahl an!(z.B. "Gefunden auf S. 12").
 
-    4. **SPRACHE & TON:** 
-       - Enthält der Text das Wort "man" oder "wir"? (VERBOTEN)
-       - Ist der Stil zu umgangssprachlich?
-       - Gibt es Flüchtigkeitsfehler (z.B. "Jahrhunderts. Jahrhunderts." oder "..")?
-       - **VERBOTENE FRAGE-MUSTER:** Prüfe auf "Thema? Aussage." Muster (z.B. "Der Grund? Einfach."). Das ist VERBOTEN.
-       - **RHETORISCHE FRAGEN:** Sind rhetorische Fragen enthalten? (VERBOTEN)
-       - **TON:** Zu emotional? Zu umgangssprachlich ("halt", "eben", "quasi")?
+    4. ** SPRACHE & TON:**
+    - Enthält der Text das Wort "man" oder "wir" ? (VERBOTEN)
+      - Ist der Stil zu umgangssprachlich ?
+        - Gibt es Flüchtigkeitsfehler(z.B. "Jahrhunderts. Jahrhunderts." oder "..") ?
+       - ** VERBOTENE FRAGE - MUSTER:** Prüfe auf "Thema? Aussage." Muster(z.B. "Der Grund? Einfach.").Das ist VERBOTEN.
+       - ** RHETORISCHE FRAGEN:** Sind rhetorische Fragen enthalten ? (VERBOTEN)
+    - ** TON :** Zu emotional ? Zu umgangssprachlich("halt", "eben", "quasi") ?
 
-    5. **SEITENZAHLEN-CHECK:**
-       - Prüfe Zitationen auf kryptische Seitenzahlen wie "e359385", "e1234", "Article 5". Das ist FALSCH.
+      5. ** SEITENZAHLEN - CHECK :**
+      - Prüfe Zitationen auf kryptische Seitenzahlen wie "e359385", "e1234", "Article 5".Das ist FALSCH.
        - Seitenzahlen müssen das Format "S. XX", "S. XXf.", "S. XXff." oder "S. XX-YY" haben.
        - Zitationen OHNE Seitenzahl sind ein FEHLER.
-       - **WICHTIG (SUCHE):** Wenn eine Seitenzahl fehlt oder falsch ist ("e12345"), NUTZE DAS 'fileSearch' WERKZEUG, um die Stelle im Text zu finden!
-       - **LÖSUNG MUSS KONKRET SEIN:** Schreibe NICHT "Füge eine Seitenzahl hinzu." Schreibe: "LÖSUNG: Ergänze Seitenzahl S. 12 (gefunden im PDF)."
-       - Wenn du die Seite nicht finden kannst, schlage S. 1 vor oder markiere es zur manuellen Prüfung. Aber versuche erst zu SUCHEN.
-       - **WICHTIG:** Schlage NIEMALS vor, die Seitenzahl zu löschen! Jede Zitation MUSS eine Seite haben.
+       - ** WICHTIG(SUCHE):** Wenn eine Seitenzahl fehlt oder falsch ist("e12345"), NUTZE DAS 'fileSearch' WERKZEUG, um die Stelle im Text zu finden!
+    - ** LÖSUNG MUSS KONKRET SEIN:** Schreibe NICHT "Füge eine Seitenzahl hinzu." Schreibe: "LÖSUNG: Ergänze Seitenzahl S. 12 (gefunden im PDF)."
+      - Wenn du die Seite nicht finden kannst, schlage S. 1 vor oder markiere es zur manuellen Prüfung.Aber versuche erst zu SUCHEN.
+       - ** WICHTIG:** Schlage NIEMALS vor, die Seitenzahl zu löschen! Jede Zitation MUSS eine Seite haben.
     
     THESIS TEXT:
     ${thesisText} 
     
     ANTWORTE IN DIESEM FORMAT:
     ## 🧐 CRITIQUE REPORT
-    **1. Struktur:** [OK / FEHLER] - Kommentar...
-    **2. Forschungsfrage:** [BEANTWORTET / UNKLAR] - Kommentar...
-    **3. Quellen:** [SAUBER / HALLUZINATIONEN VERMUTET] - Kommentar...
-    **4. Seitenzahlen:** [OK / FEHLERHAFT] - (Prüfe auf "e359385" oder fehlende Seiten. Zitationen müssen "S. XX" sein!)
-    **5. Sprache:** [SAUBER / FEHLERHAFT] - (Nenne konkrete Probleme: "man" verwendet, Doppelte Punkte, Zu umgangssprachlich, etc.)
-    **Gesamturteil:** [Kurzes Fazit]
-    
-    REGEL: Wenn du unten EINEN Fehler nennst, MUSS der Status oben [FEHLERHAFT] sein! [SAUBER] ist nur erlaubt, wenn die Liste LEER ist.
-    
-    WICHTIG:
-    1. Erstelle KEINE neuen Abschnitte. Füge die Details UNTER den Punkten 1-5 ein.
-    2. Liste NUR FEHLER. Wenn eine Zitation korrekt ist, erwähne sie NICHT.
-    3. HÖRE NICHT NACH 5 FEHLERN AUF! LISTE JEDEN EINZELNEN FEHLER IM GESAMTEN TEXT!
-    4. DU MUSST FÜR JEDEN FEHLER EINE LÖSUNG ANGEBEN!
-    5. Nutze DIESES Format: "Ort: [Kapitel] -> FEHLER: [Problem] -> LÖSUNG: [Genauer Befehl]"
-    Beispiel: "Ort: 1.2 -> FEHLER: Zitation (Müller, 2020) hat falsche Seite 1585 -> LÖSUNG: Ändere Seite in S. 1"`
+    ** 1. Struktur:** [OK / FEHLER] - Kommentar...
+    ** 2. Forschungsfrage:** [BEANTWORTET / UNKLAR] - Kommentar...
+    ** 3. Quellen:** [SAUBER / HALLUZINATIONEN VERMUTET] - Kommentar...
+    ** 4. Seitenzahlen:** [OK / FEHLERHAFT] - (Prüfe auf "e359385" oder fehlende Seiten.Zitationen müssen "S. XX" sein!)
+    ** 5. Sprache:** [SAUBER / FEHLERHAFT] - (Nenne konkrete Probleme: "man" verwendet, Doppelte Punkte, Zu umgangssprachlich, etc.)
+    ** Gesamturteil:** [Kurzes Fazit]
 
-    : `You are a strict academic auditor. Critique the following thesis (excerpt/summary) rigorously.
-    
+  REGEL: Wenn du unten EINEN Fehler nennst, MUSS der Status oben[FEHLERHAFT] sein![SAUBER] ist nur erlaubt, wenn die Liste LEER ist.
+
+    WICHTIG:
+  1. Erstelle KEINE neuen Abschnitte.Füge die Details UNTER den Punkten 1 - 5 ein.
+    2. Liste NUR FEHLER.Wenn eine Zitation korrekt ist, erwähne sie NICHT.
+    3. HÖRE NICHT NACH 5 FEHLERN AUF! LISTE JEDEN EINZELNEN FEHLER IM GESAMTEN TEXT!
+  4. DU MUSST FÜR JEDEN FEHLER EINE LÖSUNG ANGEBEN!
+  5. Nutze DIESES Format: "Ort: [Kapitel] -> FEHLER: [Problem] -> LÖSUNG: [Genauer Befehl]"
+  Beispiel: "Ort: 1.2 -> FEHLER: Zitation (Müller, 2020) hat falsche Seite 1585 -> LÖSUNG: Ändere Seite in S. 1"`
+
+      : `You are a strict academic auditor.Critique the following thesis(excerpt / summary) rigorously.
+
     CRITERIA:
-    1. **STRUCTURE:** Do the chapter headings match the outline exactly?
-       OUTLINE:
-       ${outlineShort}
-       - **CHECK CAREFULLY:** Does every subchapter have its number? "1.1 Term" MUST have "1.1".
-       - ERROR: "Term" (without number). SOLUTION: "Add number 1.1."
-       - Check for DUPLICATE CHAPTERS (e.g. two "Conclusion" chapters).
-       - IF YOU FIND DUPLICATES: COMPARE THEM. Decide which one is better/correct.
-       - The WORSE/INCORRECT chapter must be deleted.
+  1. ** STRUCTURE:** Do the chapter headings match the outline exactly ?
+    OUTLINE :
+    ${outlineShort}
+       - ** CHECK CAREFULLY:** Does every subchapter have its number ? "1.1 Term" MUST have "1.1".
+       - ERROR: "Term"(without number).SOLUTION: "Add number 1.1."
+    - Check for DUPLICATE CHAPTERS(e.g.two "Conclusion" chapters).
+       - IF YOU FIND DUPLICATES: COMPARE THEM.Decide which one is better / correct.
+       - The WORSE / INCORRECT chapter must be deleted.
        - GIVE CLEAR INSTRUCTION: "Delete the second Chapter 6 at the end" or "Delete the 'Conclusion' chapter that has no subchapters".
-       - Structural issues (wrong order, missing sections).
+       - Structural issues(wrong order, missing sections).
     
-    2. **RESEARCH QUESTION:** Is the following Research Question explicitly and coherently answered?
-       QUESTION: "${researchQuestion}"
-       (Focus on Intro and Conclusion)
-    
-    3. **SOURCE CHECK:** No fake sources?
-       ALLOWED SOURCES:
+    2. ** RESEARCH QUESTION:** Is the following Research Question explicitly and coherently answered ?
+    QUESTION : "${researchQuestion}"
+      (Focus on Intro and Conclusion)
+
+  3. ** SOURCE CHECK:** No fake sources ?
+    ALLOWED SOURCES:
        ${sourceListShort}
 
-       **IMPORTANT:** Use the 'fileSearch' tool to verify **ALL** citations!
-       - Check every single citation.
-       - **Incorrect usage of "et al."?** (Only valid for >2 authors! For 2 authors: "Name & Name".)
-       - Is format correct? (Author, Year, p. XX) -> "p. 336f." is okay.
-       - **IMPORTANT (SEARCH):** If a citation lacks a page number or has an article ID ("e12345"), USE THE 'fileSearch' TOOL to find the content!
-       - **SOLUTION MUST BE CONCRETE:** Do NOT write "Add a page number." Write: "SOLUTION: Add page number p. 12 (found in PDF)."
-       - If you cannot find the page, suggest p. 1 or mark for manual review. But SEARCH first.
-       - **IF FOUND:** Provide the CORRECT page number! (e.g. "Found on p. 12").
+       ** IMPORTANT:** Use the 'fileSearch' tool to verify ** ALL ** citations!
+    - Check every single citation.
+       - ** Incorrect usage of "et al." ?** (Only valid for > 2 authors! For 2 authors: "Name & Name".)
+  - Is format correct ? (Author, Year, p.XX) -> "p. 336f." is okay.
+       - ** IMPORTANT(SEARCH):** If a citation lacks a page number or has an article ID("e12345"), USE THE 'fileSearch' TOOL to find the content!
+    - ** SOLUTION MUST BE CONCRETE:** Do NOT write "Add a page number." Write: "SOLUTION: Add page number p. 12 (found in PDF)."
+      - If you cannot find the page, suggest p. 1 or mark for manual review.But SEARCH first.
+       - ** IF FOUND:** Provide the CORRECT page number!(e.g. "Found on p. 12").
 
-    4. **LANGUAGE & TONE:**
-       - Any usage of "man", "we", "I"? (FORBIDDEN)
-       - Sloppy errors (double words/punctuation)?
-       - **BANNED PATTERNS:** Check for "Topic? Statement." (e.g. "The reason? Simple."). FORBIDDEN.
-       - **RHETORICAL QUESTIONS:** Are there any? (FORBIDDEN)
-       - Is the tone too emotional or colloquial?
+    4. ** LANGUAGE & TONE:**
+    - Any usage of "man", "we", "I" ? (FORBIDDEN)
+      - Sloppy errors(double words / punctuation) ?
+       - ** BANNED PATTERNS:** Check for "Topic? Statement."(e.g. "The reason? Simple.").FORBIDDEN.
+       - ** RHETORICAL QUESTIONS:** Are there any ? (FORBIDDEN)
+    - Is the tone too emotional or colloquial ?
 
-    5. **PAGE NUMBER CHECK:**
-       - Check citations for cryptic page numbers like "e359385", "e1234", "Article 5". This is WRONG.
+      5. **HEADLINES ARE SACRED:** 
+         - Do not criticize the specific wording of headlines.
+         - Do not suggest renaming them unless they are completely wrong (e.g. "Chapter 1" content is "Conclusion").
+         - If the headline matches the outline, accept it.
+
+      6. **PRESERVE CITATIONS:** Check citations for accuracy, but do not hallucinate errors.
+
+      7. ** PAGE NUMBER CHECK:**
+        - Check citations for cryptic page numbers like "e359385", "e1234", "Article 5".This is WRONG.
        - Page numbers must format as "p. XX", "p. XXf.", "p. XXff." or "p. XX-YY".
        - Citations WITHOUT page numbers are also an ERROR.
     
     
-    THESIS TEXT (Excerpt):
+    THESIS TEXT(Excerpt):
     ${thesisText}
     
-    CRITICAL RULE: NEVER SUGGEST REMOVING A PAGE NUMBER. EVERY CITATION MUST HAVE ONE.
+    CRITICAL RULE: NEVER SUGGEST REMOVING A PAGE NUMBER.EVERY CITATION MUST HAVE ONE.
     If you cannot find the page, suggest "p. 1" as a fallback. "Remove page" is FORBIDDEN.
     
     ANSWER IN THIS FORMAT:
     ## 🧐 CRITIQUE REPORT
-    **1. Structure:** [OK / ERROR] - Comment...
-    **2. Research Question:** [ANSWERED / UNCLEAR] - Comment...
-    **3. Sources:** [CLEAN / HALLUCINATIONS SUSPECTED] - Comment...
-    **4. Page Numbers:** [OK / ISSUES] - (Check for "e359385" styling or missing pages. Must be "p. XX"!)
-    **5. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
-    **5. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
-    **Verdict:** [Short Conclusion]
-    
-    RULE: If you list ANY error below, the status above MUST be [ISSUES]. [CLEAN] is only allowed if the list is EMPTY.
-    
-    IMPORTANT:
-    1. Do NOT create new sections. List details UNDER points 1-5.
-    2. List ONLY ERRORS. If a citation is correct, DO NOT MENTION IT.
-    3. DO NOT STOP AFTER 5 ERRORS! LIST EVERY SINGLE ERROR IN THE ENTIRE TEXT!
-    4. YOU MUST PROVIDE A SOLUTION FOR EVERY ERROR!
-    5. Use THIS format: "Loc: [Chapter] -> ERROR: [Problem] -> SOLUTION: [Exact Command]"
-    Example: "Loc: 1.2 -> ERROR: Citation (Miller, 2020) has wrong page p. 1585 -> SOLUTION: Change page to p. 1"`
+    ** 1. Structure:** [OK / ERROR] - Comment...
+    ** 2. Research Question:** [ANSWERED / UNCLEAR] - Comment...
+    ** 3. Sources:** [CLEAN / HALLUCINATIONS SUSPECTED] - Comment...
+    ** 4. Page Numbers:** [OK / ISSUES] - (Check for "e359385" styling or missing pages.Must be "p. XX"!)
+    ** 5. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
+    ** 5. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
+    ** Verdict:** [Short Conclusion]
 
-  if (isGerman) {
-    prompt += `
-    
-    ZUSATZREGEL:
-    Prüfe die Überschriften der Kapitel EXAKT. Wenn das Outline sagt "1. Einleitung" und im Text steht "Einleitung" (ohne Nummer) oder "1. Einführung" (falsches Wort), dann ist das ein STRUKTURFEHLER.
-    Die Überschriften müssen ZEICHEN-FÜR-ZEICHEN übereinstimmen.`
-  } else {
-    prompt += `
+  RULE: If you list ANY error below, the status above MUST be[ISSUES]. [CLEAN] is only allowed if the list is EMPTY.
+
+    IMPORTANT:
+  1. Do NOT create new sections.List details UNDER points 1 - 5.
+  2. List ONLY ERRORS.If a citation is correct, DO NOT MENTION IT.
+  2. List ONLY ERRORS.If a citation is correct, DO NOT MENTION IT.
+      3. CRITICAL: REPORT EVERY SINGLE ERROR! Do NOT stop after 5. Do NOT summarize.
+      4. If you find 50 errors, list 50 errors. The repair agent needs ALL of them.
+      5. YOU MUST PROVIDE A SOLUTION FOR EVERY ERROR!
+      6. Use THIS format: "Loc: [Chapter] -> ERROR: [Problem] -> SOLUTION: [Exact Command]"
+  Example: "Loc: 1.2 -> ERROR: Citation (Miller, 2020) has wrong page p. 1585 -> SOLUTION: Change page to p. 1"`
+
+    if (isGerman) {
+      prompt += `
+
+  ZUSATZREGEL:
+    Prüfe die Überschriften der Kapitel EXAKT.Wenn das Outline sagt "1. Einleitung" und im Text steht "Einleitung"(ohne Nummer) oder "1. Einführung"(falsches Wort), dann ist das ein STRUKTURFEHLER.
+    Die Überschriften müssen ZEICHEN - FÜR - ZEICHEN übereinstimmen.`
+    } else {
+      prompt += `
     
     ADDITIONAL RULE:
-    Check chapter headings EXACTLY. If outline says "1. Introduction" and text says "Introduction" (no number) or "1. Intro" (wrong word), that is a STRUCTURE ERROR.
-    Headings must match CHARACTER-FOR-CHARACTER.`
+    Check chapter headings EXACTLY.If outline says "1. Introduction" and text says "Introduction"(no number) or "1. Intro"(wrong word), that is a STRUCTURE ERROR.
+    Headings must match CHARACTER - FOR - CHARACTER.`
+    }
+
   }
 
   try {
@@ -2920,156 +3000,166 @@ async function fixChapterContent(
   const chunkTitle = chapterContent.split('\n')[0].replace(/#/g, '').trim()
 
   const prompt = isGerman
-    ? `Du bist ein erfahrener akademischer Lektor. Unten siehst du ein Buchkapitel und einen "Critique Report" für die gesamte Thesis.
-     
-     HINWEIS: Du hast Zugriff auf das 'fileSearch' Werkzeug. Wenn der Report sagt "Seite fehlt", KANNST du selbst im PDF nachsehen, falls der Report keine Lösung liefert.
+    ? `Du bist ein erfahrener akademischer Lektor.Unten siehst du ein Buchkapitel und einen "Critique Report" für die gesamte Thesis.
+
+    HINWEIS: Du hast Zugriff auf das 'fileSearch' Werkzeug.Wenn der Report sagt "Seite fehlt", KANNST du selbst im PDF nachsehen, falls der Report keine Lösung liefert.
     
     DEINE AUFGABE:
-    Korrigiere dieses Kapitel SYSTEMATISCH. Gehe die Liste der Fehler im Report Punkt für Punkt durch.
-    Wenn der Report 5 Fehler nennt, musst du 5 Fehler beheben. Höre nicht nach dem ersten auf!
-    **WICHTIG:** Korrigiere ausschließlich die im Report genannten Fehler! Wenn ein Kapitel fehlerfrei ist, gib es ein LEERES SEARCH/REPLACE zurück.
+    Korrigiere dieses Kapitel SYSTEMATISCH.Gehe die Liste der Fehler im Report Punkt für Punkt durch.
+    Wenn der Report 5 Fehler nennt, musst du 5 Fehler beheben.Höre nicht nach dem ersten auf!
+    ** WICHTIG:** Korrigiere ausschließlich die im Report genannten Fehler! Wenn ein Kapitel fehlerfrei ist, gib es ein LEERES SEARCH / REPLACE zurück.
     
-    NEUES FORMAT (DIFF-PATCHING):
-    Du schreibst KEINEN vollen Text zurück. Du gibst nur die ÄNDERUNGEN im Search/Replace Format zurück.
-    
+    NEUES FORMAT(DIFF - PATCHING):
+    Du schreibst KEINEN vollen Text zurück.Du gibst nur die ÄNDERUNGEN im Search / Replace Format zurück.
+
     Format:
-    <<<<<<< SEARCH
+    <<<<<< <SEARCH
     (Der exakte Originaltext, der ersetzt werden soll)
     =======
-    (Der neue, korrigierte Text)
+  (Der neue, korrigierte Text)
     >>>>>>> REPLACE
-    
-    Regeln:
-    1. Der "SEARCH" Block muss EXAKT mit dem Original übereinstimmen (inklusive Leerzeichen).
+
+  Regeln:
+  1. Der "SEARCH" Block muss EXAKT mit dem Original übereinstimmen(inklusive Leerzeichen).
     2. Der "REPLACE" Block ist deine Korrektur.
-    3. Gib NUR diese Blöcke zurück. Kein anderer Text.
+    3. Gib NUR diese Blöcke zurück.Kein anderer Text.
     4. Wenn du mehrere Fehler korrigierst, mache mehrere Blöcke.
-    5. Wenn du das GESAMTE Kapitel löschen willst (Duplikat), schreibe NUR: [DELETE_CHAPTER]
+    5. Wenn du das GESAMTE Kapitel löschen willst(Duplikat), schreibe NUR: [DELETE_CHAPTER]
     
     Dein Ziel: Repariere NUR die Fehler, die im "CRITIQUE REPORT" genannt sind.
-    
+
     KONTEXT: Du bearbeitest gerade Teil ${chunkIndex + 1} von ${totalChunks} des gesamten Textes.
-    Das ist wichtig, falls der Report sagt "Lösche das zweite Fazit am Ende". Wenn du Teil ${totalChunks}/${totalChunks} bist, bist du wahrscheinlich dieses Kapitel.
+    Das ist wichtig, falls der Report sagt "Lösche das zweite Fazit am Ende".Wenn du Teil ${totalChunks}/${totalChunks} bist, bist du wahrscheinlich dieses Kapitel.
     
     SUPREME REGEL:
-    Wenn der Kritik-Report sagt "LÖSCHE DIESES KAPITEL" oder "Kapitel ist doppelt", dann antworte NUR mit: [DELETE_CHAPTER]
+    Wenn der Kritik - Report sagt "LÖSCHE DIESES KAPITEL" oder "Kapitel ist doppelt", dann antworte NUR mit: [DELETE_CHAPTER]
     
-    SUPREME REGEL (STRUKTUR & ÜBERSCHRIFTEN):
-    Da du nur Search/Replace machst, ist das Risiko geringer. ABER:
+    SUPREME REGEL(STRUKTUR & ÜBERSCHRIFTEN):
+    Da du nur Search / Replace machst, ist das Risiko geringer.ABER:
     NIEMALS "SEARCH" Blöcke machen, die Überschriften enthalten, es sei denn, du willst diese explizit korrigieren.
     LÖSCHE NIEMALS UNABSICHTLICH ÜBERSCHRIFTEN.
-    
-    KONTEXT-CHECK (DUPLIKATE):
+
+    KONTEXT - CHECK(DUPLIKATE):
     Hier ist die Liste ALLER Kapitel in der Thesis:
     ${allChapterTitles.map((t, i) => `${i + 1}. ${t}`).join('\n    ')}
     
     Du bearbeitest gerade Index ${chunkIndex + 1} (von ${totalChunks}).
     Titel dieses Chunks: "${(chunkTitle || '').replace(/#/g, '').trim()}"
-    
-    REGEL: Wenn du siehst, dass ein Kapitel mit DEMSELBEN Titel/Inhalt bereits vorher (bei einem niedrigeren Index) existiert, BIST DU EIN DUPLIKAT.
+
+  REGEL: Wenn du siehst, dass ein Kapitel mit DEMSELBEN Titel / Inhalt bereits vorher(bei einem niedrigeren Index) existiert, BIST DU EIN DUPLIKAT.
     In diesem Fall: Antworte SOFORT mit: [DELETE_CHAPTER]
-    
-    REGELN:
-    1. **KONTEXT-CHECK:** Bist du "Kapitel X" oder "Einleitung"? Wenn ja, und der Report nennt Fehler für "Kapitel X" oder "Einleitung": **DU MUSST SIE KORRIGIEREN!** Ignoriere sie nicht!
-    2. **BEISPIEL (STRUKTURFEHLER):**
-       - REPORT: "Einleitung sagt 5 Kapitel, es sind aber 6." -> FINDE im Text: "fünf Kapitel" -> ÄNDERE zu: "sechs Kapitel". 
+
+  REGELN:
+  1. ** KONTEXT - CHECK:** Bist du "Kapitel X" oder "Einleitung" ? Wenn ja, und der Report nennt Fehler für "Kapitel X" oder "Einleitung": ** DU MUSST SIE KORRIGIEREN! ** Ignoriere sie nicht!
+  2. ** BEISPIEL(STRUKTURFEHLER):**
+    - REPORT: "Einleitung sagt 5 Kapitel, es sind aber 6." -> FINDE im Text: "fünf Kapitel" -> ÄNDERE zu: "sechs Kapitel". 
        - REPORT: "Kapitel 5 ist Diskussion, nicht Fazit." -> FINDE im Text: "Das fünfte Kapitel dient als Fazit" -> ÄNDERE zu: "Das fünfte Kapitel diskutiert die Ergebnisse..."
-    3. Wenn der Report sagt "Forschungsfrage in der Einleitung fehlt" und dies IST die Einleitung: FÜGE SIE EIN!
-    4. Wenn der Report sagt "Strukturfehler in Kapitel 3" und dies IST Kapitel 3: KORRIGIERE ES!
-    5. Wenn der Report "Sprache: FEHLERHAFT" ("man", "wir", "Umgangssprache", "Tippfehler") meldet: KORRIGIERE ALLE DIESE FEHLER IM TEXT!
-       - Wandle "man" und "wir" in Passiv um.
-       - Entferne doppelte Wörter/Punkte.
+  3. Wenn der Report sagt "Forschungsfrage in der Einleitung fehlt" und dies IST die Einleitung: FÜGE SIE EIN!
+  4. Wenn der Report sagt "Strukturfehler in Kapitel 3" und dies IST Kapitel 3: KORRIGIERE ES!
+  5. Wenn der Report "Sprache: FEHLERHAFT"("man", "wir", "Umgangssprache", "Tippfehler") meldet: KORRIGIERE ALLE DIESE FEHLER IM TEXT!
+    - Wandle "man" und "wir" in Passiv um.
+       - Entferne doppelte Wörter / Punkte.
        - Ersetze Umgangssprache durch Fachsprache.
-    4. Wenn der Report "Seitenzahlen: FEHLERHAFT" (z.B. "e359385") meldet:
-       - **Fehlerhafte Verwendung von "et al."?** (Nur bei >2 Autoren erlaubt! Bei 2 Autoren: "Name & Name".)
-       - Stimmt das Format? (Autor, Jahr, S. XX) -> "S. 336f." ist okay, "S. 336ff." ist okay.
-       - **WICHTIG:** Wenn die Seite "e12345" (Artikelnummer) ist -> REPORT! Fordere "S. 1" oder die echte Seite im PDF.
+    4. Wenn der Report "Seitenzahlen: FEHLERHAFT"(z.B. "e359385") meldet:
+       - ** Fehlerhafte Verwendung von "et al." ?** (Nur bei > 2 Autoren erlaubt! Bei 2 Autoren: "Name & Name".)
+  - Stimmt das Format ? (Autor, Jahr, S.XX) -> "S. 336f." ist okay, "S. 336ff." ist okay.
+       - ** WICHTIG:** Wenn die Seite "e12345"(Artikelnummer) ist -> REPORT! Fordere "S. 1" oder die echte Seite im PDF.
        - ERFINDE KEINE ZAHLEN! "S. 1" oder "1" als Fallback ist VERBOTEN.
-       - Jede Zitation muss korrekt sein. Wenn die Seite nicht auffindbar ist, ist die Zitation ungültig.
-    5. Wenn der Report keine Fehler nennt, die für diesen Text relevant sind: Gib den Text EXAKT SO ZURÜCK WIE ER WAR (keine Änderungen).
-    6. Ändere NICHTS am Stil, nur die kritisierten inhaltlichen/strukturellen/sprachlichen Fehler.
+       - Jede Zitation muss korrekt sein.Wenn die Seite nicht auffindbar ist, ist die Zitation ungültig.
+    5. Wenn der Report keine Fehler nennt, die für diesen Text relevant sind: Gib den Text EXAKT SO ZURÜCK WIE ER WAR(keine Änderungen).
+    6. Ändere NICHTS am Stil, nur die kritisierten inhaltlichen / strukturellen / sprachlichen Fehler.
     
-    SUPREME REGEL: ÄNDERE NIEMALS DIE KAPITELÜBERSCHRIFT (Zeile 1). SIE MUSS EXAKT BLEIBEN.
-    SUPREME REGEL: ÄNDERE NIEMALS UNTER-ÜBERSCHRIFTEN ODER DEREN NUMMERIERUNG! "1.1 Titel" BLEIBT "1.1 Titel". ENTFERNE NIEMALS DIE ZAHLEN.
-    SUPREME REGEL: KEINE HIERARCHIE-ÄNDERUNGEN (## bleibt ##).
-    SUPREME REGEL: LÖSCHE ALLE "Thema? Aussage." MUSTER! "Grund? Einfach." -> VERBOTEN. Schreibe als Aussagesatz!
+    SUPREME REGEL: ÄNDERE NIEMALS DIE KAPITELÜBERSCHRIFT(Zeile 1).SIE MUSS EXAKT BLEIBEN.
+    SUPREME REGEL: ÄNDERE NIEMALS UNTER - ÜBERSCHRIFTEN ODER DEREN NUMMERIERUNG! "1.1 Titel" BLEIBT "1.1 Titel".ENTFERNE NIEMALS DIE ZAHLEN.
+    SUPREME REGEL: KEINE HIERARCHIE - ÄNDERUNGEN(## bleibt ##).
+    SUPREME REGEL: LÖSCHE ALLE "Thema? Aussage." MUSTER! "Grund? Einfach." -> VERBOTEN.Schreibe als Aussagesatz!
     SUPREME REGEL: LÖSCHE "man" und "wir" -> Passiv!
     SUPREME REGEL: WENN DER REPORT EINE "LÖSUNG:" ENTHÄLT, FÜHRE DIESE EXAKT AUS!
-    SUPREME REGEL: SCHNEIDE NUR DAS KRANKE GEWEBE WEG! ÄNDERE NICHTS, WAS NICHT KAPUTT IST. KEINE "VERBESSERUNGEN" OHNE AUFTRAG.
-    SUPREME REGEL: WENN DER REPORT SAGT "LÖSCHE DIESES KAPITEL" (z.B. weil es doppelt ist), GIB GENAU DIESEN STRING ZURÜCK: "[DELETE_CHAPTER]". SONST NICHTS.
+    SUPREME REGEL: SCHNEIDE NUR DAS KRANKE GEWEBE WEG! ÄNDERE NICHTS, WAS NICHT KAPUTT IST.KEINE "VERBESSERUNGEN" OHNE AUFTRAG.
+    SUPREME REGEL: WENN DER REPORT SAGT "LÖSCHE DIESES KAPITEL"(z.B.weil es doppelt ist), GIB GENAU DIESEN STRING ZURÜCK: "[DELETE_CHAPTER]".SONST NICHTS.
     
     KAPITEL TEXT:
     ${chapterContent}
     
-    GIB NUR DEN (KORRIGIERTEN) TEXT ZURÜCK. KEINE KOMMENTARE.`
+    GIB NUR DEN(KORRIGIERTEN) TEXT ZURÜCK.KEINE KOMMENTARE.`
 
-    : `You are an expert academic editor. Below is a book chapter and a "Critique Report" for the entire thesis.
-     
-     NOTE: You have access to the 'fileSearch' tool. If the report says "Page missing", you CAN look it up in the PDF yourself if the report provides no solution.
+    : `You are an expert academic editor.Below is a book chapter and a "Critique Report" for the entire thesis.
+
+    NOTE: You have access to the 'fileSearch' tool.If the report says "Page missing", you CAN look it up in the PDF yourself if the report provides no solution.
     
-    NEW FORMAT (DIFF-PATCHING):
-    Do NOT return the full text. Return ONLY the changes using the Search/Replace format.
-    
-    Format:
-    <<<<<<< SEARCH
+    NEW FORMAT(DIFF - PATCHING):
+    Do NOT return the full text.Return ONLY the changes using the Search/Replace format.
+
+  Format:
+    <<<<<< <SEARCH
     (The exact original text to be replaced)
     =======
-    (The new, corrected text)
+  (The new, corrected text)
     >>>>>>> REPLACE
-    
-    Rules:
-    1. The "SEARCH" block must MATCH the original text EXACTLY (including whitespace).
+
+  Rules:
+  1. The "SEARCH" block must MATCH the original text EXACTLY(including whitespace).
     2. The "REPLACE" block is your correction.
-    3. Return ONLY these blocks. No other text.
+    3. Return ONLY these blocks.No other text.
     4. Use multiple blocks for multiple errors.
-    5. If you want to DELETE the entire chapter (duplicate), write ONLY: [DELETE_CHAPTER]
+    5. If you want to DELETE the entire chapter(duplicate), write ONLY: [DELETE_CHAPTER]
     
     YOUR TASK:
-    Correct this chapter SYSTEMATICALLY. Go through the list of errors one by one.
+    Correct this chapter SYSTEMATICALLY.Go through the list of errors one by one.
     If the report lists 5 errors, you must fix 5 errors.
     Your Goal: Fix ONLY the errors mentioned in the "CRITIQUE REPORT".
-    
+
     CONTEXT: You are currently processing Chunk ${chunkIndex + 1} of ${totalChunks} of the whole text.
-    This is important if the report says "Delete the second Conclusion at the end". If you are chunk ${totalChunks}/${totalChunks}, you are likely that chapter.
-    
-    RULES:
-    1. **CONTEXT CHECK (DUPLICATES):**
-       Here is the list of ALL chapters in the thesis:
+    This is important if the report says "Delete the second Conclusion at the end".If you are chunk ${totalChunks}/${totalChunks}, you are likely that chapter.
+
+  RULES:
+  1. ** CONTEXT CHECK(DUPLICATES):**
+    Here is the list of ALL chapters in the thesis:
        ${allChapterTitles.map((t, i) => `${i + 1}. ${t}`).join('\n       ')}
        
        You are processing Index ${chunkIndex + 1} (of ${totalChunks}).
        Title of this chunk: "${(chunkTitle || '').replace(/#/g, '').trim()}"
-       
-       RULE: If you see that a chapter with the SAME title/content already exists before you (at a lower index), YOU ARE A DUPLICATE.
+
+  RULE: If you see that a chapter with the SAME title / content already exists before you(at a lower index), YOU ARE A DUPLICATE.
        In this case: Answer IMMEDIATELY with: [DELETE_CHAPTER]
-       
-    2. **CONTEXT CHECK:** Are you "Chapter X" or "Intro"? If yes, and report lists errors for "Chapter X" or "Intro": **YOU MUST FIX THEM!** Do not ignore them.
-    2. **EXAMPLE (STRUCTURE ERROR):**
-       - REPORT: "Intro says 5 chapters, but it's 6." -> FIND in text: "five chapters" -> CHANGE to: "six chapters".
+
+  2. ** CONTEXT CHECK:** Are you "Chapter X" or "Intro" ? If yes, and report lists errors for "Chapter X" or "Intro": ** YOU MUST FIX THEM! ** Do not ignore them.
+    2. ** EXAMPLE(STRUCTURE ERROR):**
+    - REPORT: "Intro says 5 chapters, but it's 6." -> FIND in text: "five chapters" -> CHANGE to: "six chapters".
        - REPORT: "Chapter 5 is Discussion, not Conclusion." -> FIND in text: "The fifth chapter serves as conclusion" -> CHANGE to: "The fifth chapter discusses the results..."
-    3. If report says "RQ missing in Intro" and this IS the Intro: ADD IT!
-    4. If report says "Structure error in Ch 3" and this IS Ch 3: FIX IT!
-    5. If report says "Language: ISSUES": FIX THEM! (Remove "man", "we", fix typos, formalize tone).
-    4. If report says "Page Numbers: ISSUES" (e.g. "e359385"): 
-       - Find these cryptic numbers and replace them with the TRUE page number based on context.
-       - **IMPORTANT:** If the report says "CORRECT PAGE: XX", use exactly that number!
-       - DO NOT INVENT NUMBERS! "p. 1" or "1" as a fallback is FORBIDDEN.
-       - Ensure ALL citations have a page number ("p. XX") - but only the TRUE one.
-    5. If report mentions no errors relevant to this text: Return the text EXACTLY AS IS (no changes).
+  3. If report says "RQ missing in Intro" and this IS the Intro: ADD IT!
+  4. If report says "Structure error in Ch 3" and this IS Ch 3: FIX IT!
+  5. If report says "Language: ISSUES": FIX THEM!(Remove "man", "we", fix typos, formalize tone).
+    4. If report says "Page Numbers: ISSUES"(e.g. "e359385"):
+  - Find these cryptic numbers and replace them with the TRUE page number based on context.
+       - ** IMPORTANT:** If the report says "CORRECT PAGE: XX", use exactly that number!
+    - DO NOT INVENT NUMBERS! "p. 1" or "1" as a fallback is FORBIDDEN.
+       - Ensure ALL citations have a page number("p. XX") - but only the TRUE one.
+    5. If report mentions no errors relevant to this text: Return the text EXACTLY AS IS(no changes).
     6. Do NOT change style, only the criticized errors.
-    7. IF THE REPORT SAYS "DELETE THIS CHAPTER" (e.g. duplicate), RETURN EXACTLY THIS STRING: "[DELETE_CHAPTER]". NOTHING ELSE.
+    7. IF THE REPORT SAYS "DELETE THIS CHAPTER"(e.g.duplicate), RETURN EXACTLY THIS STRING: "[DELETE_CHAPTER]".NOTHING ELSE.
     
     CHAPTER TEXT:
     ${chapterContent}
     
-    OUTPUT ONLY THE SEARCH/REPLACE BLOCKS. NO COMMENTS.
+    OUTPUT ONLY THE SEARCH / REPLACE BLOCKS.NO COMMENTS.
     
-    SUPREME RULE: NEVER EDIT THE CHAPTER HEADING(Line 1).IT MUST REMAIN EXACTLY AS IS.
+    SUPREME RULE: NORMALLY, DO NOT EDIT THE CHAPTER HEADING(Line 1).IT MUST REMAIN EXACTLY AS IS.
+    EXCEPTION: If the Report EXPLICITLY says "Header missing number" or "Wrong Title", you MUST fix it!
+  Example: Report says "Add 1.1 to title".Original: "# Problemaufriss".CHANGE to: "# 1.1 Problemaufriss"(using Search / Replace).
     SUPREME RULE: NEVER EDIT SUBHEADERS OR THEIR NUMBERING! "1.1 Title" STAYS "1.1 Title".NEVER REMOVE THE NUMBERS.
     SUPREME RULE: DO NOT CHANGE HEADING LEVELS(## stays ##, ### stays ###).
     SUPREME RULE: NO "Topic? Statement." rhetorical patterns. "Global Crisis? Huge." -> BANNED.
     SUPREME RULE: IF REPORT CONTAINS "SOLUTION:", EXECUTE IT EXACTLY!
     SUPREME RULE: YOU ARE A SURGEON.CUT ONLY THE REPORTED ERRORS.DO NOT REWRITE SENTENCES THAT ARE NOT LISTED AS ERRORS.
+
+    SUPREME RULE: IF REPORT CONTAINS "SOLUTION:", EXECUTE IT EXACTLY!
+    SUPREME RULE: YOU ARE A SURGEON.CUT ONLY THE REPORTED ERRORS.DO NOT REWRITE SENTENCES THAT ARE NOT LISTED AS ERRORS.
+
+    SUPREME RULE(HEADLINES ARE IMMUTABLE):
+    - You are FORBIDDEN from editing, renaming, or removing any line starting with '#'.
+    - Touch ONLY the body text.
+    - If a headline is wrong, IGNORE IT. You are a content surgeon, not a structural engineer.
 
     SUPREME RULE(STRUCTURE & HEADINGS):
     Since you are only patching, avoid touching headings unless necessary.
@@ -6245,6 +6335,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     let currentIteration = 0
     let critiqueReport = ''
     const critiqueHistory: any[] = []
+    let masterReport: string | undefined = undefined
 
     while (currentIteration < MAX_REPAIR_ITERATIONS) {
       currentIteration++
@@ -6265,8 +6356,15 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           thesisData.researchQuestion || 'N/A',
           sourcesForGeneration || [],
           thesisData.language === 'german',
-          thesisData.fileSearchStoreId
+          thesisData.fileSearchStoreId,
+          masterReport
         )
+
+        // Convert first report to Master Report
+        if (!masterReport && currentIteration === 1) {
+          masterReport = critiqueReport
+          console.log('[Loop] Master Report locked for verification. Subsequent critiques will ONLY verify fixes for these errors.')
+        }
         console.log(`[Critique] Report generated (Iteration ${currentIteration}):`)
         console.log(critiqueReport)
 
