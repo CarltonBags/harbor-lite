@@ -2979,16 +2979,25 @@ async function critiqueThesis(
       ${chapterContent}`
 
     } else {
+
       // === FULL CRITIQUE MODE (Standard) ===
+      // INSTRUCTION: Check if chapter is just a structural container (e.g. "1. Introduction" -> "1.1 ...")
+      // If so, empty content is NOT an error.
       chapterPrompt = isGerman
         ? `Du bist ein akademischer Prüfer (Reviewer). Überprüfe dieses KAPITEL auf Fehler.
 
       KONTEXT:
-      - Dies ist Kapitel ${i + 1} von ${chapters.length}.
-      - Titel: "${chapterTitle}"
+      - Dies ist Textabschnitt ${i + 1} von ${chapters.length} (sequentiell).
+      - Titel des Kapitels: "${chapterTitle}"
+      - HINWEIS: Die Kapitelnummer im TITEL (z.B. "2.1") ist KORREKT. Ignoriere Abweichungen zur sequentiellen Zählung (Textabschnitt X). Melde KEINE Fehler bzgl. falscher Kapitelnummer, wenn der Titel in sich schlüssig ist.
       
       PRÜFUNGSKRITERIEN FÜR DIESES KAPITEL:
       
+      0. **LEERE STRUKTUR-KAPITEL (WICHTIG):**
+         - Ist dieses Kapitel nur eine Hauptüberschrift (z.B. "1 Einleitung"), ohne eigenen Text, weil danach direkt Unterkapitel folgen (z.B. "1.1 ...")?
+         - FALLS JA: Das ist KEIN Fehler! Melde "Keine Fehler".
+         - FALLS NEIN (Kaptiel ist leer und sollte Text haben): Melde es als Fehler.
+
       1. **FORSCHUNGSFRAGE:** Trägt dieses Kapitel zur Beantwortung bei?
          FRAGE: "${researchQuestion}"
 
@@ -3025,12 +3034,19 @@ async function critiqueThesis(
         : `You are an academic reviewer. Critique this CHAPTER for errors.
 
       CONTEXT:
-      - This is Chapter ${i + 1} of ${chapters.length}.
-      - Title: "${chapterTitle}"
+      - This is text section ${i + 1} of ${chapters.length} (sequential).
+      - Chapter Title: "${chapterTitle}"
+      - NOTE: The chapter number in the TITLE (e.g. "2.1") is AUTHORITATIVE. Ignore discrepancies with the sequential count (Section X). Do NOT report wrong chapter numbers if the title itself is consistent.
       
 
 
+
       CRITERIA FOR THIS CHAPTER:
+
+      0. **EMPTY STRUCTURAL CHAPTERS (IMPORTANT):**
+         - Is this chapter just a main heading (e.g. "1 Introduction") with no text, because subchapters follow immediately?
+         - IF YES: This is NOT an error! Report no errors.
+         - IF NO (Chapter is empty but should have content): Report as error.
       
       1. **RESEARCH QUESTION:** Does this chapter contribute?
          QUESTION: "${researchQuestion}"
@@ -3138,6 +3154,15 @@ async function critiqueThesis(
  * new text
  * >>>>>>> REPLACE
  */
+/**
+ * Applies Search/Replace patches to a text.
+ * Format:
+ * <<<<<<< SEARCH
+ * original text
+ * =======
+ * new text
+ * >>>>>>> REPLACE
+ */
 function applySearchReplace(originalText: string, patchText: string): string {
   if (!patchText.includes('<<<<<<< SEARCH')) {
     // If no patch markers found, check if it's just the full text or empty
@@ -3175,8 +3200,26 @@ function applySearchReplace(originalText: string, patchText: string): string {
     } else {
       // 2. Try soft normalization (ignore leading/trailing whitespace inconsistencies)
       // This is a common AI failure mode (forgetting indentation).
-      // We'll simplisticly try finding the line in the text.
-      console.warn(`[DiffPatches] Could not find exact match for: "${cleanSearch.substring(0, 30)}..."`)
+      console.warn(`[DiffPatches] Could not find exact match for: "${cleanSearch.substring(0, 30)}...". Trying soft match.`)
+
+      const escapedSearch = cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
+      // Try to construct a regex that allows variable whitespace
+      try {
+        const strictRegex = new RegExp(escapedSearch)
+        if (strictRegex.test(currentText)) {
+          currentText = currentText.replace(strictRegex, cleanReplace)
+          appliedCount++
+          console.log('[DiffPatches] Applied soft match (whitespace agnostic).')
+          continue
+        }
+      } catch (e) {
+        // regex failed
+      }
+
+      // 3. Last Resort: Line-by-line fuzzy locator
+      // If the block is multi-line, try to find unique matching lines?
+      // Too dangerous. If strict and soft-regex fail, we skip.
+      console.error(`[DiffPatches] FAILED to apply patch. Match not found even with soft rules.`)
     }
   }
 
@@ -6566,9 +6609,18 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         console.log(critiqueReport)
 
         // Update history
+        // Try to parse report as object for cleaner storage
+        let reportToStore = critiqueReport
+        try {
+          const jsonStr = critiqueReport.replace(/```json\n?|\n?```/g, '').trim()
+          reportToStore = JSON.parse(jsonStr)
+        } catch (e) {
+          // Keep as string if parsing fails
+        }
+
         critiqueHistory.push({
           iteration: currentIteration,
-          report: critiqueReport,
+          report: reportToStore,
           timestamp: new Date().toISOString()
         })
 
