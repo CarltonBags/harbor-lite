@@ -5971,6 +5971,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           })
           allSources.push(...openAlexResults)
 
+          /*
           const semanticResults = await querySemanticScholar(query)
           // Add chapter tracking to sources
           semanticResults.forEach(s => {
@@ -5978,6 +5979,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
             s.chapterTitle = chapterTitle
           })
           allSources.push(...semanticResults)
+          */
 
           // Rate limiting
           await new Promise(resolve => setTimeout(resolve, 200))
@@ -5994,6 +5996,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
           })
           allSources.push(...openAlexResults)
 
+          /*
           const semanticResults = await querySemanticScholar(query)
           // Add chapter tracking to sources
           semanticResults.forEach(s => {
@@ -6001,6 +6004,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
             s.chapterTitle = chapterTitle
           })
           allSources.push(...semanticResults)
+          */
 
           // Rate limiting
           await new Promise(resolve => setTimeout(resolve, 200))
@@ -7044,6 +7048,7 @@ const worker = new Worker(
   {
     connection: workerConnection,
     concurrency: 1,
+    lockDuration: 60000, // 60s to prevent stalls during research logic
 
     maxStalledCount: 0, // Do not retry if stalled (avoids infinite loops on timeout)
     // REDIS OPTIMIZATION: Reduce polling frequency when idle
