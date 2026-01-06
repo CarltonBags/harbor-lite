@@ -3084,6 +3084,7 @@ async function critiqueThesis(
       }), `Critique Chapter ${i + 1}`)
 
       const responseText = response.text || '{}'
+      console.log(`[ThesisCritique] Chapter ${i + 1} Raw Response:`, responseText.substring(0, 500)) // Log first 500 chars
       try {
         const json = JSON.parse(responseText.replace(/```json\n?|\n?```/g, '').trim())
         if (json.errors && Array.isArray(json.errors)) {
@@ -6635,7 +6636,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
       // --- REPAIR PHASE ---
       console.log('[Loop] Errors detected or first run. Running Repair Agent...')
       try {
-        if (critiqueReport && critiqueReport.length > 100) {
+        if (critiqueReport && critiqueReport.trim().length > 0) {
           console.log('[Repair] Starting chunked repair...')
 
           // 1. REPAIR PHASE: JSON-Driven Iterative Repair
@@ -7242,13 +7243,13 @@ const worker = new Worker(
   {
     connection: workerConnection,
     concurrency: 1,
-    lockDuration: 60000, // 60s to prevent stalls during research logic
+    lockDuration: 300000, // 5 minutes (increased from 60s for long AI tasks)
 
     maxStalledCount: 0, // Do not retry if stalled (avoids infinite loops on timeout)
     // REDIS OPTIMIZATION: Reduce polling frequency when idle
     // Default is 5000ms, we use 30000ms (30 seconds) to save commands
     drainDelay: 30000, // Wait 30 seconds between drain checks when queue is empty
-    lockRenewTime: 300000, // Renew lock every 5 minutes
+    lockRenewTime: 30000, // Renew lock every 30 seconds (MUST be < lockDuration)
     stalledInterval: 600000, // Check for stalled jobs every 10 minutes (not default 30s)
     // Remove limiter - not needed with concurrency 1
   }
