@@ -103,6 +103,175 @@ interface OutlineChapterInfo {
   }[]
 }
 
+// --- JSON THESIS STRUCTURE ---
+interface ThesisNode {
+  id: string          // e.g., "1", "1.1"
+  title: string       // e.g., "Einleitung"
+  type: 'chapter' | 'section'
+  content: string     // Markdown content for this specific section ONLY (no children content)
+  children: ThesisNode[]
+}
+
+interface ThesisStructure {
+  version: number
+  nodes: ThesisNode[]
+}
+
+/**
+ * Creates the initial empty JSON skeleton from the outline.
+ */
+function initializeThesisStructure(outline: OutlineChapterInfo[]): ThesisStructure {
+  const nodes: ThesisNode[] = outline.map(chapter => {
+    // 1. Create sub-nodes for sections (subchapters)
+    const sectionNodes: ThesisNode[] = (chapter.sections || []).map(section => ({
+      id: section.number,
+      title: section.title,
+      type: 'section',
+      content: '', // Empty initially
+      children: [] // We don't track subsections explicitly as nodes for now, just main subs
+    }))
+
+    // 2. Create the chapter node
+    return {
+      id: chapter.number,
+      title: chapter.title,
+      type: 'chapter',
+      content: '', // The preamble text before sections
+      children: sectionNodes
+    }
+  })
+
+  return {
+    version: 1,
+    nodes
+  }
+}
+
+/**
+ * Updates content for a specific node (Chapter or Subchapter).
+ * Thread-safeish implementation (returns new structure reference, though deep clone is expensive).
+ */
+function updateNodeContent(structure: ThesisStructure, nodeId: string, newContent: string): ThesisStructure {
+  const updateRecursive = (nodes: ThesisNode[]): ThesisNode[] => {
+    return nodes.map(node => {
+      if (node.id === nodeId) {
+        return { ...node, content: newContent }
+      }
+      if (node.children && node.children.length > 0) {
+        return { ...node, children: updateRecursive(node.children) }
+      }
+      return node
+    })
+  }
+
+  return {
+    ...structure,
+    nodes: updateRecursive(structure.nodes)
+  }
+}
+
+/**
+ * Finds a node by ID.
+ */
+function findNodeById(structure: ThesisStructure, id: string): ThesisNode | null {
+  for (const node of structure.nodes) {
+    if (node.id === id) return node
+    if (node.children) {
+      const found = findNodeById({ ...structure, nodes: node.children }, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+/**
+ * Flattens the JSON back into a full Markdown string.
+ * This ensures backward compatibility with the 'content' column.
+ */
+function reassembleThesisContent(structure: ThesisStructure): string {
+  let fullText = ''
+
+  for (const chapter of structure.nodes) {
+    // Chapter Title (if content doesn't already have it)
+    // IMPORTANT: The generated content usually INCLUDES the header "## 1. Intro".
+    // If we store raw body text, we might need to re-add headers.
+    // BUT current 'generateChapterContent' returns "## Title\n\nBody".
+    // So we just append the content.
+
+    if (chapter.content) {
+      fullText += chapter.content + '\n\n'
+    }
+
+    // Append children (subchapters)
+    // Subchapters usually generated as part of the chapter content in the old monolithic way.
+    // BUT if we move to granular generation, they might be separate.
+    // FOR NOW: We assume the legacy generator produces ONE big string per CHAPTER (including subchapters).
+    // So 'chapter.content' holds the whole chapter text, and 'children' are empty or metadata-only.
+    // IF we split generation later, we would iterate children here.
+
+    // HYBRID MODE CHECK:
+    // If chapter.content is empty but children have content, assemble children.
+    if (!chapter.content && chapter.children.length > 0) {
+      for (const section of chapter.children) {
+        if (section.content) {
+          fullText += section.content + '\n\n'
+        }
+      }
+    }
+  }
+
+  return fullText.trim()
+}
+
+/**
+ * Best-effort parsing of a monolithic markdown string back into the structure.
+ * Used when we modify the full text (e.g. extension) and need to re-sync the JSON.
+ */
+function parseContentToStructure(fullText: string, outline: OutlineChapterInfo[]): ThesisStructure {
+  let structure = initializeThesisStructure(outline)
+
+  // We need to split the full text by chapter headers.
+  // Assuming headers are "## NUMBER. TITLE" or "## NUMBER TITLE"
+  // It's tricky because user might have changed headers.
+  // We use `detectChapters` logic essentially.
+
+  // 1. Identify where each chapter starts.
+  // We'll iterate through the outline and find the start index of each chapter in the fullText.
+
+  const chapterIndices: { id: string, start: number, end: number }[] = []
+
+  outline.forEach((chapter, index) => {
+    const chapterNum = chapter.number.replace(/\.$/, '') // "1." -> "1"
+    // Regex for "## 1. Title" or "## 1 Title" or "## Chapter 1"
+    const regex = new RegExp(`^##\\s*(?:Kapitel|Chapter)?\\s*${escapeRegex(chapterNum)}[.:]?\\s+`, 'im')
+    const match = fullText.match(regex)
+
+    if (match && match.index !== undefined) {
+      chapterIndices.push({ id: chapter.number, start: match.index, end: -1 })
+    }
+  })
+
+  // Sort by position
+  chapterIndices.sort((a, b) => a.start - b.start)
+
+  // Determine end indices
+  for (let i = 0; i < chapterIndices.length; i++) {
+    if (i < chapterIndices.length - 1) {
+      chapterIndices[i].end = chapterIndices[i + 1].start
+    } else {
+      chapterIndices[i].end = fullText.length
+    }
+  }
+
+  // Assign content
+  for (const idx of chapterIndices) {
+    const content = fullText.slice(idx.start, idx.end).trim()
+    structure = updateNodeContent(structure, idx.id, content)
+  }
+
+  return structure
+}
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -948,8 +1117,8 @@ async function extractPageNumbers(pdfBuffer: Buffer): Promise<{ pageStart: strin
 
     const parsed = JSON.parse(jsonMatch[0])
     const result = {
-      pageStart: parsed.pageStart || null,
-      pageEnd: parsed.pageEnd || null,
+      pageStart: parsed.pageStart ? String(parsed.pageStart).trim() : null,
+      pageEnd: parsed.pageEnd ? String(parsed.pageEnd).trim() : null,
     }
     console.log(`[PageExtraction] Extracted page numbers: ${result.pageStart || 'N/A'} - ${result.pageEnd || 'N/A'}`)
     return result
@@ -1086,21 +1255,21 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
       console.log(`[DocUpload] Extracting PDF page count for FileSearchStore mapping...`)
       const pageExtractStart = Date.now()
       try {
-        const pageNumbers = await extractPageNumbers(docBuffer)
-        // STRICT VALIDATION: PDF extraction must return numeric strings only
-        // Rejects "e1234", "1-10", "iv" etc. - We want purely "1" and "10"
-        if (pageNumbers.pageStart && pageNumbers.pageEnd && /^\d+$/.test(pageNumbers.pageStart) && /^\d+$/.test(pageNumbers.pageEnd)) {
-          const extractedStart = parseInt(pageNumbers.pageStart, 10)
-          const extractedEnd = parseInt(pageNumbers.pageEnd, 10)
+        // STRICT VALIDATION & CLEANUP: PDF extraction must return numeric strings only
+        const pStart = pageNumbers.pageStart ? pageNumbers.pageStart.trim() : null
+        const pEnd = pageNumbers.pageEnd ? pageNumbers.pageEnd.trim() : null
+
+        if (pStart && pEnd && /^\d+$/.test(pStart) && /^\d+$/.test(pEnd)) {
+          const extractedStart = parseInt(pStart, 10)
+          const extractedEnd = parseInt(pEnd, 10)
 
           // VALIDATION: Ensure page numbers make sense
-          if (extractedEnd > 1000) {
-            console.warn(`[DocUpload] WARNING: Extracted PDF pageEnd (${extractedEnd}) seems too high, likely incorrect.`)
-          } else if (extractedEnd < extractedStart) {
+          // Removed > 1000 check as valid journals often have high page numbers (e.g. 1805)
+          if (extractedEnd < extractedStart) {
             console.warn(`[DocUpload] WARNING: Extracted PDF pageEnd (${extractedEnd}) < pageStart (${extractedStart}), invalid.`)
           } else {
-            pdfPageStart = pageNumbers.pageStart
-            pdfPageEnd = pageNumbers.pageEnd
+            pdfPageStart = pStart
+            pdfPageEnd = pEnd
             const pageExtractDuration = Date.now() - pageExtractStart
             console.log(`[DocUpload] PDF extraction: ${pdfPageStart}-${pdfPageEnd} pages (${pageExtractDuration}ms)`)
 
@@ -1149,16 +1318,20 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
     let pageStart: string | null = null
     let pageEnd: string | null = null
 
-    if (journalPageStart && journalPageEnd) {
-      // Use journal pages for citations
+    if (journalPageStart && journalPageEnd && !/^[eE]\d+/.test(journalPageStart)) {
+      // Use journal pages for citations (ONLY if they look like real page numbers, not e.g. e1234)
       pageStart = journalPageStart
       pageEnd = journalPageEnd
       console.log(`[DocUpload] Using journal pages for citations: ${pageStart}-${pageEnd}`)
     } else if (pdfPageStart && pdfPageEnd) {
-      // Fallback to PDF pages if no journal pages
+      // Fallback to PDF pages if no journal pages OR if journal pages look like electronic IDs
       pageStart = pdfPageStart
       pageEnd = pdfPageEnd
-      console.log(`[DocUpload] Using PDF pages (no journal pages available): ${pageStart}-${pageEnd}`)
+      if (journalPageStart && /^[eE]\d+/.test(journalPageStart)) {
+        console.log(`[DocUpload] Preferred extracted PDF pages (${pageStart}-${pageEnd}) over electronic ID (${journalPageStart})`)
+      } else {
+        console.log(`[DocUpload] Using PDF pages (no journal pages available): ${pageStart}-${pageEnd}`)
+      }
     } else {
       // Last resort: file size estimation
       const estimatedPages = Math.max(1, Math.ceil(fileSizeKB / (fileType.type === 'pdf' ? 50 : 75)))
@@ -2570,7 +2743,7 @@ ${startInstruction}`
       2000
     )
 
-    const newText = response.text?.trim()
+    const newText = response.text?.trim() || ''
     const generatedWordCount = newText ? newText.split(/\s+/).length : 0
 
     if (generatedWordCount < 300) {
@@ -2823,24 +2996,19 @@ async function critiqueThesis(
     THESIS TEXT:
     ${thesisText} 
     
-    ANTWORTE IN DIESEM FORMAT:
-    ## 🧐 CRITIQUE REPORT
-    ** 1. Struktur:** [OK / FEHLER] - Kommentar...
-    ** 2. Forschungsfrage:** [BEANTWORTET / UNKLAR] - Kommentar...
-    ** 3. Quellen:** [SAUBER / HALLUZINATIONEN VERMUTET] - Kommentar...
-    ** 4. Seitenzahlen:** [OK / FEHLERHAFT] - (Prüfe auf "e359385" oder fehlende Seiten.Zitationen müssen "S. XX" sein!)
-    ** 5. Sprache:** [SAUBER / FEHLERHAFT] - (Nenne konkrete Probleme: "man" verwendet, Doppelte Punkte, Zu umgangssprachlich, etc.)
-    ** Gesamturteil:** [Kurzes Fazit]
-
-  REGEL: Wenn du unten EINEN Fehler nennst, MUSS der Status oben[FEHLERHAFT] sein![SAUBER] ist nur erlaubt, wenn die Liste LEER ist.
-
-    WICHTIG:
-  1. Erstelle KEINE neuen Abschnitte.Füge die Details UNTER den Punkten 1 - 5 ein.
-    2. Liste NUR FEHLER.Wenn eine Zitation korrekt ist, erwähne sie NICHT.
-    3. HÖRE NICHT NACH 5 FEHLERN AUF! LISTE JEDEN EINZELNEN FEHLER IM GESAMTEN TEXT!
-  4. DU MUSST FÜR JEDEN FEHLER EINE LÖSUNG ANGEBEN!
-  5. Nutze DIESES Format: "Ort: [Kapitel] -> FEHLER: [Problem] -> LÖSUNG: [Genauer Befehl]"
-  Beispiel: "Ort: 1.2 -> FEHLER: Zitation (Müller, 2020) hat falsche Seite 1585 -> LÖSUNG: Ändere Seite in S. 1"`
+    ANTWORTE NUR ALS JSON-OBJEKT:
+    {
+      "errors": [
+        {
+          "location": "1.2" (oder "Einleitung", "Fazit"), 
+          "quote": "Der Textabschnitt, der falsch ist (optional, hilft beim Finden)",
+          "error": "Beschreibung des Fehlers",
+          "solution": "GENAUE Anweisung, wie der Text geändert werden muss"
+        },
+        ...
+      ]
+    }
+    `
 
       : `You are a strict academic auditor.Critique the following thesis(excerpt / summary) rigorously.
 
@@ -2899,27 +3067,19 @@ async function critiqueThesis(
     CRITICAL RULE: NEVER SUGGEST REMOVING A PAGE NUMBER.EVERY CITATION MUST HAVE ONE.
     If you cannot find the page, suggest "p. 1" as a fallback. "Remove page" is FORBIDDEN.
     
-    ANSWER IN THIS FORMAT:
-    ## 🧐 CRITIQUE REPORT
-    ** 1. Structure:** [OK / ERROR] - Comment...
-    ** 2. Research Question:** [ANSWERED / UNCLEAR] - Comment...
-    ** 3. Sources:** [CLEAN / HALLUCINATIONS SUSPECTED] - Comment...
-    ** 4. Page Numbers:** [OK / ISSUES] - (Check for "e359385" styling or missing pages.Must be "p. XX"!)
-    ** 5. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
-    ** 5. Language:** [CLEAN / ISSUES] - (List issues: "man" used, typos, colloquial, etc.)
-    ** Verdict:** [Short Conclusion]
-
-  RULE: If you list ANY error below, the status above MUST be[ISSUES]. [CLEAN] is only allowed if the list is EMPTY.
-
-    IMPORTANT:
-  1. Do NOT create new sections.List details UNDER points 1 - 5.
-  2. List ONLY ERRORS.If a citation is correct, DO NOT MENTION IT.
-  2. List ONLY ERRORS.If a citation is correct, DO NOT MENTION IT.
-      3. CRITICAL: REPORT EVERY SINGLE ERROR! Do NOT stop after 5. Do NOT summarize.
-      4. If you find 50 errors, list 50 errors. The repair agent needs ALL of them.
-      5. YOU MUST PROVIDE A SOLUTION FOR EVERY ERROR!
-      6. Use THIS format: "Loc: [Chapter] -> ERROR: [Problem] -> SOLUTION: [Exact Command]"
-  Example: "Loc: 1.2 -> ERROR: Citation (Miller, 2020) has wrong page p. 1585 -> SOLUTION: Change page to p. 1"`
+    OUTPUT ONLY AS A JSON OBJECT:
+    {
+      "errors": [
+        {
+          "location": "1.2" (or "Intro", "Conclusion"),
+          "quote": "Text snippet containing the error (optional)",
+          "error": "Description of error",
+          "solution": "PRECISE instruction on how to change the text"
+        },
+        ...
+      ]
+    }
+    `
 
     if (isGerman) {
       prompt += `
@@ -3037,193 +3197,90 @@ async function fixChapterContent(
 
   const chunkTitle = chapterContent.split('\n')[0].replace(/#/g, '').trim()
 
+  /* 
+   * UPDATED PROMPT: SINGLE ERROR MODE
+   * The 'critiqueReport' argument now contains a single instruction: "FEHLER: ... LÖSUNG: ..."
+   */
   const prompt = isGerman
-    ? `Du bist ein erfahrener akademischer Lektor.Unten siehst du ein Buchkapitel und einen "Critique Report" für die gesamte Thesis.
-
-    HINWEIS: Du hast Zugriff auf das 'fileSearch' Werkzeug.Wenn der Report sagt "Seite fehlt", KANNST du selbst im PDF nachsehen, falls der Report keine Lösung liefert.
+    ? `Du bist ein präziser text-chirurgischer Assistent (Repair Agent).
     
     DEINE AUFGABE:
-    Korrigiere dieses Kapitel SYSTEMATISCH.Gehe die Liste der Fehler im Report Punkt für Punkt durch.
-    Wenn der Report 5 Fehler nennt, musst du 5 Fehler beheben.Höre nicht nach dem ersten auf!
-    ** WICHTIG:** Korrigiere ausschließlich die im Report genannten Fehler! Wenn ein Kapitel fehlerfrei ist, gib es ein LEERES SEARCH / REPLACE zurück.
+    Du erhältst einen Textabschnitt (Kapitel) und EINE KONKRETE KORREKTUR-ANWEISUNG.
+    Du musst diese Anweisung EXAKT umsetzen. Ändere NICHTS anderes.
     
-    NEUES FORMAT(DIFF - PATCHING):
-    Du schreibst KEINEN vollen Text zurück.Du gibst nur die ÄNDERUNGEN im Search / Replace Format zurück.
-
-    Format:
-    <<<<<< <SEARCH
-    (Der exakte Originaltext, der ersetzt werden soll)
+    KORREKTUR-ANWEISUNG:
+    ${critiqueReport}
+    
+    ANWEISUNGEN:
+    1. Suche die betroffene Stelle im Text.
+    2. Wenn die Anweisung sagt: "LÖSUNG: Ändere X zu Y", dann TUE GENAU DAS.
+    3. Wenn die Anweisung sagt: "LÖSUNG: Lösche dieses Kapitel", antworte NUR mit: [DELETE_CHAPTER]
+    4. Nutze das 'fileSearch' Werkzeug NUR wenn du aufgefordert wirst, eine fehlende Seitenzahl zu suchen.
+    
+    FORMAT (SEARCH/REPLACE):
+    Gib NUR die Änderungen im folgenden Format zurück (kein Volltext):
+    
+    <<<<<<< SEARCH
+    (Der exakte Originaltext, der ersetzt werden soll - Zeichen für Zeichen identisch)
     =======
-  (Der neue, korrigierte Text)
+    (Der neue, korrigierte Text)
     >>>>>>> REPLACE
-
-  Regeln:
-  1. Der "SEARCH" Block muss EXAKT mit dem Original übereinstimmen(inklusive Leerzeichen).
-    2. Der "REPLACE" Block ist deine Korrektur.
-    3. Gib NUR diese Blöcke zurück.Kein anderer Text.
-    4. Wenn du mehrere Fehler korrigierst, mache mehrere Blöcke.
-    5. Wenn du das GESAMTE Kapitel löschen willst(Duplikat), schreibe NUR: [DELETE_CHAPTER]
     
-    Dein Ziel: Repariere NUR die Fehler, die im "CRITIQUE REPORT" genannt sind.
+    REGELN:
+    - Der "SEARCH" Block muss den Originaltext EXAKT matchen (inkl. Leerzeichen).
+    - Der "REPLACE" Block ist deine Korrektur.
+    - Ändere nur das Nötigste. Schneide nur das 'kranke Gewebe' heraus.
+    - Wenn der Fehler im Text nicht zu finden ist, gib NICHTS zurück (leere Antwort = keine Änderung).
+    - Erfinde keine Inhalte.
     
-    WARNUNG VOR DEM AUDITOR:
-    Ein STRENGER AUDITOR prüft deinen Output.
-    Erfinde KEINE Seitenzahlen ("S. 1" als Platzhalter ist VERBOTEN).
-    Wenn keine Seite da ist: Lasse sie weg -> (Autor, Jahr). Das ist besser als eine Lüge.
-
-    KONTEXT: Du bearbeitest gerade Teil ${chunkIndex + 1} von ${totalChunks} des gesamten Textes.
-    Das ist wichtig, falls der Report sagt "Lösche das zweite Fazit am Ende".Wenn du Teil ${totalChunks}/${totalChunks} bist, bist du wahrscheinlich dieses Kapitel.
-    
-    SUPREME REGEL:
-    Wenn der Kritik - Report sagt "LÖSCHE DIESES KAPITEL" oder "Kapitel ist doppelt", dann antworte NUR mit: [DELETE_CHAPTER]
-    
-    SUPREME REGEL(STRUKTUR & ÜBERSCHRIFTEN):
-    Da du nur Search / Replace machst, ist das Risiko geringer.ABER:
-    NIEMALS "SEARCH" Blöcke machen, die Überschriften enthalten, es sei denn, du willst diese explizit korrigieren.
-    LÖSCHE NIEMALS UNABSICHTLICH ÜBERSCHRIFTEN.
-
-    KONTEXT - CHECK(DUPLIKATE):
-    Hier ist die Liste ALLER Kapitel in der Thesis:
-    ${allChapterTitles.map((t, i) => `${i + 1}. ${t}`).join('\n    ')}
-    
-    Du bearbeitest gerade Index ${chunkIndex + 1} (von ${totalChunks}).
-    Titel dieses Chunks: "${(chunkTitle || '').replace(/#/g, '').trim()}"
-
-  REGEL: Wenn du siehst, dass ein Kapitel mit DEMSELBEN Titel / Inhalt bereits vorher(bei einem niedrigeren Index) existiert, BIST DU EIN DUPLIKAT.
-    In diesem Fall: Antworte SOFORT mit: [DELETE_CHAPTER]
-
-  REGELN:
-  1. ** KONTEXT - CHECK:** Bist du "Kapitel X" oder "Einleitung" ? Wenn ja, und der Report nennt Fehler für "Kapitel X" oder "Einleitung": ** DU MUSST SIE KORRIGIEREN! ** Ignoriere sie nicht!
-  2. ** BEISPIEL(STRUKTURFEHLER):**
-    - REPORT: "Einleitung sagt 5 Kapitel, es sind aber 6." -> FINDE im Text: "fünf Kapitel" -> ÄNDERE zu: "sechs Kapitel". 
-       - REPORT: "Kapitel 5 ist Diskussion, nicht Fazit." -> FINDE im Text: "Das fünfte Kapitel dient als Fazit" -> ÄNDERE zu: "Das fünfte Kapitel diskutiert die Ergebnisse..."
-  3. Wenn der Report sagt "Forschungsfrage in der Einleitung fehlt" und dies IST die Einleitung: FÜGE SIE EIN!
-  3. Wenn der Report sagt "Forschungsfrage in der Einleitung fehlt" und dies IST die Einleitung: FÜGE SIE EIN!
-  4. **STRUKTUR-PROTOKOLL (WICHTIG):** Wenn der Report sagt "Strukturfehler" oder "Aufbau stimmt nicht" (besonders in der Einleitung/1.2):
-     - LÖSCHE den alten Absatz "Der Aufbau der Arbeit...".
-     - SCHREIBE IHN KOMPLETT NEU basierend auf der **LISTE ALLER KAPITEL** (siehe oben im Kontext).
-     - Beschreibe exakt, was Kapitel 1, 2, 3... tun, basierend auf ihren TITELN. Halluziniere nichts!
-  5. Wenn der Report sagt "Strukturfehler in Kapitel 3" und dies IST Kapitel 3: KORRIGIERE ES!
-  5. Wenn der Report "Sprache: FEHLERHAFT"("man", "wir", "Umgangssprache", "Tippfehler") meldet: KORRIGIERE ALLE DIESE FEHLER IM TEXT!
-    - Wandle "man" und "wir" in Passiv um.
-       - Entferne doppelte Wörter / Punkte.
-       - Ersetze Umgangssprache durch Fachsprache.
-    4. Wenn der Report "Seitenzahlen: FEHLERHAFT"(z.B. "e359385") meldet:
-       - ** Fehlerhafte Verwendung von "et al." ?** (Nur bei > 2 Autoren erlaubt! Bei 2 Autoren: "Name & Name".)
-  - Stimmt das Format ? (Autor, Jahr, S.XX) -> "S. 336f." ist okay, "S. 336ff." ist okay.
-       - ** WICHTIG:** Wenn die Seite "e12345"(Artikelnummer) ist -> REPORT! Fordere "S. 1" oder die echte Seite im PDF.
-       - ERFINDE KEINE ZAHLEN! "S. 1" oder "1" als Fallback ist VERBOTEN.
-       **AUSNAHME:** Wenn der Critique Report EXPLIZIT sagt, eine Zitation auf "S. 1" zu ändern (z.B. bei Artikel-IDs wie 'e12345'), MUSST DU DIES BEFOLGEN. In diesem spezifischen Fall ist "S. 1" erlaubt.
-       - Jede Zitation muss korrekt sein.Wenn die Seite nicht auffindbar ist, ist die Zitation ungültig.
-    5. Wenn der Report keine Fehler nennt, die für diesen Text relevant sind: Gib den Text EXAKT SO ZURÜCK WIE ER WAR(keine Änderungen).
-    6. Ändere NICHTS am Stil, nur die kritisierten inhaltlichen / strukturellen / sprachlichen Fehler.
-    
-    SUPREME REGEL: ÄNDERE NIEMALS DIE KAPITELÜBERSCHRIFT(Zeile 1).SIE MUSS EXAKT BLEIBEN.
-    SUPREME REGEL: ÄNDERE NIEMALS UNTER - ÜBERSCHRIFTEN ODER DEREN NUMMERIERUNG! "1.1 Titel" BLEIBT "1.1 Titel".ENTFERNE NIEMALS DIE ZAHLEN.
-    SUPREME REGEL: KEINE HIERARCHIE - ÄNDERUNGEN(## bleibt ##).
-    SUPREME REGEL: LÖSCHE ALLE "Thema? Aussage." MUSTER! "Grund? Einfach." -> VERBOTEN.Schreibe als Aussagesatz!
-    SUPREME REGEL: LÖSCHE "man" und "wir" -> Passiv!
-    SUPREME REGEL: WENN DER REPORT EINE "LÖSUNG:" ENTHÄLT, FÜHRE DIESE EXAKT AUS!
-    SUPREME REGEL: SCHNEIDE NUR DAS KRANKE GEWEBE WEG! ÄNDERE NICHTS, WAS NICHT KAPUTT IST.KEINE "VERBESSERUNGEN" OHNE AUFTRAG.
-    SUPREME REGEL: WENN DER REPORT SAGT "LÖSCHE DIESES KAPITEL"(z.B.weil es doppelt ist), GIB GENAU DIESEN STRING ZURÜCK: "[DELETE_CHAPTER]".SONST NICHTS.
+    KONTEXT:
+    Kapitel Titel: "${(chunkTitle || '').replace(/#/g, '').trim()}"
+    (Teil ${chunkIndex + 1} von ${totalChunks})
     
     KAPITEL TEXT:
     ${chapterContent}
     
-    GIB NUR DEN(KORRIGIERTEN) TEXT ZURÜCK.KEINE KOMMENTARE.`
+    ANTWORTE NUR MIT DEN SEARCH/REPLACE BLÖCKEN.`
 
-    : `You are an expert academic editor.Below is a book chapter and a "Critique Report" for the entire thesis.
-
-    NOTE: You have access to the 'fileSearch' tool.If the report says "Page missing", you CAN look it up in the PDF yourself if the report provides no solution.
-    
-    NEW FORMAT(DIFF - PATCHING):
-    Do NOT return the full text.Return ONLY the changes using the Search/Replace format.
-
-  Format:
-    <<<<<< <SEARCH
-    (The exact original text to be replaced)
-    =======
-  (The new, corrected text)
-    >>>>>>> REPLACE
-
-  Rules:
-  1. The "SEARCH" block must MATCH the original text EXACTLY(including whitespace).
-    2. The "REPLACE" block is your correction.
-    3. Return ONLY these blocks.No other text.
-    4. Use multiple blocks for multiple errors.
-    5. If you want to DELETE the entire chapter(duplicate), write ONLY: [DELETE_CHAPTER]
+    : `You are a precise surgical text repair agent.
     
     YOUR TASK:
-    Correct this chapter SYSTEMATICALLY.Go through the list of errors one by one.
-    If the report lists 5 errors, you must fix 5 errors.
-    Your Goal: Fix ONLY the errors mentioned in the "CRITIQUE REPORT".
-
-    CONTEXT: You are currently processing Chunk ${chunkIndex + 1} of ${totalChunks} of the whole text.
-    This is important if the report says "Delete the second Conclusion at the end".If you are chunk ${totalChunks}/${totalChunks}, you are likely that chapter.
-
-  RULES:
-  1. ** CONTEXT CHECK(DUPLICATES):**
-    Here is the list of ALL chapters in the thesis:
-       ${allChapterTitles.map((t, i) => `${i + 1}. ${t}`).join('\n       ')}
-       
-       You are processing Index ${chunkIndex + 1} (of ${totalChunks}).
-       Title of this chunk: "${(chunkTitle || '').replace(/#/g, '').trim()}"
-
-  RULE: If you see that a chapter with the SAME title / content already exists before you(at a lower index), YOU ARE A DUPLICATE.
-       In this case: Answer IMMEDIATELY with: [DELETE_CHAPTER]
-
-  2. ** CONTEXT CHECK:** Are you "Chapter X" or "Intro" ? If yes, and report lists errors for "Chapter X" or "Intro": ** YOU MUST FIX THEM! ** Do not ignore them.
-    2. ** EXAMPLE(STRUCTURE ERROR):**
-    - REPORT: "Intro says 5 chapters, but it's 6." -> FIND in text: "five chapters" -> CHANGE to: "six chapters".
-       - REPORT: "Chapter 5 is Discussion, not Conclusion." -> FIND in text: "The fifth chapter serves as conclusion" -> CHANGE to: "The fifth chapter discusses the results..."
-  3. If report says "RQ missing in Intro" and this IS the Intro: ADD IT!
-  3. If report says "RQ missing in Intro" and this IS the Intro: ADD IT!
-  4. **STRUCTURE PROTOCOL (IMPORTANT):** If report says "Structure error" or "Outline mismatch" (especially in Intro/1.2):
-     - DELETE the old paragraph describing the structure.
-     - REWRITE IT COMPLETELY based on the **LIST OF ALL CHAPTERS** (provided above in context).
-     - Describe exactly what Chapter 1, 2, 3... do, based on their TITLES. Do not hallucinate!
-  5. If report says "Structure error in Ch 3" and this IS Ch 3: FIX IT!
-  5. If report says "Language: ISSUES": FIX THEM!(Remove "man", "we", fix typos, formalize tone).
-    4. If report says "Page Numbers: ISSUES"(e.g. "e359385"):
-       - ** IMPORTANT:** If page is "e12345" (article number) -> REPORT! Not a page.
-       - **AUDITOR WARNING:**
-         - A STRICT AUDITOR checks your output.
-         - DO NOT INVENT PAGE NUMBERS ("p. 1" placeholder is FORBIDDEN).
-         - If no page found: Omit it -> (Author, Year). Better than a lie.
-       - Every citation must be correct.  - Find these cryptic numbers and replace them with the TRUE page number based on context.
-       - ** IMPORTANT:** If the report says "CORRECT PAGE: XX", use exactly that number!
-    - DO NOT INVENT NUMBERS! "p. 1" or "1" as a fallback is FORBIDDEN.
-       **EXCEPTION:** If the Critique Report EXPLICITLY says to change a citation to "S. 1" or "p. 1" (e.g. for article IDs like 'e12345'), YOU MUST FOLLOW THE REPORT. In that specific case, "S. 1" is allowed.
-       - Ensure ALL citations have a page number("p. XX") - but only the TRUE one.
-    5. If report mentions no errors relevant to this text: Return the text EXACTLY AS IS(no changes).
-    6. Do NOT change style, only the criticized errors.
-    7. IF THE REPORT SAYS "DELETE THIS CHAPTER"(e.g.duplicate), RETURN EXACTLY THIS STRING: "[DELETE_CHAPTER]".NOTHING ELSE.
+    You are given a text section (Chapter) and ONE SPECIFIC CORRECTION INSTRUCTION.
+    You must execute this instruction EXACTLY. Do NOT change anything else.
+    
+    CORRECTION INSTRUCTION:
+    ${critiqueReport}
+    
+    INSTRUCTIONS:
+    1. Locate the affected text.
+    2. If instruction says "SOLUTION: Change X to Y", DO EXACTLY THAT.
+    3. If instruction says "SOLUTION: Delete this chapter", reply ONLY with: [DELETE_CHAPTER]
+    4. Use 'fileSearch' tool ONLY if asked to find a missing page number.
+    
+    FORMAT (SEARCH/REPLACE):
+    Return ONLY changes in this format (no full text):
+    
+    <<<<<<< SEARCH
+    (The exact original text to be replaced - character match)
+    =======
+    (The new, corrected text)
+    >>>>>>> REPLACE
+    
+    RULES:
+    - The "SEARCH" block must match original text EXACTLY.
+    - The "REPLACE" block is your correction.
+    - Change only what is necessary. Surgeon style.
+    - If error is not found, return NOTHING.
+    - Do not invent content.
+    
+    CONTEXT:
+    Chapter Title: "${(chunkTitle || '').replace(/#/g, '').trim()}"
+    (Chunk ${chunkIndex + 1} of ${totalChunks})
     
     CHAPTER TEXT:
     ${chapterContent}
     
-    OUTPUT ONLY THE SEARCH / REPLACE BLOCKS.NO COMMENTS.
-    
-    SUPREME RULE: NORMALLY, DO NOT EDIT THE CHAPTER HEADING(Line 1).IT MUST REMAIN EXACTLY AS IS.
-    EXCEPTION: If the Report EXPLICITLY says "Header missing number" or "Wrong Title", you MUST fix it!
-  Example: Report says "Add 1.1 to title".Original: "# Problemaufriss".CHANGE to: "# 1.1 Problemaufriss"(using Search / Replace).
-    SUPREME RULE: NEVER EDIT SUBHEADERS OR THEIR NUMBERING! "1.1 Title" STAYS "1.1 Title".NEVER REMOVE THE NUMBERS.
-    SUPREME RULE: DO NOT CHANGE HEADING LEVELS(## stays ##, ### stays ###).
-    SUPREME RULE: NO "Topic? Statement." rhetorical patterns. "Global Crisis? Huge." -> BANNED.
-    SUPREME RULE: IF REPORT CONTAINS "SOLUTION:", EXECUTE IT EXACTLY!
-    SUPREME RULE: YOU ARE A SURGEON.CUT ONLY THE REPORTED ERRORS.DO NOT REWRITE SENTENCES THAT ARE NOT LISTED AS ERRORS.
-
-    SUPREME RULE: IF REPORT CONTAINS "SOLUTION:", EXECUTE IT EXACTLY!
-    SUPREME RULE: YOU ARE A SURGEON.CUT ONLY THE REPORTED ERRORS.DO NOT REWRITE SENTENCES THAT ARE NOT LISTED AS ERRORS.
-
-    SUPREME RULE(HEADLINES ARE IMMUTABLE):
-    - You are FORBIDDEN from editing, renaming, or removing any line starting with '#'.
-    - Touch ONLY the body text.
-    - If a headline is wrong, IGNORE IT. You are a content surgeon, not a structural engineer.
-
-    SUPREME RULE(STRUCTURE & HEADINGS):
-    Since you are only patching, avoid touching headings unless necessary.
-    NEVER create a "SEARCH" block that includes a header line unless you intend to fix it.`
+    OUTPUT ONLY THE SEARCH/REPLACE BLOCKS.`
 
 
   let lastError = null
@@ -3351,7 +3408,7 @@ async function syncStructureInIntroduction(
 
 
 
-async function generateThesisContent(thesisData: ThesisData, rankedSources: Source[], thesisPlan: string = ''): Promise<string> {
+async function generateThesisContent(thesisData: ThesisData, rankedSources: Source[], thesisPlan: string = ''): Promise<{ content: string; structure?: ThesisStructure }> {
   console.log('[ThesisGeneration] Starting thesis content generation...')
   console.log(`[ThesisGeneration] Thesis: "${thesisData.title}"`)
   console.log(`[ThesisGeneration] Target length: ${thesisData.targetLength} ${thesisData.lengthUnit} `)
@@ -3443,6 +3500,10 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
       return skipKeywords.some(keyword => title.includes(keyword))
     }
 
+    // Initialize JSON structure
+    console.log('[ThesisGeneration] Initializing JSON structure...')
+    let thesisStructure = initializeThesisStructure(outlineChapters)
+
     for (let i = 0; i < outlineChapters.length; i++) {
       const chapter = outlineChapters[i]
 
@@ -3471,7 +3532,39 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
       chapterContents.push(chapterText.trim())
       totalWordCount += chapterWordCount
-      console.log(`[ThesisGeneration] Chapter ${chapter.number} complete(~${chapterWordCount} words, total ${totalWordCount} / ${expectedWordCount})`)
+      console.log(`[ThesisGeneration] Chapter ${chapter.number} complete (~${chapterWordCount} words, total ${totalWordCount}/${expectedWordCount})`)
+
+      // Update JSON structure with the new chapter content
+      thesisStructure = updateNodeContent(thesisStructure, chapter.number, chapterText.trim())
+
+      // Check if there are subchapters in the text that we might want to split later?
+      // For now, we store the WHOLE chapter text in the chapter node.
+      // Ideally, 'generateChapterContent' would return a structured object too, but that's a bigger refactor.
+      // So detailed subsection targeting will rely on the fact that the chapter node has the content.
+      // Repair agent can then parse the markdown within that node if it needs to target a subsection.
+
+      // Persist partial progress to DB (JSON + Content)
+      // We perform a "live update" so the user sees progress in the new structure too.
+      // Note: This requires passing 'thesisId' to this function or finding a way to update.
+      // Currently generateThesisContent doesn't take thesisId.
+      // We will just accumulate for now and let the caller save, OR we can accept thesisId.
+      // Let's check the signature. explicit thesisId is not passed, but thesisData might have it?
+      // thesisData does NOT have ID.
+      // However, we can just build the structure and return it?
+      // No, this function returns Promise<string>.
+      // We should probably Attach the structure to the return value or update a shared state?
+      // Re-reading: The goal is to support the Repair Agent which runs AFTER generation.
+      // So as long as we have the final structure at the end, it's fine.
+      // But we want to save it.
+
+      // We need to return this structure or save it.
+      // The simplest way to get it out is to attach it to the thesisData if it's passed by reference? No.
+      // We can change the return type of generateThesisContent, but that breaks the caller.
+      // Let's modify the return type and the caller. Or...
+      // wait, `thesisData` does not seem to have the ID.
+      // But `generateThesisContent` is called by `processThesisGeneration` which HAS the ID.
+      // Let's verify `processThesisGeneration`.
+
 
       // Generate Summary for next chapters
       const summary = await summarizeChapter(`${chapter.number} ${chapter.title} `, chapterText, isGerman)
@@ -3493,10 +3586,38 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
       combinedContent = extensionResult.content
       totalWordCount = extensionResult.wordCount
       console.log(`[ThesisGeneration] ✓ Word count reached after extension: ~${totalWordCount}/${expectedWordCount} words`)
+
+      // Update the structure with the extended content
+      // Since extension is global or iterates chapters, we might lose granularity here.
+      // Extension usually appends or modifies existing text.
+      // For simplicity, we RE-SPLIT or just update the whole thing?
+      // 'extensionResult.content' acts as the master.
+      // Re-splitting is hard and error-prone.
+      // Ideally, the extension should be chapter-aware.
+      // But 'extendThesisContent' works on the full string.
+      // This is a limitation. If extension runs, our granular JSON might be out of sync with 'combinedContent'.
+      // STRATEGY: 
+      // 1. If extension happens, we accept that 'combinedContent' is the truth.
+      // 2. We can try to re-parse 'combinedContent' into the JSON structure.
+      //    We can write a helper `parseMarkdownToStructure(markdown, outline)` to do this.
+      //    This is robust.
+
+      thesisStructure = parseContentToStructure(combinedContent, outlineChapters)
     }
 
-    return combinedContent
+    // Attach structure to the result?
+    // We can't easily change the return type without breaking things.
+    // Instead, we can throw a special "Completion" object or just Return the string and handle the JSON save in a separate call?
+    // Actually, typescript allows us to return a property on the string object if we really want to hack it, but that's ugly.
+    // Better: Change the return type to `Promise<{ content: string; structure: ThesisStructure }>`
+    // This requires updating the caller.
+
+    return { content: combinedContent, structure: thesisStructure }
   }
+
+  // Fallback for single-shot generation (legacy path, rarely used now)
+  // ... (lines 3637+)
+
 
   // Build comprehensive source list for the prompt - THIS IS CRITICAL
   // The AI MUST know exactly which sources it can cite AND valid page ranges
@@ -4432,7 +4553,7 @@ If you write too little again, the thesis will be delivered incomplete!
           console.log(`[ThesisGeneration] ✓ Content complete (${wordCount}/${expectedWordCount} words, ${citationCount} citations, ${foundChapters.length}/${outlineChapters.length} chapters)`)
         }
 
-        return content
+        return { content }
       } else {
         console.warn(`[ThesisGeneration] Attempt ${attempt} returned invalid content (length: ${content.length})`)
         lastError = new Error(`Invalid content returned: length ${content.length} < 100`)
@@ -6333,8 +6454,12 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     console.log(`[PROCESS] Using ${sourcesForGeneration.length} sources for thesis generation`)
 
     let thesisContent = ''
+    let thesisStructure: ThesisStructure | undefined
+
     try {
-      thesisContent = await generateThesisContent(thesisData, sourcesForGeneration, thesisPlan)
+      const result = await generateThesisContent(thesisData, sourcesForGeneration, thesisPlan)
+      thesisContent = result.content
+      thesisStructure = result.structure
       const step7Duration = Date.now() - step7Start
       console.log(`[PROCESS] Step 7 completed in ${step7Duration}ms`)
     } catch (error) {
@@ -6506,80 +6631,95 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
         if (critiqueReport && critiqueReport.length > 100) {
           console.log('[Repair] Starting chunked repair...')
 
-          // 1. Split content into chapters (Level 2 headers ##, ignoring Level 3 ###)
-          const chapters = thesisContent.split(/(?=^## [^#])/gm).filter(c => c.trim().length > 0)
-          console.log(`[Repair] Split thesis into ${chapters.length} chunks for processing`)
-
-          // Extract all titles for context
-          const allChapterTitles = chapters.map(c => c.split('\n')[0].replace(/#/g, '').trim())
-
-          const repairedChapters: string[] = []
-
-          // 2. Process each chapter
-          for (let i = 0; i < chapters.length; i++) {
-            const chunk = chapters[i]
-            const chunkTitle = chunk.split('\n')[0].replace(/#/g, '').trim()
-
-            // SMART SKIP LOGIC:
-            // Check if this chunk is even mentioned in the critique report.
-            const isMentionedInProp = ((title: string, report: string): boolean => {
-              // 1. Extract chapter number (e.g. "1.1", "2.")
-              const numberMatch = title.match(/^(\d+(?:\.\d+)*)/)
-              const number = numberMatch ? numberMatch[1] : null
-
-              // 2. Simple text check for location markers
-              // If report has NO location markers at all, assume global errors -> processed
-              if (!report.includes('Ort:') && !report.includes('Loc:')) return true
-
-              // 3. Check for specific mentions
-              // "Ort: 1.1" or "Ort: 1.3" or "Loc: 2.1"
-              if (number && (report.includes(`Ort: ${number}`) || report.includes(`Loc: ${number}`))) return true
-
-              // 4. Check for title mentions (fuzzy)
-              // e.g. "Ort: Einleitung"
-              const cleanTitle = title.replace(/^\d+(?:\.\d+)*\s*/, '').substring(0, 15) // First 15 chars of title
-              if (cleanTitle && report.includes(cleanTitle)) return true
-
-              return false
-            })(chunkTitle, critiqueReport)
-
-            if (!isMentionedInProp) {
-              console.log(`[Repair] Skipping chunk ${i + 1}/${chapters.length} ("${chunkTitle.substring(0, 20)}...") - NOT cited in Critique Report.`)
-              repairedChapters.push(chunk)
-              continue
-            }
-
-            console.log(`[Repair] Repairing chunk ${i + 1}/${chapters.length}: "${chunkTitle.substring(0, 50)}..."`)
-
-            const repairedChunk = await fixChapterContent(
-              chunk,
-              critiqueReport,
-              thesisData.language === 'german',
-              i,
-              chapters.length,
-              allChapterTitles, // Pass context
-              thesisData.fileSearchStoreId // Pass fileSearchStoreId
-            )
-
-            // Handle explicit deletion
-            if (repairedChunk.trim() === '[DELETE_CHAPTER]') {
-              console.log(`[Repair] Chunk ${i + 1} marked for deletion by Repair Agent (likely duplicate). Removing.`)
-              // Do NOT push to repairedChapters
-              continue
-            }
-
-            // Safety check: If repair lost too much content (>40% loss), revert to original
-            if (repairedChunk.length < chunk.length * 0.6) {
-              console.warn(`[Repair] WARNING: Repaired chunk ${i + 1} is significantly shorter (${repairedChunk.length} vs ${chunk.length}). Reverting to original to prevent data loss.`)
-              repairedChapters.push(chunk)
-            } else {
-              repairedChapters.push(repairedChunk)
-            }
+          // 1. REPAIR PHASE: JSON-Driven Iterative Repair
+          // We assume critiqueReport is a JSON string (or markdown block containing JSON)
+          let errors: any[] = []
+          try {
+            // Clean markdown code blocks if present
+            const jsonStr = critiqueReport.replace(/```json\n?|\n?```/g, '').trim()
+            const reportObj = JSON.parse(jsonStr)
+            errors = reportObj.errors || []
+            console.log(`[Repair] Parsed ${errors.length} errors from Critique Report`)
+          } catch (e) {
+            console.error('[Repair] Failed to parse JSON report.', e)
+            console.warn('[Repair] Raw report sample:', critiqueReport.substring(0, 200))
+            errors = []
           }
 
-          // 3. Reassemble
-          thesisContent = repairedChapters.join('\n')
-          console.log('[Repair] Thesis successfully repaired and reassembled.')
+          if (errors.length > 0) {
+            // 2. Split content into chapters (Level 2 headers ##)
+            const chapters = thesisContent.split(/(?=^## [^#])/gm).filter(c => c.trim().length > 0)
+            console.log(`[Repair] Split thesis into ${chapters.length} chunks for processing`)
+
+            // Extract titles for matching
+            const chapterTitles = chapters.map(c => c.split('\n')[0].replace(/#/g, '').trim())
+
+            // 3. Iterate through ERRORS and apply fixes
+            for (let i = 0; i < errors.length; i++) {
+              const err = errors[i]
+              console.log(`[Repair] Processing Error ${i + 1}/${errors.length}: ${err.error?.substring(0, 50)}...`)
+
+              // Identify target chapter index
+              const targetIndex = ((location: string, titles: string[]): number => {
+                if (!location) return -1
+
+                // Extract number from location (e.g. "1.1")
+                const locNumMatch = location.match(/(\d+(?:\.\d+)*)/)
+                const locNum = locNumMatch ? locNumMatch[1] : null
+
+                for (let idx = 0; idx < titles.length; idx++) {
+                  const title = titles[idx]
+                  // Check number match
+                  if (locNum) {
+                    if (title.startsWith(locNum + ' ') || title === locNum) return idx
+                  }
+                  // Check string match
+                  if (title.toLowerCase().includes(location.toLowerCase())) return idx
+                }
+                return -1
+              })(err.location, chapterTitles)
+
+              if (targetIndex === -1) {
+                console.warn(`[Repair] Could not map location "${err.location}" to a chapter. Skipping error.`)
+                continue
+              }
+
+              // Apply repair to the specific chapter
+              const chunk = chapters[targetIndex]
+
+              // Construct a specific instruction for the Repair Agent
+              const miniReport = `LÖSUNG ANWENDEN:\nFEHLER: ${err.error}\nLÖSUNG: ${err.solution}\nQUOTE: ${err.quote || ''}`
+
+              console.log(`[Repair] Applying fix to Chapter ${targetIndex + 1} (${chapterTitles[targetIndex]})...`)
+
+              const repairedChunk = await fixChapterContent(
+                chunk,
+                miniReport,
+                thesisData.language === 'german',
+                targetIndex,
+                chapters.length,
+                chapterTitles, // Context
+                thesisData.fileSearchStoreId
+              )
+
+              if (repairedChunk.trim() === '[DELETE_CHAPTER]') {
+                chapters[targetIndex] = ''
+              } else {
+                if (repairedChunk.length < chunk.length * 0.5 && chunk.length > 200) {
+                  console.warn(`[Repair] Fix result dangerously short. Reverting.`)
+                } else {
+                  chapters[targetIndex] = repairedChunk
+                }
+              }
+            }
+
+            // 4. Reassemble
+            thesisContent = chapters.filter(c => c.length > 0).join('\n\n')
+            console.log('[Repair] All errors processed. Thesis reassembled.')
+
+          } else {
+            console.log('[Repair] No errors parsed to fix (or parsing failed).')
+          }
 
         } else {
           console.log('[Repair] No critique report available. Skipping repair.')
@@ -6735,8 +6875,22 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
 
     await retryApiCall(
       async () => {
+        // Ensure structure is available
+        if (!thesisStructure && finalContent) {
+          console.log('[PROCESS] Re-parsing content to structure for saving...')
+          try {
+            thesisStructure = parseContentToStructure(finalContent, thesisData.outline as any[])
+          } catch (err) {
+            console.error('[PROCESS] Failed to parse content to structure:', err)
+          }
+        }
+
         const updateData: any = {
-          latex_content: finalContent,
+          latex_content: finalContent, // Maps to 'content' column in older versions of code?
+          // Actually, let's verify if 'latex_content' is the right column. 
+          // Previous code updates 'latex_content'.
+          // We ADD 'content_json'.
+          content_json: thesisStructure,
           clean_markdown_content: cleanMarkdownContent,
           status: 'completed',
           completed_at: new Date().toISOString(),
