@@ -3002,14 +3002,19 @@ async function critiqueThesis(
       1. **FORSCHUNGSFRAGE:** Trägt dieses Kapitel zur Beantwortung bei?
          FRAGE: "${researchQuestion}"
 
-      2. **QUELLEN-CHECK & HALLUZINATIONEN (WICHTIG!):**
-         - Vergleiche JEDE Zitation im Text mit der "ERLAUBTE QUELLEN" Liste unten.
+      2. **SOURCE CHECK & HALLUZINATIONEN (IMPORTANT!):**
+         - Vergleiche JEDE Zitation mit der "ERLAUBTEN QUELLEN"-Liste unten.
          - ERLAUBTE QUELLEN:
          ${sourceListShort}
          
-         - **JAHR-CHECK:** Stimmt das Jahr? (Text: 2025 vs Liste: 2015 -> FEHLER!)
-         - **SEITENZAHLEN:** Fehlen Seitenzahlen? (Fehler!) Sind sie kryptisch ("e1234")? (Fehler!)
-         - NUTZE DAS 'fileSearch' TOOL um Zitationen und Seitenzahlen zu verifizieren!
+         - **JAHR-CHECK:** Stimmt das Jahr?
+         - **SEITENZAHL-PFLICHT (STRENG!):**
+           - JEDE Zitation MUSS eine Seitenzahl haben (z.B. (Müller, 2020, S. 12)).
+           - VERBOTEN: Zitationen ohne Seite (z.B. nur (Müller, 2020)). -> MELDE FEHLER: "Fehlende Seitenzahl".
+         - **VERFASSER-PFLICHT (STRENG!):**
+           - VERBOTEN: Quellen ohne Verfasser / "o.V." / "Anonymous".
+           - Jede Quelle muss einen Autorennamen haben. -> MELDE FEHLER: "Quelle ohne Verfasser (o.V.) ist nicht erlaubt".
+         - Nutze das 'fileSearch' Werkzeug zur Verifizierung!
 
       3. **SPRACHE & STIL:**
          - Keine "man", "wir", "ich".
@@ -3026,7 +3031,7 @@ async function critiqueThesis(
             "location": "${chapterTitle}",
             "quote": "Der fehlerhafte Textauschnitt",
             "error": "Beschreibung des Fehlers",
-            "solution": "KONKRETE Lösungsanweisung (z.B. 'Ändere Jahr auf 2015')"
+            "solution": "KONKRETE und PRÄZISELösungsanweisung (z.B. 'Ändere Jahr auf 2015')"
           }
         ]
       }
@@ -3059,7 +3064,12 @@ async function critiqueThesis(
          ${sourceListShort}
          
          - **YEAR CHECK:** Does year match?
-         - **PAGE NUMBERS:** Missing? Cryptic ("e1234")?
+         - **MANDATORY PAGE NUMBERS (STRICT!):**
+           - EVERY citation MUST have a page number (e.g. (Miller, 2020, p. 12)).
+           - FORBIDDEN: Citations without page (e.g. just (Miller, 2020)). -> REPORT ERROR: "Missing page number".
+         - **MANDATORY AUTHOR (STRICT!):**
+           - FORBIDDEN: Sources without author / "n.d." / "Anonymous" / "o.V.".
+           - Every source must have an author. -> REPORT ERROR: "Source without author is invalid".
          - USE 'fileSearch' TOOL to verify citations!
 
       3. **LANGUAGE & STYLE:**
@@ -3077,7 +3087,7 @@ async function critiqueThesis(
             "location": "${chapterTitle}",
             "quote": "The problematic text",
             "error": "Error description",
-            "solution": "CONCRETE solution instruction"
+            "solution": "CONCRETE and PRECISE solution instruction"
           }
         ]
       }
