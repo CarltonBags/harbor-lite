@@ -6210,7 +6210,12 @@ function convertUploadedSourcesToSources(uploadedSources: any[]): Source[] {
 /**
  * Main job handler - always runs full thesis generation
  */
-async function processThesisGeneration(thesisId: string, thesisData: ThesisData, critiqueOnly: boolean = false) {
+async function processThesisGeneration(
+  thesisId: string,
+  thesisData: ThesisData,
+  critiqueOnly: boolean = false,
+  progressCallback?: (progress: number) => Promise<void>
+) {
   const processStartTime = Date.now()
   console.log('='.repeat(80))
   console.log(`[PROCESS] Starting thesis generation for thesis ${thesisId}`)
@@ -6399,6 +6404,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
 
       // Step 4: Deduplicate and enrich with Unpaywall (with retry)
       console.log('\n[PROCESS] ========== Step 4: Deduplicate and Enrich Sources ==========')
+      if (progressCallback) await progressCallback(20)
       const step4Start = Date.now()
       let deduplicated: Source[] = []
       try {
@@ -6420,6 +6426,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
 
       // Step 5: Rank by relevance (with retry)
       console.log('\n[PROCESS] ========== Step 5: Rank Sources by Relevance ==========')
+      if (progressCallback) await progressCallback(30)
       const step5Start = Date.now()
       let ranked: Source[] = []
       try {
@@ -6442,6 +6449,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
 
       // Step 6: Download and upload PDFs using smart filtering with replacement for inaccessible PDFs
       console.log('\n[PROCESS] ========== Step 6: Download and Upload PDFs (Smart Filtering with Replacement) ==========')
+      if (progressCallback) await progressCallback(40)
       const step6Start = Date.now()
 
       // Calculate target source count based on thesis length (reused in Step 7)
@@ -6673,6 +6681,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
     // Step 7: Generate thesis content using successfully uploaded sources
     // This step has built-in retries and fallbacks
     console.log('\n[PROCESS] ========== Step 7: Generate Thesis Content ==========')
+    if (progressCallback) await progressCallback(50)
     const step7Start = Date.now()
 
     console.log(`[PROCESS] Using ${sourcesForGeneration.length} sources for thesis generation`)
@@ -6776,6 +6785,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
     while (currentIteration < MAX_REPAIR_ITERATIONS) {
       currentIteration++
       console.log(`\n[Loop] Starting Critique/Repair Iteration ${currentIteration}/${MAX_REPAIR_ITERATIONS}`)
+      if (progressCallback) await progressCallback(60 + (currentIteration * 10)) // 70%, 80%, 90%
 
       // --- CRITIQUE PHASE ---
       console.log('[Loop] Running Critique Agent...')
@@ -6930,7 +6940,32 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
               console.log(`[Repair] Processing Error ${i + 1}/${errors.length}: ${err.error?.substring(0, 50)}...`)
 
               // Identify target chapter index
+              // IMPROVED: Prioritize quote-based search, then fall back to location-based matching
               const targetIndex = ((location: string, quote: string, titles: string[], allChapters: string[]): number => {
+
+                // STRATEGY 0 (NEW): Quote-based search FIRST if quote is available
+                // This is the most reliable way to find the actual content
+                if (quote && quote.length > 20) {
+                  const cleanQuote = quote.replace(/\s+/g, ' ').trim().substring(0, 60)
+                  for (let idx = 0; idx < allChapters.length; idx++) {
+                    // Normalize whitespace in chapter content for matching
+                    const normalizedChapter = allChapters[idx].replace(/\s+/g, ' ')
+                    if (normalizedChapter.includes(cleanQuote)) {
+                      console.log(`[Repair] ✓ Found quote in chapter ${idx + 1} (${titles[idx]?.substring(0, 40)}...)`)
+                      return idx
+                    }
+                  }
+                  // Try shorter substring if full quote not found
+                  const shortQuote = cleanQuote.substring(0, 30)
+                  for (let idx = 0; idx < allChapters.length; idx++) {
+                    const normalizedChapter = allChapters[idx].replace(/\s+/g, ' ')
+                    if (normalizedChapter.includes(shortQuote)) {
+                      console.log(`[Repair] ✓ Found short quote in chapter ${idx + 1} (${titles[idx]?.substring(0, 40)}...)`)
+                      return idx
+                    }
+                  }
+                }
+
                 if (!location) return -1
 
                 // STRATEGY 1: Strict Number Match (e.g. "1.1")
@@ -6938,51 +6973,51 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData,
                 const locNum = locNumMatch ? locNumMatch[1] : null
 
                 if (locNum) {
+                  // First pass: exact match
                   for (let idx = 0; idx < titles.length; idx++) {
                     const cleanTitle = titles[idx].replace(/#/g, '').trim()
-
-                    // Match Exact Number (e.g. "1.1")
-                    if (cleanTitle.startsWith(locNum + ' ') || cleanTitle === locNum) return idx
-
-                    // Match Sub-Sections to Parent Chapter (e.g. "3.1.1" maps to "3 Title...")
-                    // If the locNum starts with the chapter number (e.g. loc="3.1.1", chapter="3")
-                    const chapterNum = cleanTitle.split(' ')[0] // Get "1", "2.1", "3" etc.
-                    if (chapterNum && locNum.startsWith(chapterNum + '.')) {
-                      // Only strict map if it's the specific parent? 
-                      // Actually, we usually want to search IN that chapter.
-                      // But if we have multiple levels, e.g. "3" and "3.1", mapping "3.1.1" to "3.1" is better than "3".
-                      // So we'll skip this broad generic match here and rely on fuzzy/quote match,
-                      // OR we implement a "best fit" strategy.
-                      // Let's implement a 'contains' strategy:
+                    if (cleanTitle.startsWith(locNum + ' ') || cleanTitle === locNum) {
+                      // VALIDATION: Check if this chapter actually has content (> 100 chars)
+                      if (allChapters[idx].length > 100) {
+                        return idx
+                      } else {
+                        console.warn(`[Repair] Chapter ${idx + 1} matched by number but is too short (${allChapters[idx].length} chars). Searching for content...`)
+                        // Continue to find a chapter that actually has the content
+                      }
                     }
+                  }
 
-                    // BETTER STRATEGY:
-                    // If location is "3.1.1", and title is "3 Analysis", does that map?
-                    // Typically our chunks are the MAIN chapters (H1/H2).
-                    // So "3.1.1" is INSIDE "3 Analysis" or "3.1 Subsection".
-                    // If titles[idx] is "3 Analysis", its number is "3".
-                    // "3.1.1".startsWith("3.") is true.
-                    if (locNum.startsWith(chapterNum + '.')) {
-                      return idx
+                  // Second pass: subsection match (e.g. "3.1.1" maps to "3 Title")
+                  for (let idx = 0; idx < titles.length; idx++) {
+                    const cleanTitle = titles[idx].replace(/#/g, '').trim()
+                    const chapterNum = cleanTitle.split(' ')[0]
+                    if (chapterNum && locNum.startsWith(chapterNum + '.')) {
+                      // VALIDATION: Check if this chapter actually has content
+                      if (allChapters[idx].length > 100) {
+                        return idx
+                      }
                     }
                   }
                 }
 
                 // STRATEGY 2: Fuzzy String Match on Title
-                // Check if the location string is contained in the title OR vice versa
                 const locLower = location.toLowerCase()
                 for (let idx = 0; idx < titles.length; idx++) {
                   const titleLower = titles[idx].toLowerCase()
-                  if (titleLower.includes(locLower) || locLower.includes(titleLower)) return idx
+                  if (titleLower.includes(locLower) || locLower.includes(titleLower)) {
+                    if (allChapters[idx].length > 100) {
+                      return idx
+                    }
+                  }
                 }
 
-                // STRATEGY 3: Quote Search (Content Match)
-                // If we have a quote, search for it in the chapter content
-                if (quote && quote.length > 20) {
-                  const cleanQuote = quote.replace(/\s+/g, ' ').trim().substring(0, 50) // Search explicitly for first 50 chars of quote
+                // STRATEGY 3: If all else fails, search ALL chapters for the quote
+                // (Already tried in Strategy 0, but try again with even more relaxed matching)
+                if (quote && quote.length > 10) {
+                  const words = quote.split(/\s+/).slice(0, 5).join(' ')
                   for (let idx = 0; idx < allChapters.length; idx++) {
-                    if (allChapters[idx].includes(cleanQuote)) {
-                      console.log(`[Repair] Found quote in chapter ${idx + 1}, using that as target.`)
+                    if (allChapters[idx].includes(words)) {
+                      console.log(`[Repair] Found keywords "${words.substring(0, 30)}..." in chapter ${idx + 1}`)
                       return idx
                     }
                   }
@@ -7512,8 +7547,18 @@ const worker = new Worker(
       // Update job progress
       await job.updateProgress(10)
 
-      // Call the main processing function
-      await processThesisGeneration(thesisId, thesisData, critiqueOnly)
+      // Create progress callback that updates job progress
+      const progressCallback = async (progress: number) => {
+        try {
+          await job.updateProgress(progress)
+          console.log(`[WORKER] Progress: ${progress}%`)
+        } catch (e) {
+          // Ignore progress update errors
+        }
+      }
+
+      // Call the main processing function with progress callback
+      await processThesisGeneration(thesisId, thesisData, critiqueOnly, progressCallback)
 
       await job.updateProgress(100)
 
