@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen, Download, Shield, Home, RefreshCw, Menu, ChevronRight, ChevronLeft, Brain } from 'lucide-react'
+import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen, Download, Shield, Home, RefreshCw, Menu, ChevronRight, ChevronLeft, Brain, Lightbulb, CheckCircle2 } from 'lucide-react'
 import { createSupabaseClient } from '@/lib/supabase/client'
 import { getThesisById } from '@/lib/supabase/theses'
 import Link from 'next/link'
@@ -20,6 +20,8 @@ interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   selectedText?: string
+  isSelectionContext?: boolean
+  quotedText?: string
   thinking?: string // AI reasoning process
   timestamp: Date
 }
@@ -67,6 +69,14 @@ const ThesisPreviewContent = () => {
   const previewRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+
+  // Quiz State
+  const [showQuizModal, setShowQuizModal] = useState(false)
+  const [quizQuestions, setQuizQuestions] = useState<any[]>([])
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false)
+  const [quizAnswers, setQuizAnswers] = useState<number[]>([])
+  const [showQuizResult, setShowQuizResult] = useState(false)
+  const [quizScore, setQuizScore] = useState(0)
 
   // Extract sources from bibliography section
   const extractBibliographySources = (content: string, uploadedSources: any[]): any[] => {
@@ -598,14 +608,16 @@ const ThesisPreviewContent = () => {
       id: Date.now().toString(),
       role: 'user',
       content: chatInput,
-      selectedText: selectedText || undefined,
+      isSelectionContext: !!selectedText, // Mark this as a message about a selection
+      quotedText: selectedText || undefined,
       timestamp: new Date(),
     }
 
     setChatMessages(prev => [...prev, userMessage])
-    setChatInput('')
+    setChatInput('') // Clear input immediately
     // Don't clear selectedText - keep it visible (blue highlight stays)
     setIsProcessing(true)
+    setTextAddedToChat(false) // Reset state
 
     try {
       // Call API to process the edit request
@@ -616,17 +628,17 @@ const ThesisPreviewContent = () => {
         },
         body: JSON.stringify({
           thesisId,
-          userMessage: userMessage.content,
-          selectedText: userMessage.selectedText,
-          currentContent: content,
+          userMessage: chatInput, // Uses chatInput directly
+          selectedText: selectedText, // Uses selectedText directly
+          currentContent: content, // Send full current content context
           thesisContext: {
             topic: thesis?.topic,
             field: thesis?.field,
             citationStyle: thesis?.citation_style,
             language: thesis?.metadata?.language || 'german',
           },
-          fileSearchStoreId: thesis?.file_search_store_id,
-          uploadedSources: thesis?.uploaded_sources,
+          fileSearchStoreId: thesis?.file_search_store_id, // Pass FileSearchStore ID for retrieval
+          uploadedSources: bibliographySources, // Pass bibliographySources
         }),
       })
 
@@ -1383,6 +1395,20 @@ const ThesisPreviewContent = () => {
             >
               Zurück
             </Link>
+            <button
+              onClick={() => handleOpenQuiz()}
+              className="hidden md:flex items-center px-4 py-2 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors border border-purple-200 mr-2"
+            >
+              <Lightbulb className="w-4 h-4 mr-2" />
+              Quiz
+            </button>
+            <button
+              onClick={() => handleOpenQuiz()}
+              className="hidden md:flex items-center px-4 py-2 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors border border-purple-200 mr-2"
+            >
+              <Lightbulb className="w-4 h-4 mr-2" />
+              Quiz
+            </button>
           </div>
 
           {/* Mobile Menu Toggle Button */}
@@ -1397,6 +1423,13 @@ const ThesisPreviewContent = () => {
               className="p-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+            <button
+              onClick={() => handleOpenQuiz()}
+              className="flex items-center px-4 py-2 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors border border-purple-200"
+            >
+              <Lightbulb className="w-4 h-4 mr-2" />
+              Quiz
             </button>
           </div>
         </div>
@@ -1448,6 +1481,14 @@ const ThesisPreviewContent = () => {
               >
                 <FileText className="w-6 h-6 mb-2 text-blue-600" />
                 <span className="text-xs font-medium text-gray-900 dark:text-white">Versionen ({thesisVersions.length})</span>
+              </button>
+
+              <button
+                onClick={() => { handleOpenQuiz(); setMobileMenuOpen(false); }}
+                className="flex flex-col items-center justify-center p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg hover:bg-purple-100"
+              >
+                <Lightbulb className="w-6 h-6 mb-2 text-purple-600" />
+                <span className="text-xs font-medium text-gray-900 dark:text-white">Quiz</span>
               </button>
 
               <button

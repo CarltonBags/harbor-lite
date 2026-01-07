@@ -2272,9 +2272,16 @@ async function generateChapterContent({
       ? s.authors.slice(0, 3).join(', ') + (s.authors.length > 3 ? ' et al.' : '')
       : (s.publisher || s.title || 'Source') // STRICT: Never use Unbekannt/o.V., use Publisher or Title
     const year = s.year || 'o.J.'
-    const pageStart = s.pageStart ? String(s.pageStart) : null
-    const pageEnd = s.pageEnd ? String(s.pageEnd) : null
-    const pages = s.pages || (pageStart && pageEnd ? `${pageStart}-${pageEnd}` : 'keine Angabe')
+
+    // SAFETY FILTER: Reject any page number starting with a letter (e.g. "e1234")
+    const invalidPagePattern = /^[a-zA-Z]/
+    let pageStart = s.pageStart ? String(s.pageStart) : null
+    let pageEnd = s.pageEnd ? String(s.pageEnd) : null
+
+    if (pageStart && invalidPagePattern.test(pageStart)) pageStart = null
+    if (pageEnd && invalidPagePattern.test(pageEnd)) pageEnd = null
+
+    const pages = (!pageStart && !pageEnd) ? 'keine Angabe' : (s.pages && !invalidPagePattern.test(s.pages) ? s.pages : (pageStart && pageEnd ? `${pageStart}-${pageEnd}` : 'keine Angabe'))
     // const journal = s.journal || '' // Unused
 
     // Show valid page range - but emphasize EXACT page numbers are required
@@ -2889,6 +2896,12 @@ async function critiqueThesis(
     const nextChapterTitle = nextChapterContent.split('\n')[0].replace(/#/g, '').trim() || 'NONE'
 
     console.log(`[ThesisCritique] Critiquing Chapter ${i + 1}/${chapters.length}: "${chapterTitle}"`)
+
+    // Ignore empty/structural chapters to prevent hallucinations
+    if (chapterContent.length < 100) {
+      console.log(`[ThesisCritique] Chapter ${i + 1} is too short/empty (${chapterContent.length} chars). Skipping to prevent hallucinations.`)
+      continue
+    }
 
     // Prepare prompt for this specific chapter
     let chapterPrompt = ''
@@ -3580,8 +3593,27 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     console.log('[ThesisGeneration] Initializing JSON structure...')
     let thesisStructure = initializeThesisStructure(outlineChapters)
 
-    for (let i = 0; i < outlineChapters.length; i++) {
-      const chapter = outlineChapters[i]
+    // CRITICAL FIX: Deduplicate and Sort Outline Chapters
+    // User reported duplicate chapters (1 & 5) and disorder (5.2 after 5.3).
+    // We must ensure the outline is unique and sorted by chapter number.
+    const uniqueChaptersMap = new Map<string, OutlineChapterInfo>()
+    outlineChapters.forEach(c => {
+      // Use number as key to prevent duplicates
+      const key = c.number.trim()
+      if (!uniqueChaptersMap.has(key)) {
+        uniqueChaptersMap.set(key, c)
+      }
+    })
+
+    // Convert back to array and sort naturally (1, 1.1, 1.2, 2, 2.1, 10...)
+    let sortedChapters = Array.from(uniqueChaptersMap.values()).sort((a, b) => {
+      return a.number.localeCompare(b.number, undefined, { numeric: true, sensitivity: 'base' })
+    })
+
+    console.log(`[ThesisGeneration] Sanitized outline: ${sortedChapters.length} unique chapters (was ${outlineChapters.length})`)
+
+    for (let i = 0; i < sortedChapters.length; i++) {
+      const chapter = sortedChapters[i]
 
       // Skip non-content chapters (Verzeichnisse, Bibliography, etc.)
       if (shouldSkipChapter(chapter)) {

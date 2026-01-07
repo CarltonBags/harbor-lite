@@ -136,6 +136,28 @@ Wenn eine Information nicht gefunden werden kann, lasse das Feld weg oder setze 
 
     const metadata = JSON.parse(jsonMatch[0])
 
+    // VALIDATION: Forbid page numbers starting with a letter due to AI hallucinations (e.g. "a006841")
+    const invalidPagePattern = /^[a-zA-Z]/
+
+    if (metadata.pageStart && invalidPagePattern.test(metadata.pageStart)) {
+      console.warn(`Blocked invalid pageStart: ${metadata.pageStart}`)
+      metadata.pageStart = null
+      metadata.pages = null // Invalidate combined field too
+    }
+
+    if (metadata.pageEnd && invalidPagePattern.test(metadata.pageEnd)) {
+      console.warn(`Blocked invalid pageEnd: ${metadata.pageEnd}`)
+      metadata.pageEnd = null
+      // pages might be valid if only end is invalid? Unlikely. Safety first.
+      metadata.pages = null
+    }
+
+    // Also check combined string if it wasn't nullified yet
+    if (metadata.pages && invalidPagePattern.test(metadata.pages)) {
+      console.warn(`Blocked invalid pages: ${metadata.pages}`)
+      metadata.pages = null
+    }
+
     // Clean up the uploaded file (optional, or keep for later use)
     // await ai.files.delete({ name: fileData.name })
 
@@ -152,7 +174,7 @@ Wenn eine Information nicht gefunden werden kann, lasse das Feld weg oder setze 
     const errorStack = error instanceof Error ? error.stack : undefined
     console.error('Error details:', { errorMessage, errorStack, error })
     return NextResponse.json(
-      { 
+      {
         error: errorMessage,
         details: errorStack,
         fullError: error instanceof Error ? error.toString() : String(error)
