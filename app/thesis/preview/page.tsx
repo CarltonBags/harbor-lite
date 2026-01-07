@@ -1660,7 +1660,7 @@ const ThesisPreviewContent = () => {
                 }}
                 placeholder={selectedText ? "Änderungswünsche für den markierten Text..." : "Bitte zuerst Text markieren..."}
                 className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 text-sm"
-                rows={1}
+                rows={3}
                 disabled={isProcessing}
               />
               <button

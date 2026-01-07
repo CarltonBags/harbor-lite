@@ -2359,6 +2359,12 @@ FORMATIERUNG & REGELN
 - ✅ RICHTIG: "Text.\n## Überschrift"
 - Markdown muss sauber sein.
 
+**⚠️ WICHTIG - STOPP NACH DIESEM KAPITEL ⚠️**
+- Du schreibst NUR Kapitel "${chapterLabel}".
+- Schreibe NIEMALS das nächste Kapitel (z.B. Kapitel ${parseInt(chapter.number) + 1}) oder andere folgende Kapitel!
+- Stoppe SOFORT nach dem letzten Satz dieses Kapitels.
+- Generiere KEINE neuen Überschriften für nachfolgende Kapitel.
+
 QUELLENNUTZUNG & STIL - ABSOLUT KRITISCH
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2483,6 +2489,12 @@ ${(chapter.sections && chapter.sections.length > 0) ? chapter.sections.map(s => 
 - 🚫 WRONG: "Text.## Heading"
 - ✅ CORRECT: "Text.\n\n## Heading"
 - Markdown must be clean.
+
+**⚠️ IMPORTANT - STOP AFTER THIS CHAPTER ⚠️**
+- You write ONLY Chapter "${chapterLabel}".
+- NEVER write the next chapter (e.g. Chapter ${parseInt(chapter.number) + 1}) or any following chapters!
+- STOP IMMEDIATELY after the last sentence of this chapter.
+- DO NOT generate headings for subsequent chapters.
 
 SOURCE USAGE & STYLE - ABSOLUTELY CRITICAL
 ═══════════════════════════════════════════════════════════════════════════════
@@ -3116,7 +3128,7 @@ async function critiqueThesis(
       if (i > 0) await new Promise(r => setTimeout(r, 500))
 
       const response = await retryApiCall(() => ai.models.generateContent({
-        model: 'gemini-2.5-flash', // Use Flash as requested
+        model: 'gemini-2.5-pro', // Use Pro as requested
         contents: chapterPrompt,
         config: {
           // responseMimeType: 'application/json', // DISABLING: Conflict with tools (fileSearch) usage in Gemini
@@ -3298,19 +3310,29 @@ async function fixChapterContent(
     1. Suche die betroffene Stelle im Text.
     2. Wenn die Anweisung sagt: "LÖSUNG: Ändere X zu Y", dann TUE GENAU DAS.
     3. Wenn die Anweisung sagt: "LÖSUNG: Lösche dieses Kapitel", antworte NUR mit: [DELETE_CHAPTER]
-    4. Wenn das Kapitel LEER ist (nur Überschrift), und die Lösung Inhalt hinzufügen will:
+    4. KORREKTUR VON DUPLIKATEN: Wenn die Anweisung "Doppeltes Kapitel", "Zweite Instanz" oder "Entferne Duplikat" erwähnt -> Antworte SOFORT mit: [DELETE_CHAPTER]. (Gehe davon aus, dass DU das Duplikat bist).
+    5. Wenn das Kapitel LEER ist (nur Überschrift), und die Lösung Inhalt hinzufügen will:
        - Suche nach der Kapite-Überschrift.
        - Ersetze sie durch "Überschrift\n\n[Neuer Inhalt aus Lösung...]"
     5. Nutze das 'fileSearch' Werkzeug NUR wenn du aufgefordert wirst, eine fehlende Seitenzahl zu suchen.
     
-    FORMAT (SEARCH/REPLACE):
-    Gib NUR die Änderungen im folgenden Format zurück (kein Volltext):
+    FORMAT (SEARCH/REPLACE) - ZWINGEND ERFORDERLICH:
+    Du MUSST deine Antwort EXAKT in diesem Block-Format zurückgeben. Kein normaler Text!
     
+    <<<<<<< THINKING
+    (Hier deine kurze Analyse: Wo ist der Fehler? Was musst du tun? Habe ich die Stelle gefunden?)
+    >>>>>>>
+
     <<<<<<< SEARCH
     (Der exakte Originaltext, der ersetzt werden soll - Zeichen für Zeichen identisch)
     =======
     (Der neue, korrigierte Text)
     >>>>>>> REPLACE
+    
+    WICHTIG:
+    - Der "SEARCH"-Block MUSS exakt mit dem Originaltext übereinstimmen (Copy & Paste).
+    - Wenn du NICHTS ändern kannst/musst, antworte leer oder mit "KEINE ÄNDERUNG".
+    - Antworte NIEMALS ohne diese Marker, sonst wird deine Arbeit verworfen!
     
     REGELN:
     - Der "SEARCH" Block muss den Originaltext EXAKT matchen (inkl. Leerzeichen).
@@ -3326,7 +3348,7 @@ async function fixChapterContent(
     KAPITEL TEXT:
     ${chapterContent}
     
-    ANTWORTE NUR MIT DEN SEARCH/REPLACE BLÖCKEN.`
+    ANTWORTE NUR MIT DEN MARKERN (THINKING + SEARCH/REPLACE).`
 
     : `You are a precise surgical text repair agent.
     
@@ -3341,7 +3363,8 @@ async function fixChapterContent(
     1. Locate the affected text.
     2. If instruction says "SOLUTION: Change X to Y", DO EXACTLY THAT.
     3. If instruction says "SOLUTION: Delete this chapter", reply ONLY with: [DELETE_CHAPTER]
-    4. If Chapter is EMPTY (only title) and solution wants to add content:
+    4. DUPLICATE CORRECTION: If instruction mentions "Duplicate chapter", "Second instance" or "Remove duplicate" -> Reply IMMEDIATELY with: [DELETE_CHAPTER]. (Assume YOU are the duplicate).
+    5. If Chapter is EMPTY (only title) and solution wants to add content:
        - Search for the Chapter Title line.
        - Replace it with "Title\n\n[New Content from solution...]"
     5. Use 'fileSearch' tool ONLY if asked to find a missing page number.
@@ -3349,6 +3372,10 @@ async function fixChapterContent(
     FORMAT (SEARCH/REPLACE):
     Return ONLY changes in this format (no full text):
     
+    <<<<<<< THINKING
+    (Brief analysis: Where is the error? What to change? Found exact match?)
+    >>>>>>>
+
     <<<<<<< SEARCH
     (The exact original text to be replaced - character match)
     =======
@@ -3369,7 +3396,7 @@ async function fixChapterContent(
     CHAPTER TEXT:
     ${chapterContent}
     
-    OUTPUT ONLY THE SEARCH/REPLACE BLOCKS.`
+    OUTPUT ONLY THE MARKERS (THINKING + SEARCH/REPLACE).`
 
 
   let lastError = null
@@ -3378,7 +3405,7 @@ async function fixChapterContent(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const response = await retryApiCall(() => ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.5-pro',
         contents: prompt,
         config: {
           maxOutputTokens: 50000,
@@ -3694,6 +3721,42 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
       combinedContent = extensionResult.content
       totalWordCount = extensionResult.wordCount
       console.log(`[ThesisGeneration] ✓ Word count reached after extension: ~${totalWordCount}/${expectedWordCount} words`)
+
+      // CRITICAL FIX: Post-extension deduplication
+      // The extension process sometimes regenerates existing chapter headers at the end.
+      // We must scan for duplicate headers and remove them (keeping the first occurrence).
+      const seenHeaders = new Set<string>()
+      const lines = combinedContent.split('\n')
+      const deduplicatedLines: string[] = []
+      let skipUntilNextHeader = false
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
+        const headerMatch = line.match(/^(#{1,3})\s+(\d+(?:\.\d+)*)\s+(.*)$/)
+
+        if (headerMatch) {
+          const headerKey = `${headerMatch[2]} ${headerMatch[3]}`.trim().toLowerCase()
+
+          if (seenHeaders.has(headerKey)) {
+            console.warn(`[ThesisGeneration] Removing duplicate header: "${line}"`)
+            skipUntilNextHeader = true // Skip content until next header
+            continue
+          }
+
+          seenHeaders.add(headerKey)
+          skipUntilNextHeader = false
+        }
+
+        if (!skipUntilNextHeader) {
+          deduplicatedLines.push(line)
+        }
+      }
+
+      if (deduplicatedLines.length < lines.length) {
+        console.log(`[ThesisGeneration] Removed ${lines.length - deduplicatedLines.length} lines (duplicate sections)`)
+        combinedContent = deduplicatedLines.join('\n')
+        totalWordCount = combinedContent.split(/\s+/).length
+      }
 
       // Update the structure with the extended content
       // Since extension is global or iterates chapters, we might lose granularity here.
