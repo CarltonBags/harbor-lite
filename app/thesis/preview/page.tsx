@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen, Download, Shield, Home, RefreshCw, Menu, ChevronRight, ChevronLeft } from 'lucide-react'
+import { Loader2, Send, Edit2, Save, X, Copy, Check, MessageSquare, FileText, BookOpen, Download, Shield, Home, RefreshCw, Menu, ChevronRight, ChevronLeft, Brain } from 'lucide-react'
 import { createSupabaseClient } from '@/lib/supabase/client'
 import { getThesisById } from '@/lib/supabase/theses'
 import Link from 'next/link'
@@ -20,6 +20,7 @@ interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   selectedText?: string
+  thinking?: string // AI reasoning process
   timestamp: Date
 }
 
@@ -624,6 +625,8 @@ const ThesisPreviewContent = () => {
             citationStyle: thesis?.citation_style,
             language: thesis?.metadata?.language || 'german',
           },
+          fileSearchStoreId: thesis?.file_search_store_id,
+          uploadedSources: thesis?.uploaded_sources,
         }),
       })
 
@@ -679,6 +682,7 @@ const ThesisPreviewContent = () => {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.explanation || 'Text wurde erfolgreich bearbeitet. Bitte überprüfe die Änderungen unten.',
+        thinking: data.thinking, // Store thinking process
         timestamp: new Date(),
       }
 
@@ -701,9 +705,36 @@ const ThesisPreviewContent = () => {
 
   const handleApproveEdit = async () => {
     if (pendingEdit) {
+      let finalNewContent = pendingEdit.newContent
       const oldContent = content
-      const newContent = pendingEdit.newContent
-      setContent(newContent)
+
+      // Robustness Check: If API failed to replace (content unchanged), try client-side replacement
+      if (!finalNewContent || finalNewContent === oldContent) {
+        console.log('[ApproveEdit] API did not return different content. Attempting client-side replacement...')
+        // Strategy 1: Exact string replacement
+        if (oldContent.includes(pendingEdit.oldText)) {
+          finalNewContent = oldContent.replace(pendingEdit.oldText, pendingEdit.newText)
+        } else {
+          // Strategy 2: Relaxed whitespace replacement
+          // Create a regex that allows variable whitespace between words of oldText
+          const escapeRegExp = (string: string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          const looseMatcher = new RegExp(
+            escapeRegExp(pendingEdit.oldText).replace(/\s+/g, '\\s+'),
+            'g' // Global just in case, but usually we want one. Ideally finding the specific instance is hard without index.
+          )
+          // We replace ONLY the first occurrence or rely on context if we had it.
+          // For now, replacing the first relaxed match is better than nothing.
+          finalNewContent = oldContent.replace(looseMatcher, pendingEdit.newText)
+        }
+      }
+
+      // Verify legitimate change
+      if (finalNewContent === oldContent) {
+        alert('Fehler: Der zu ersetzende Text konnte im Dokument nicht eindeutig gefunden werden. Bitte versuchen Sie es erneut.')
+        return // Do not clear state so user can try manual fix or copy text
+      }
+
+      setContent(finalNewContent)
       setHasUnsavedChanges(true)
       setPendingEdit(null)
 
@@ -717,7 +748,7 @@ const ThesisPreviewContent = () => {
 
       // Update bibliography sources after content change
       if (thesis?.uploaded_sources) {
-        const updatedSources = extractBibliographySources(newContent, thesis.uploaded_sources)
+        const updatedSources = extractBibliographySources(finalNewContent, thesis.uploaded_sources)
         setBibliographySources(updatedSources)
       }
 
@@ -732,7 +763,7 @@ const ThesisPreviewContent = () => {
             body: JSON.stringify({
               thesisId,
               oldContent,
-              newContent,
+              newContent: finalNewContent,
             }),
           })
         } catch (error) {
@@ -746,6 +777,41 @@ const ThesisPreviewContent = () => {
   const handleRejectEdit = () => {
     setPendingEdit(null)
     setHighlightedPassages([])
+  }
+
+  const handleManualCritique = async () => {
+    if (!thesisId) return
+    if (!confirm("Start manual critique & repair? WARN: This runs for 2-3 minutes and will modify the thesis content.")) return;
+
+    try {
+      setIsProcessing(true)
+      const response = await fetch('/api/trigger-critique', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ thesisId }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to trigger critique')
+      }
+
+      const data = await response.json()
+
+      const successMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `✓ Critique job started (ID: ${data.jobId}). The thesis status is now 'generating'. Please reload in a few minutes to see changes.`,
+        timestamp: new Date(),
+      }
+      setChatMessages(prev => [...prev, successMessage])
+    } catch (error) {
+      console.error('Error triggering critique:', error)
+      alert('Error starting critique: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   const handleExportDoc = async () => {
@@ -948,6 +1014,209 @@ const ThesisPreviewContent = () => {
     setHasUnsavedChanges(newContent !== originalContent)
   }
 
+
+  // Memoize markdown components to avoid re-rendering and losing text selection
+
+  const markdownComponents = React.useMemo(() => ({
+    // Text component - footnotes are handled at paragraph level to avoid double processing
+    p: ({ node, children, ...props }: any) => {
+      // Helper to extract text from children robustly
+      const getTextContent = (n: any): string => {
+        if (typeof n === 'string') return n
+        if (Array.isArray(n)) return n.map(getTextContent).join('')
+        if (n?.props?.children) return getTextContent(n.props.children)
+        return ''
+      }
+      const text = getTextContent(children)
+      const normalizedText = text.replace(/\s+/g, ' ').trim()
+
+      if (text.trim() === '$$PAGE_BREAK$$') {
+        return <div style={{ pageBreakAfter: 'always', height: 0, margin: 0 }} />
+      }
+
+      // --- Footnote Logic (Restored from User Snippet) ---
+      const extractFootnotesFromContent = (text: string): Record<number, string> => {
+        const footnotes: Record<number, string> = {}
+        const footnoteRegex = /\[\^(\d+)\]:\s*(.+?)(?=\n\[\^|\n\n|$)/gs
+        let match
+        while ((match = footnoteRegex.exec(text)) !== null) {
+          footnotes[parseInt(match[1], 10)] = match[2].trim()
+        }
+        return footnotes
+      }
+
+      let footnotes: Record<number, string> = thesis?.metadata?.footnotes || {}
+      if (Object.keys(footnotes).length === 0 && content) {
+        footnotes = extractFootnotesFromContent(content)
+      }
+      // Fallback citation citations
+      if (Object.keys(footnotes).length === 0 && thesis?.metadata?.citations) {
+        const citations = thesis.metadata.citations as any[]
+        citations.forEach((citation, idx) => {
+          const authors = Array.isArray(citation.authors) ? citation.authors.join(', ') : citation.authors || 'Unbekannt'
+          footnotes[idx + 1] = `${authors} (${citation.year || ''}): ${citation.title || ''}${citation.pages ? `, S. ${citation.pages}` : ''}`
+        })
+      }
+
+      // Build footnote PDF URLs
+      const footnotePdfUrls: Record<number, string | null> = {}
+      if (bibliographySources && bibliographySources.length > 0) {
+        Object.entries(footnotes).forEach(([numStr, citationText]) => {
+          const num = parseInt(numStr, 10)
+          const citation = citationText as string
+          const yearMatch = citation.match(/[\(\s,](\d{4})[\)\s,:]/)
+          const citationYear = yearMatch ? yearMatch[1] : null
+          const authorMatch = citation.match(/^([A-ZÄÖÜa-zäöüß][a-zäöüß]+)(?:\s|,|\/|\(|\:)/)
+          const citationAuthorLastName = authorMatch ? authorMatch[1].toLowerCase() : null
+
+          if (!citationYear && !citationAuthorLastName) return
+
+          const matchingSource = bibliographySources.find((source: any) => {
+            const meta = source.metadata || source
+            const sourceYear = String(meta.year || source.year || '')
+            const authors = meta.authors || []
+            const firstAuthor = authors[0] || ''
+            const sourceAuthorLastName = firstAuthor.split(' ').pop()?.toLowerCase() || ''
+
+            if (citationYear && citationAuthorLastName) return sourceYear === citationYear && sourceAuthorLastName === citationAuthorLastName
+            if (citationYear) return sourceYear === citationYear
+            if (citationAuthorLastName) return sourceAuthorLastName === citationAuthorLastName
+            return false
+          })
+
+          if (matchingSource) {
+            footnotePdfUrls[num] = matchingSource.sourceUrl || matchingSource.metadata?.sourceUrl || matchingSource.pdfUrl || null
+          }
+        })
+      }
+
+      // --- Identification Logic ---
+      const isHighlighted = highlightedPassages.some(passage =>
+        text.includes(passage.text.substring(0, 50)) ||
+        passage.text.includes(text.substring(0, 50))
+      )
+
+      let hasExactPendingMatch = false
+      if (pendingEdit) {
+        const normalizedOldText = pendingEdit.oldText.replace(/\s+/g, ' ').trim()
+        hasExactPendingMatch = text.includes(pendingEdit.oldText) || normalizedText.includes(normalizedOldText)
+      }
+
+      const hasPendingEdit = !!pendingEdit && (hasExactPendingMatch || isHighlighted)
+
+      // --- Rendering Logic ---
+
+      // Case 1: Active Edit (Show Diff View)
+      if (hasPendingEdit && pendingEdit) {
+        // Fallback to block diff for robustness (safest for user requirement)
+        return (
+          <div className="my-4 border rounded-lg overflow-hidden ring-2 ring-blue-500/20">
+            <div className="bg-red-50 dark:bg-red-900/20 p-4 border-b border-red-100">
+              <span className="text-xs font-bold text-red-600 uppercase mb-1 block">Original</span>
+              <p className="line-through text-red-800 dark:text-red-300 opacity-70" {...props}>{children}</p>
+            </div>
+            <div className="bg-green-50 dark:bg-green-900/20 p-4">
+              <span className="text-xs font-bold text-green-600 uppercase mb-1 block">Vorschlag</span>
+              <div className="text-green-800 dark:text-green-300 font-medium">
+                <ReactMarkdown components={{ p: ({ node, ...pProps }: any) => <p {...pProps} /> }}>
+                  {pendingEdit.newText}
+                </ReactMarkdown>
+              </div>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-800 p-2 flex justify-end gap-2 border-t border-gray-200">
+              <button onClick={handleRejectEdit} className="px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200 rounded">Ablehnen</button>
+              <button onClick={handleApproveEdit} className="px-3 py-1 text-xs font-medium text-green-600 hover:bg-green-50 border border-green-200 rounded">Übernehmen</button>
+            </div>
+          </div>
+        )
+      }
+
+      // Case 2: Standard Paragraph with Highlight/Footnotes
+      return (
+        <p style={{
+          marginBottom: '0',
+          textAlign: 'justify',
+          backgroundColor: isHighlighted ? '#fef3c7' : 'transparent',
+          padding: isHighlighted ? '2px 4px' : '0',
+          borderRadius: isHighlighted ? '2px' : '0',
+        }} {...props}>
+          {React.Children.map(children, (child) => {
+            if (typeof child === 'string') {
+              // Regex for footnotes: [^1], [^12] etc.
+              const parts = child.split(/(\[\^\d+\])/g)
+              return parts.map((part, index) => {
+                const match = part.match(/\[\^(\d+)\]/)
+                if (match) {
+                  const num = parseInt(match[1], 10)
+                  const pdfUrl = footnotePdfUrls[num]
+                  const hasPdf = !!pdfUrl
+
+                  return (
+                    <span key={index} className="group relative inline-block">
+                      <sup style={{
+                        fontSize: '0.7em',
+                        verticalAlign: 'super',
+                        marginRight: '1px',
+                        cursor: hasPdf ? 'pointer' : 'default',
+                        color: hasPdf ? '#2563eb' : 'inherit',
+                        fontWeight: hasPdf ? 'bold' : 'normal',
+                      }}
+                        onClick={(e) => {
+                          if (hasPdf && pdfUrl) {
+                            e.stopPropagation()
+                            window.open(pdfUrl, '_blank')
+                          }
+                        }}
+                        title={footnotes[num] || `Fußnote ${num}`}
+                      >
+                        {num}
+                      </sup>
+                    </span>
+                  )
+                }
+                // Handle standard carat footnotes if mixed schema ^1
+                const caratParts = part.split(/(\^\d+)/g)
+                if (caratParts.length > 1) {
+                  return caratParts.map((cp, cpi) => {
+                    const cmatch = cp.match(/^\^(\d+)$/)
+                    if (cmatch) {
+                      const num = parseInt(cmatch[1])
+                      return <sup key={`${index}-${cpi}`} className="text-blue-600 ml-0.5">{num}</sup>
+                    }
+                    return cp
+                  })
+                }
+                return part
+              })
+            }
+            return child
+          })}
+        </p>
+      )
+    },
+    h1: ({ node, ...props }: any) => (
+      <h1 style={{ fontSize: '16pt', fontWeight: 'bold', textAlign: 'left', marginTop: '12mm', marginBottom: '8mm', pageBreakBefore: 'always', breakBefore: 'page' }} {...props} />
+    ),
+    h2: ({ node, children, ...props }: any) => {
+      const text = String(children || '')
+      const isTOCHeading = text.includes('Inhaltsverzeichnis') || text.includes('Table of Contents')
+      if (isTOCHeading && thesis?.outline) return null
+      return <h2 style={{ fontSize: '14pt', fontWeight: 'bold', marginTop: '8mm', marginBottom: '4mm', textAlign: 'left' }} {...props}>{children}</h2>
+    },
+    h3: ({ node, ...props }: any) => (
+      <h3 style={{ fontSize: '12pt', fontWeight: 'bold', marginTop: '8mm', marginBottom: '4mm', textAlign: 'left' }} {...props} />
+    ),
+    h4: ({ node, ...props }: any) => (
+      <h4 style={{ fontSize: '11pt', fontWeight: 'bold', marginTop: '6mm', marginBottom: '3mm', textAlign: 'left' }} {...props} />
+    ),
+    li: ({ node, ...props }: any) => (
+      <li style={{ marginBottom: '4mm' }} {...props} />
+    ),
+    blockquote: ({ node, ...props }: any) => (
+      <blockquote style={{ borderLeft: '4px solid #e0e0e0', paddingLeft: '5mm', marginLeft: '0', marginRight: '0', fontStyle: 'italic', color: '#555' }} {...props} />
+    )
+  }), [thesis, content, bibliographySources, highlightedPassages, pendingEdit])
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white dark:bg-gray-900 pt-16">
@@ -998,7 +1267,8 @@ const ThesisPreviewContent = () => {
             </div>
           </div>
 
-          {/* Desktop Toolbar - Hidden on Mobile */}
+
+          // Desktop Toolbar - Hidden on Mobile
           <div className="hidden md:flex items-center gap-3 flex-shrink-0">
             {hasUnsavedChanges && (
               <span className="text-sm text-amber-600 dark:text-amber-400">
@@ -1047,6 +1317,20 @@ const ThesisPreviewContent = () => {
             >
               <FileText className="w-3 h-3 mr-1" />
               Versionen ({thesisVersions.length})
+            </button>
+
+            <button
+              onClick={handleManualCritique}
+              disabled={isProcessing}
+              className="inline-flex items-center px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Manuelle Kritik & Reparatur starten"
+            >
+              {isProcessing ? (
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3 h-3 mr-1" />
+              )}
+              Repair
             </button>
 
             <button
@@ -1264,6 +1548,19 @@ const ThesisPreviewContent = () => {
                       Ausgewählter Text: "{message.selectedText.substring(0, 50)}..."
                     </div>
                   )}
+                  {/* AI Thinking Process */}
+                  {message.thinking && (
+                    <div className="mb-3 text-xs opacity-90 italic bg-black/5 dark:bg-white/10 p-2 rounded border border-black/10 dark:border-white/10">
+                      <details>
+                        <summary className="cursor-pointer hover:font-bold select-none list-none flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                          <span className="opacity-90">🧠 KI-Gedankengang anzeigen</span>
+                        </summary>
+                        <p className="mt-2 whitespace-pre-wrap leading-relaxed opacity-90 text-gray-700 dark:text-gray-300">
+                          {message.thinking}
+                        </p>
+                      </details>
+                    </div>
+                  )}
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                   <p className="text-xs opacity-75 mt-1">
                     {message.timestamp.toLocaleTimeString()}
@@ -1273,8 +1570,9 @@ const ThesisPreviewContent = () => {
             ))}
             {isProcessing && (
               <div className="flex justify-start">
-                <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-3">
-                  <Loader2 className="w-4 h-4 animate-spin text-red-600 dark:text-red-500" />
+                <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-3 flex items-center gap-2">
+                  <Brain className="w-4 h-4 animate-pulse text-purple-600 dark:text-purple-400" />
+                  <span className="text-xs text-gray-500 dark:text-gray-400 animate-pulse">Thinking...</span>
                 </div>
               </div>
             )}
@@ -1503,669 +1801,105 @@ const ThesisPreviewContent = () => {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
                       rehypePlugins={[rehypeKatex]}
-                      components={{
-                        // Text component - footnotes are handled at paragraph level to avoid double processing
-                        text: ({ node, children, ...props }: any) => {
-                          return <>{children}</>
-                        },
-                        h1: ({ node, children, ...props }: any) => {
-                          // Check if this is the first content heading after TOC
-                          // We want to ensure it starts on a new page
-                          return (
-                            <h1 style={{
-                              fontSize: '16pt',
-                              fontWeight: 'bold',
-                              textAlign: 'left',
-                              marginTop: '12mm',
-                              marginBottom: '8mm',
-                              pageBreakBefore: 'always',
-                              breakBefore: 'page',
-                            }} {...props}>{children}</h1>
-                          )
-                        },
-                        h2: ({ node, children, ...props }: any) => {
-                          // Skip TOC heading if we're rendering TOC from JSON
-                          const text = String(children || '')
-                          const isTOCHeading = text.includes('Inhaltsverzeichnis') || text.includes('Table of Contents')
+                      components={markdownComponents}
+                    >
+                      {content}
+                    </ReactMarkdown>
+                  </div>
 
-                          if (isTOCHeading && thesis?.outline) {
-                            // Don't render TOC heading from markdown if we have outline JSON
-                            return null
-                          }
 
-                          return (
-                            <h2 style={{
-                              fontSize: '14pt',
-                              fontWeight: 'bold',
-                              marginTop: '8mm',
-                              marginBottom: '4mm',
-                              textAlign: 'left',
-                            }} {...props}>{children}</h2>
-                          )
-                        },
-                        h3: ({ node, ...props }) => (
-                          <h3 style={{
-                            fontSize: '12pt',
-                            fontWeight: 'bold',
-                            marginTop: '8mm',
-                            marginBottom: '4mm',
-                            textAlign: 'left',
-                          }} {...props} />
-                        ),
-                        h4: ({ node, ...props }) => (
-                          <h4 style={{
-                            fontSize: '11pt',
-                            fontWeight: 'bold',
-                            marginTop: '6mm',
-                            marginBottom: '3mm',
-                            textAlign: 'left',
-                          }} {...props} />
-                        ),
-                        p: ({ node, children, ...props }: any) => {
-                          // Extract footnotes from content (format: [^1]: Citation text)
-                          const extractFootnotesFromContent = (text: string): Record<number, string> => {
-                            const footnotes: Record<number, string> = {}
-                            const footnoteRegex = /\[\^(\d+)\]:\s*(.+?)(?=\n\[\^|\n\n|$)/gs
-                            let match
-                            while ((match = footnoteRegex.exec(text)) !== null) {
-                              footnotes[parseInt(match[1], 10)] = match[2].trim()
+                  {/* Literaturverzeichnis - built from uploaded sources */}
+                  {bibliographySources && bibliographySources.length > 0 && (
+                    <div style={{ pageBreakBefore: 'always', marginTop: '24mm' }}>
+                      <h2 style={{
+                        fontSize: '14pt',
+                        fontWeight: 'bold',
+                        marginBottom: '8mm',
+                        textAlign: 'left',
+                      }}>
+                        Literaturverzeichnis
+                      </h2>
+                      <div style={{ fontSize: '11pt', lineHeight: '1.6' }}>
+                        {bibliographySources
+                          .sort((a: any, b: any) => {
+                            // Sort by first author's last name
+                            const getLastName = (source: any) => {
+                              const authors = source.metadata?.authors || source.authors || []
+                              // Filter out "et al." variations to get real authors
+                              const realAuthors = authors.filter((auth: string) => {
+                                const lower = (auth || '').toLowerCase().trim()
+                                return lower !== 'et al.' && lower !== 'et al' && lower !== 'et' && lower !== 'al.' && !lower.match(/^et\s+al/)
+                              })
+                              if (realAuthors.length === 0) return 'ZZZ'
+                              // Clean "et al." from the end of author names
+                              const firstAuthor = (realAuthors[0] || '').replace(/\s+et\s+al\.?$/i, '').trim()
+                              const parts = firstAuthor.split(' ')
+                              return parts[parts.length - 1] || 'ZZZ'
                             }
-                            return footnotes
-                          }
+                            return getLastName(a).localeCompare(getLastName(b), 'de')
+                          })
+                          .map((source: any, index: number) => {
+                            // Format source for bibliography
+                            const meta = source.metadata || source
+                            const authors = meta.authors || []
+                            const year = meta.year || 'o.J.'
+                            const title = meta.title || source.title || 'Ohne Titel'
+                            const journal = meta.journal || source.journal
+                            const pages = meta.pages || (meta.pageStart && meta.pageEnd ? `${meta.pageStart}-${meta.pageEnd}` : '')
+                            const doi = meta.doi || source.doi
 
-                          // Try multiple sources for footnotes:
-                          // 1. metadata.footnotes (legacy)
-                          // 2. Extract from content (markdown format)
-                          // 3. metadata.citations (new format - convert to footnotes)
-                          let footnotes: Record<number, string> = thesis?.metadata?.footnotes || {}
-
-                          if (Object.keys(footnotes).length === 0 && content) {
-                            footnotes = extractFootnotesFromContent(content)
-                          }
-
-                          // If still no footnotes and we have citations, create footnotes from them
-                          if (Object.keys(footnotes).length === 0 && thesis?.metadata?.citations) {
-                            const citations = thesis.metadata.citations as any[]
-                            citations.forEach((citation, idx) => {
-                              const authors = Array.isArray(citation.authors)
-                                ? citation.authors.join(', ')
-                                : citation.authors || 'Unbekannt'
-                              const year = citation.year || ''
-                              const title = citation.title || ''
-                              const pages = citation.pages || ''
-                              footnotes[idx + 1] = `${authors} (${year}): ${title}${pages ? `, S. ${pages}` : ''}`
-                            })
-                          }
-
-                          // Build a map of footnote numbers to PDF URLs by matching citation text with sources
-                          // STRICT matching: must match BOTH year AND first author's last name
-                          const footnotePdfUrls: Record<number, string | null> = {}
-                          if (bibliographySources && bibliographySources.length > 0) {
-                            Object.entries(footnotes).forEach(([numStr, citationText]) => {
-                              const num = parseInt(numStr, 10)
-                              const citation = citationText as string
-
-                              // Extract year from citation (e.g., "(2022)" or "2022:" or ", 2022,")
-                              const yearMatch = citation.match(/[\(\s,](\d{4})[\)\s,:]/)
-                              const citationYear = yearMatch ? yearMatch[1] : null
-
-                              // Extract first author's last name from citation
-                              // Patterns: "Merola (2022)" or "Merola, Korinek (2022)" or "Korinek/Stiglitz (2017)"
-                              const authorMatch = citation.match(/^([A-ZÄÖÜa-zäöüß][a-zäöüß]+)(?:\s|,|\/|\(|\:)/)
-                              const citationAuthorLastName = authorMatch ? authorMatch[1].toLowerCase() : null
-
-                              if (!citationYear && !citationAuthorLastName) {
-                                return // Can't match without year or author
-                              }
-
-                              // Find source with matching year AND first author's last name
-                              const matchingSource = bibliographySources.find((source: any) => {
-                                const meta = source.metadata || source
-                                const sourceYear = String(meta.year || source.year || '')
-                                const authors = meta.authors || []
-
-                                // Get first author's last name from source
-                                const firstAuthor = authors[0] || ''
-                                const sourceAuthorLastName = firstAuthor.split(' ').pop()?.toLowerCase() || ''
-
-                                // STRICT: Must match year AND author (if we have both)
-                                if (citationYear && citationAuthorLastName) {
-                                  return sourceYear === citationYear && sourceAuthorLastName === citationAuthorLastName
-                                }
-                                // If only year available, match by year
-                                if (citationYear) {
-                                  return sourceYear === citationYear
-                                }
-                                // If only author available, match by author
-                                if (citationAuthorLastName) {
-                                  return sourceAuthorLastName === citationAuthorLastName
-                                }
-                                return false
+                            // Format authors (Last, First; Last, First)
+                            // First, clean and filter authors - remove "et al." variations
+                            const cleanedAuthors = authors
+                              .map((a: string) => a.trim())
+                              // Remove "et al." from end of names like "Thomas Knaus et al."
+                              .map((a: string) => a.replace(/\s+et\s+al\.?$/i, '').trim())
+                              // Filter out standalone "et al.", "et", "al.", etc.
+                              .filter((a: string) => {
+                                const lower = a.toLowerCase().trim()
+                                return a.length > 0 &&
+                                  lower !== 'et al.' &&
+                                  lower !== 'et al' &&
+                                  lower !== 'et' &&
+                                  lower !== 'al.' &&
+                                  lower !== 'al' &&
+                                  lower !== 'u.a.' &&
+                                  lower !== 'u. a.' &&
+                                  !lower.match(/^et\s+al/)
                               })
 
-                              if (matchingSource) {
-                                footnotePdfUrls[num] = matchingSource.sourceUrl || matchingSource.metadata?.sourceUrl || matchingSource.pdfUrl || null
-                              }
-                            })
-                          }
+                            const formattedAuthors = cleanedAuthors.length > 0
+                              ? cleanedAuthors.slice(0, 3).map((a: string) => {
+                                const parts = a.trim().split(' ')
+                                if (parts.length >= 2) {
+                                  const lastName = parts[parts.length - 1]
+                                  const firstName = parts.slice(0, -1).join(' ')
+                                  return `${lastName}, ${firstName}`
+                                }
+                                return a
+                              }).join('; ') + (cleanedAuthors.length > 3 ? ' et al.' : '')
+                              : 'o.V.'
 
-                          const citationStyle = thesis?.citation_style
-
-                          // Check if this paragraph should be highlighted (related passage)
-                          const getTextContent = (node: any): string => {
-                            if (typeof node === 'string') return node
-                            if (Array.isArray(node)) {
-                              return node.map(getTextContent).join('')
-                            }
-                            if (node?.props?.children) {
-                              return getTextContent(node.props.children)
-                            }
-                            return ''
-                          }
-
-                          const paragraphText = getTextContent(children)
-                          const isHighlighted = highlightedPassages.some(passage =>
-                            paragraphText.includes(passage.text.substring(0, 50)) ||
-                            passage.text.includes(paragraphText.substring(0, 50))
-                          )
-
-                          // Check if this paragraph contains the pending edit's old text
-                          const hasPendingEdit = pendingEdit && paragraphText.includes(pendingEdit.oldText)
-
-                          // Process footnotes in paragraphs (for any citation style that uses ^N markers)
-                          if (paragraphText.includes('^') && Object.keys(footnotes).length > 0) {
-                            // Convert entire paragraph content to string for processing
-                            const getTextContent = (node: any): string => {
-                              if (typeof node === 'string') return node
-                              if (Array.isArray(node)) {
-                                return node.map(getTextContent).join('')
-                              }
-                              if (node?.props?.children) {
-                                return getTextContent(node.props.children)
-                              }
-                              return ''
-                            }
-
-                            const paragraphText = getTextContent(children)
-
-                            // Check if paragraph contains footnotes
-                            if (paragraphText.includes('^')) {
-                              // Split by footnote pattern and rebuild with React elements
-                              const parts = paragraphText.split(/(\^\d+)/g)
-
-                              if (parts.length > 1) {
-                                const processedParts: any[] = []
-                                parts.forEach((part, idx) => {
-                                  const footnoteMatch = part.match(/^\^(\d+)$/)
-                                  if (footnoteMatch) {
-                                    const footnoteNum = parseInt(footnoteMatch[1], 10)
-                                    const footnoteText = footnotes[footnoteNum] || `[Fußnote ${footnoteNum}]`
-                                    const pdfUrl = footnotePdfUrls[footnoteNum]
-                                    const hasPdf = !!pdfUrl
-                                    processedParts.push(
-                                      <sup
-                                        key={`fn-${idx}`}
-                                        style={{
-                                          fontSize: '0.75em',
-                                          verticalAlign: 'super',
-                                          lineHeight: 0,
-                                          cursor: hasPdf ? 'pointer' : 'help',
-                                          color: hasPdf ? '#0066cc' : '#666',
-                                          textDecoration: 'underline',
-                                          textDecorationStyle: hasPdf ? 'solid' : 'dotted',
-                                          fontWeight: 'normal',
-                                          marginLeft: '1px',
-                                        }}
-                                        title={hasPdf ? `${footnoteText}\n\n📄 Klicken zum Öffnen der PDF` : footnoteText}
-                                        onClick={(e) => {
-                                          if (pdfUrl) {
-                                            e.preventDefault()
-                                            e.stopPropagation()
-                                            window.open(pdfUrl, '_blank', 'noopener,noreferrer')
-                                          }
-                                        }}
-                                        onMouseEnter={(e) => {
-                                          const tooltip = document.createElement('div')
-                                          tooltip.id = `footnote-tooltip-${footnoteNum}`
-                                          tooltip.innerHTML = hasPdf
-                                            ? `${footnoteText}<br/><span style="color: #4CAF50; font-size: 10pt; margin-top: 4px; display: block;">📄 Klicken zum Öffnen der PDF</span>`
-                                            : footnoteText
-                                          tooltip.style.cssText = `
-                                          position: fixed;
-                                          background: #333;
-                                          color: white;
-                                          padding: 8px 12px;
-                                          border-radius: 4px;
-                                          font-size: 11pt;
-                                          max-width: 400px;
-                                          white-space: normal;
-                                          z-index: 10000;
-                                          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                                          pointer-events: none;
-                                        `
-                                          document.body.appendChild(tooltip)
-                                          const rect = e.currentTarget.getBoundingClientRect()
-                                          tooltip.style.left = `${rect.left + rect.width / 2}px`
-                                          tooltip.style.top = `${rect.top - tooltip.offsetHeight - 5}px`
-                                          tooltip.style.transform = 'translateX(-50%)'
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          const tooltip = document.getElementById(`footnote-tooltip-${footnoteNum}`)
-                                          if (tooltip) {
-                                            tooltip.remove()
-                                          }
-                                        }}
-                                      >
-                                        {footnoteNum}
-                                      </sup>
-                                    )
-                                  } else if (part) {
-                                    processedParts.push(part)
-                                  }
-                                })
-
-                                return (
-                                  <p style={{
-                                    marginBottom: '6mm',
-                                    textAlign: 'justify',
-                                    textIndent: '0mm',
-                                    lineHeight: '1.6',
-                                    fontSize: '12pt',
-                                  }} {...props}>{processedParts}</p>
-                                )
-                              }
-                            }
-                          }
-
-                          // TOC should be in lists, not paragraphs
-                          // Apply yellow highlight if this is a related passage
-                          const paragraphStyle: React.CSSProperties = {
-                            marginBottom: '6mm',
-                            textAlign: 'justify',
-                            textIndent: '0mm',
-                            lineHeight: '1.6',
-                            fontSize: '12pt',
-                          }
-
-                          if (isHighlighted) {
-                            paragraphStyle.backgroundColor = '#fef3c7' // Light yellow
-                            paragraphStyle.padding = '2mm 4mm'
-                            paragraphStyle.borderRadius = '2px'
-                            paragraphStyle.borderLeft = '3px solid #fbbf24' // Amber border
-                          }
-
-                          // If this paragraph contains the pending edit, show diff inline
-                          if (hasPendingEdit && pendingEdit) {
-                            const oldTextIndex = paragraphText.indexOf(pendingEdit.oldText)
-                            if (oldTextIndex >= 0) {
-                              const beforeText = paragraphText.substring(0, oldTextIndex)
-                              const afterText = paragraphText.substring(oldTextIndex + pendingEdit.oldText.length)
-
-                              return (
-                                <p style={paragraphStyle} {...props}>
-                                  {beforeText}
-                                  <span style={{
-                                    backgroundColor: '#fee2e2',
-                                    padding: '2px 4px',
-                                    borderRadius: '2px',
-                                    textDecoration: 'line-through',
-                                  }}>
-                                    {pendingEdit.oldText}
-                                  </span>
-                                  <span style={{
-                                    backgroundColor: '#dcfce7',
-                                    padding: '2px 4px',
-                                    borderRadius: '2px',
-                                    marginLeft: '4px',
-                                  }}>
-                                    {pendingEdit.newText}
-                                  </span>
-                                  {afterText}
-                                  <div style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
-                                    <button
-                                      onClick={handleApproveEdit}
-                                      style={{
-                                        padding: '4px 12px',
-                                        backgroundColor: '#16a34a',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        fontSize: '11pt',
-                                      }}
-                                    >
-                                      ✓ Übernehmen
-                                    </button>
-                                    <button
-                                      onClick={handleRejectEdit}
-                                      style={{
-                                        padding: '4px 12px',
-                                        backgroundColor: '#6b7280',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        fontSize: '11pt',
-                                      }}
-                                    >
-                                      ✗ Ablehnen
-                                    </button>
-                                  </div>
-                                </p>
-                              )
-                            }
-                          }
-
-                          return (
-                            <p style={paragraphStyle} {...props}>{children}</p>
-                          )
-                        },
-                        ul: ({ node, children, ...props }: any) => {
-                          // Check if this is TOC by examining children
-                          const childrenArray = Array.isArray(children) ? children : [children]
-                          let isTOC = false
-                          let tocEntryCount = 0
-
-                          // Check if any child looks like TOC entry
-                          for (const child of childrenArray) {
-                            const text = String(child?.props?.children || child || '')
-                            // More flexible TOC detection - check for number patterns
-                            if (/^\d+\.(?:\d+\.)*\s+/.test(text.trim())) {
-                              isTOC = true
-                              tocEntryCount++
-                              console.log('[TOC Detection] Found TOC entry in ul:', text.substring(0, 50))
-                            }
-                          }
-
-                          // If at least 2 entries match TOC pattern, treat as TOC
-                          if (isTOC && tocEntryCount >= 2) {
-                            console.log('[TOC Detection] Rendering TOC ul list with', tocEntryCount, 'entries')
                             return (
-                              <ul className="toc-list" style={{
-                                marginBottom: '6mm',
-                                marginLeft: '0',
-                                paddingLeft: '0',
-                                fontSize: '12pt',
-                                listStyle: 'none',
-                                display: 'block',
-                              }} {...props}>{children}</ul>
+                              <p key={index} style={{
+                                marginBottom: '4mm',
+                                textIndent: '-10mm',
+                                paddingLeft: '10mm',
+                                textAlign: 'left',
+                              }}>
+                                {formattedAuthors} ({year}): {title}.
+                                {journal && ` In: ${journal}.`}
+                                {pages && ` S. ${pages}.`}
+                                {doi && ` DOI: ${doi}.`}
+                              </p>
                             )
-                          }
-
-                          return (
-                            <ul style={{
-                              marginBottom: '6mm',
-                              marginLeft: '10mm',
-                              paddingLeft: '5mm',
-                              fontSize: '12pt',
-                            }} {...props}>{children}</ul>
-                          )
-                        },
-                        ol: ({ node, children, ...props }: any) => {
-                          const childrenArray = Array.isArray(children) ? children : [children]
-                          let isTOC = false
-                          let tocEntryCount = 0
-
-                          // Check if any child looks like TOC entry
-                          for (const child of childrenArray) {
-                            const text = String(child?.props?.children || child || '')
-                            // More flexible TOC detection - check for number patterns
-                            if (/^\d+\.(?:\d+\.)*\s+/.test(text.trim())) {
-                              isTOC = true
-                              tocEntryCount++
-                              console.log('[TOC Detection] Found TOC entry in ol:', text.substring(0, 50))
-                            }
-                          }
-
-                          // If at least 2 entries match TOC pattern, treat as TOC
-                          if (isTOC && tocEntryCount >= 2) {
-                            console.log('[TOC Detection] Rendering TOC ol list with', tocEntryCount, 'entries')
-                            return (
-                              <ol className="toc-list" style={{
-                                marginBottom: '6mm',
-                                marginLeft: '0',
-                                paddingLeft: '0',
-                                fontSize: '12pt',
-                                listStyle: 'none',
-                                display: 'block',
-                              }} {...props}>{children}</ol>
-                            )
-                          }
-
-                          return (
-                            <ol style={{
-                              marginBottom: '6mm',
-                              marginLeft: '10mm',
-                              paddingLeft: '5mm',
-                              fontSize: '12pt',
-                            }} {...props}>{children}</ol>
-                          )
-                        },
-                        li: ({ node, children, ...props }: any) => {
-                          // Extract text to check for TOC entry - handle nested React elements
-                          let text = ''
-                          const extractText = (node: any): string => {
-                            if (typeof node === 'string') return node
-                            if (typeof node === 'number') return String(node)
-                            if (Array.isArray(node)) {
-                              return node.map(extractText).join(' ').trim()
-                            }
-                            if (node?.props?.children) {
-                              return extractText(node.props.children)
-                            }
-                            return ''
-                          }
-
-                          text = extractText(children)
-                          const trimmedText = text.trim()
-
-                          console.log('[TOC li] Raw text:', trimmedText.substring(0, 100))
-
-                          // TOC entries format: "1. Einleitung" or "1.1 Hinführung..." or "1. Title ......... 5"
-                          // More flexible pattern matching
-                          const tocPattern = /^(\d+\.(?:\d+\.)*)\s+(.+?)(?:\s+[\.]{2,}\s+(\d+))?$|^(\d+\.(?:\d+\.)*)\s+(.+?)\s+(\d+)$|^(\d+\.(?:\d+\.)*)\s+(.+)$/
-                          const tocMatch = trimmedText.match(tocPattern)
-
-                          if (tocMatch) {
-                            // Extract parts - handle multiple pattern groups
-                            const numberPart = tocMatch[1] || tocMatch[4] || tocMatch[7] || ''
-                            const titlePart = (tocMatch[2] || tocMatch[5] || tocMatch[8] || '').trim()
-                            const pagePart = tocMatch[3] || tocMatch[6] || ''
-
-                            if (numberPart) {
-                              console.log('[TOC Entry] ✓ Matched:', { numberPart, titlePart, pagePart })
-
-                              // Determine indentation level
-                              const numberSegments = numberPart.split('.').filter(Boolean)
-                              const level = Math.max(0, numberSegments.length - 1)
-                              const isMainChapter = level === 0
-                              const indent = level * 8
-
-                              return (
-                                <li
-                                  className={`toc-entry toc-entry-level-${level}`}
-                                  style={{
-                                    marginBottom: '4mm',
-                                    lineHeight: '1.6',
-                                    listStyle: 'none',
-                                    paddingLeft: '0',
-                                    marginLeft: `${indent}mm`,
-                                    fontSize: '12pt',
-                                    display: 'block',
-                                    breakInside: 'avoid',
-                                    pageBreakInside: 'avoid',
-                                  }}
-                                  {...props}
-                                >
-                                  <span style={{
-                                    fontWeight: isMainChapter ? 'bold' : 'normal',
-                                  }}>
-                                    {numberPart} {titlePart}
-                                  </span>
-                                  {pagePart && (
-                                    <span style={{
-                                      float: 'right',
-                                      fontVariantNumeric: 'tabular-nums',
-                                      marginLeft: '4mm',
-                                    }}>
-                                      {pagePart}
-                                    </span>
-                                  )}
-                                </li>
-                              )
-                            }
-                          }
-
-                          // If it looks like a TOC entry but didn't match, log it
-                          if (trimmedText && /^\d+\./.test(trimmedText)) {
-                            console.warn('[TOC Entry] ✗ Not matched:', trimmedText.substring(0, 100))
-                          }
-
-                          return (
-                            <li style={{
-                              marginBottom: '4mm',
-                              fontSize: '12pt',
-                              lineHeight: '1.6',
-                            }} {...props}>{children}</li>
-                          )
-                        },
-                        blockquote: ({ node, ...props }) => (
-                          <blockquote style={{
-                            borderLeft: '3px solid #666',
-                            paddingLeft: '8mm',
-                            marginLeft: '10mm',
-                            marginRight: '10mm',
-                            marginTop: '4mm',
-                            marginBottom: '4mm',
-                            fontStyle: 'italic',
-                            fontSize: '11pt',
-                            color: '#333',
-                          }} {...props} />
-                        ),
-                        code: ({ node, inline, ...props }: any) => {
-                          if (inline) {
-                            return (
-                              <code style={{
-                                backgroundColor: '#f5f5f5',
-                                padding: '1mm 2mm',
-                                borderRadius: '2px',
-                                fontSize: '11pt',
-                                fontFamily: '"Courier New", monospace',
-                                color: '#000',
-                              }} {...props} />
-                            )
-                          }
-                          return (
-                            <code style={{
-                              display: 'block',
-                              backgroundColor: '#f5f5f5',
-                              padding: '4mm',
-                              borderRadius: '2px',
-                              fontSize: '10pt',
-                              fontFamily: '"Courier New", monospace',
-                              marginBottom: '6mm',
-                              overflowX: 'auto',
-                              border: '1px solid #ddd',
-                            }} {...props} />
-                          )
-                        },
-                      }}
-                    >
-                      {content || '*Kein Inhalt verfügbar*'}
-                    </ReactMarkdown>
-
-                    {/* Literaturverzeichnis - built from uploaded sources */}
-                    {bibliographySources && bibliographySources.length > 0 && (
-                      <div style={{ pageBreakBefore: 'always', marginTop: '24mm' }}>
-                        <h2 style={{
-                          fontSize: '14pt',
-                          fontWeight: 'bold',
-                          marginBottom: '8mm',
-                          textAlign: 'left',
-                        }}>
-                          Literaturverzeichnis
-                        </h2>
-                        <div style={{ fontSize: '11pt', lineHeight: '1.6' }}>
-                          {bibliographySources
-                            .sort((a: any, b: any) => {
-                              // Sort by first author's last name
-                              const getLastName = (source: any) => {
-                                const authors = source.metadata?.authors || source.authors || []
-                                // Filter out "et al." variations to get real authors
-                                const realAuthors = authors.filter((auth: string) => {
-                                  const lower = (auth || '').toLowerCase().trim()
-                                  return lower !== 'et al.' && lower !== 'et al' && lower !== 'et' && lower !== 'al.' && !lower.match(/^et\s+al/)
-                                })
-                                if (realAuthors.length === 0) return 'ZZZ'
-                                // Clean "et al." from the end of author names
-                                const firstAuthor = (realAuthors[0] || '').replace(/\s+et\s+al\.?$/i, '').trim()
-                                const parts = firstAuthor.split(' ')
-                                return parts[parts.length - 1] || 'ZZZ'
-                              }
-                              return getLastName(a).localeCompare(getLastName(b), 'de')
-                            })
-                            .map((source: any, index: number) => {
-                              // Format source for bibliography
-                              const meta = source.metadata || source
-                              const authors = meta.authors || []
-                              const year = meta.year || 'o.J.'
-                              const title = meta.title || source.title || 'Ohne Titel'
-                              const journal = meta.journal || source.journal
-                              const pages = meta.pages || (meta.pageStart && meta.pageEnd ? `${meta.pageStart}-${meta.pageEnd}` : '')
-                              const doi = meta.doi || source.doi
-
-                              // Format authors (Last, First; Last, First)
-                              // First, clean and filter authors - remove "et al." variations
-                              const cleanedAuthors = authors
-                                .map((a: string) => a.trim())
-                                // Remove "et al." from end of names like "Thomas Knaus et al."
-                                .map((a: string) => a.replace(/\s+et\s+al\.?$/i, '').trim())
-                                // Filter out standalone "et al.", "et", "al.", etc.
-                                .filter((a: string) => {
-                                  const lower = a.toLowerCase().trim()
-                                  return a.length > 0 &&
-                                    lower !== 'et al.' &&
-                                    lower !== 'et al' &&
-                                    lower !== 'et' &&
-                                    lower !== 'al.' &&
-                                    lower !== 'al' &&
-                                    lower !== 'u.a.' &&
-                                    lower !== 'u. a.' &&
-                                    !lower.match(/^et\s+al/)
-                                })
-
-                              const formattedAuthors = cleanedAuthors.length > 0
-                                ? cleanedAuthors.slice(0, 3).map((a: string) => {
-                                  const parts = a.trim().split(' ')
-                                  if (parts.length >= 2) {
-                                    const lastName = parts[parts.length - 1]
-                                    const firstName = parts.slice(0, -1).join(' ')
-                                    return `${lastName}, ${firstName}`
-                                  }
-                                  return a
-                                }).join('; ') + (cleanedAuthors.length > 3 ? ' et al.' : '')
-                                : 'o.V.'
-
-                              return (
-                                <p key={index} style={{
-                                  marginBottom: '4mm',
-                                  textIndent: '-10mm',
-                                  paddingLeft: '10mm',
-                                  textAlign: 'left',
-                                }}>
-                                  {formattedAuthors} ({year}): {title}.
-                                  {journal && ` In: ${journal}.`}
-                                  {pages && ` S. ${pages}.`}
-                                  {doi && ` DOI: ${doi}.`}
-                                </p>
-                              )
-                            })}
-                        </div>
+                          })}
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                  </div>
                 </div>
+
 
               </div>
             )}
@@ -2181,7 +1915,9 @@ const ThesisPreviewContent = () => {
             </div>
           </div>
         </div>
+
       </div>
+
 
       {/* Sources Modal */}
       {
@@ -2926,10 +2662,10 @@ const ThesisPreviewContent = () => {
           </div>
         )
       }
-    </div >
+    </div>
   )
-
 }
+
 
 export default function ThesisPreviewPage() {
   return (

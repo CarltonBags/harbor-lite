@@ -2649,8 +2649,8 @@ INSTEAD - Attribute research to REAL authors:
     const isIntroduction = chapter.number === '1' || chapter.number === '1.' || chapterLabel.toLowerCase().includes('einleitung') || chapterLabel.toLowerCase().includes('introduction');
     const structureInstruction = isIntroduction
       ? (isGerman
-        ? `\n**⚠️ WICHTIG - AUFBAU DER ARBEIT (Gang der Untersuchung):**\n1. Nutze für die Beschreibung der kommenden Kapitel AUSSCHLIESSLICH die Informationen aus dem Abschnitt **"AUSBLICK AUF KOMMENDE KAPITEL"** (oben im Prompt).\n2. Erwähne NIEMALS Kapitel 1 (dieses Kapitel). Beginne SOFORT mit Kapitel 2.\n3. **KEINE HALLUZINATIONEN:** Erfinde keine Themen! Wenn im Ausblick steht "Kapitel 3: Methodik", dann schreibe "Kapitel 3 erläutert das methodische Vorgehen". Schreibe NICHT "Kapitel 3 behandelt Neurobiologie", wenn das nicht dort steht!\n4. **KEINE ZITATIONEN** in diesem Abschnitt! Der Aufbau der Arbeit beschreibt nur deine eigene Struktur.\n5. **STOPP NACH DEM LETZTEN KAPITEL!**`
-        : `\n**⚠️ IMPORTANT - STRUCTURE OF THE WORK:**\n1. To describe the upcoming chapters, you MUST EXCLUSIVELY use the information from the **"FUTURE CHAPTERS OUTLOOK"** section (provided above).\n2. NEVER mention Chapter 1 (this chapter). Start IMMEDIATELY with Chapter 2.\n3. **NO HALLUCINATIONS:** Do not invent topics! If the outlook says "Chapter 3: Methodology", write "Chapter 3 explains the methodology". Do NOT write "Chapter 3 covers Neurobiology" if it's not there!\n4. **NO CITATIONS** in this section!\n5. **STOP AFTER THE LAST CHAPTER!**`)
+        ? `\n**⚠️ WICHTIG - AUFBAU DER ARBEIT (Gang der Untersuchung):**\n1. Deine Aufgabe: Beschreibe den Aufbau der restlichen Arbeit präzise basierend auf der **GLIEDERUNG** (siehe oben "FUTURE CHAPTERS OUTLOOK").\n2. **REGEL:** Beginne die Beschreibung DIREKT mit **Kapitel 2**.\n3. **VERBOT:** Erwähne Kapitel 1 NICHT. Kapitel 1 ist die Einleitung, in der wir uns befinden.\n4. **INHALT:** Gehe die Gliederung Punkt für Punkt durch (Kapitel 2, 3, 4, ...). Fasse für jedes Kapitel kurz zusammen, worum es laut Gliederung geht.\n5. **PRÄZISION:** Erfinde keine Inhalte. Nutze nur die Stichpunkte aus der Gliederung.`
+        : `\n**⚠️ IMPORTANT - STRUCTURE OF THE WORK:**\n1. Your task: Describe the structure of the remaining thesis precisely based on the **OUTLINE** (see "FUTURE CHAPTERS OUTLOOK" above).\n2. **RULE:** Start the description DIRECTLY with **Chapter 2**.\n3. **FORBIDDEN:** DO NOT mention Chapter 1. Chapter 1 is the introduction we are currently in.\n4. **CONTENT:** Go through the outline point by point (Chapter 2, 3, 4, ...). Briefly summarize what each chapter covers based on the outline.\n5. **PRECISION:** Do not invent content. Use only the bullet points from the outline.`)
       : '';
 
     return `${promptIntro}
@@ -2884,6 +2884,10 @@ async function critiqueThesis(
   for (let i = 0; i < chapters.length; i++) {
     const chapterContent = chapters[i]
     const chapterTitle = chapterContent.split('\n')[0].replace(/#/g, '').trim()
+    // Prepare structural context: Is there a subchapter following?
+    const nextChapterContent = i < chapters.length - 1 ? chapters[i + 1] : ''
+    const nextChapterTitle = nextChapterContent.split('\n')[0].replace(/#/g, '').trim() || 'NONE'
+
     console.log(`[ThesisCritique] Critiquing Chapter ${i + 1}/${chapters.length}: "${chapterTitle}"`)
 
     // Prepare prompt for this specific chapter
@@ -2989,22 +2993,21 @@ async function critiqueThesis(
       KONTEXT:
       - Dies ist Textabschnitt ${i + 1} von ${chapters.length} (sequentiell).
       - Titel des Kapitels: "${chapterTitle}"
-      - HINWEIS: Die Kapitelnummer im TITEL (z.B. "2.1") ist KORREKT. Ignoriere Abweichungen zur sequentiellen Zählung (Textabschnitt X). Melde KEINE Fehler bzgl. falscher Kapitelnummer, wenn der Titel in sich schlüssig ist.
       
       PRÜFUNGSKRITERIEN FÜR DIESES KAPITEL:
       
       0. **LEERE STRUKTUR-KAPITEL (WICHTIG):**
-         - Ist dieses Kapitel nur eine Hauptüberschrift (z.B. "1 Einleitung", "4 Diskussion"), die als Container für Unterkapitel dient?
-         - BEISPIEL: "1 Einleitung" ist leer, aber danach folgt direkt "1.1 ...". -> DAS IST KEIN FEHLER!
-         - REGEL: Wenn ein Kapitel leer ist, aber Unterkapitel hat oder offensichtlich nur der Strukturierung dient -> MELDE "KEINE FEHLER".
-         - Melde "Fehler" NUR wenn es ein inhaltliches Kapitel sein sollte, das versehentlich leer ist (z.B. "2.3 Detailanalyse" ist leer).
-
+         - Ist dieses Kapitel nur eine Hauptüberschrift ohne Text?
+         - PRÜFE NÄCHSTES KAPITEL: "${nextChapterTitle}"
+         - REGEL: Wenn das nächste Kapitel eine direkte Untergliederung ist (z.B. dieses ist "5", nächstes ist "5.1"), dann ist es KEIN Fehler!
+         - Melde "Fehler" NUR wenn es ein inhaltliches Kapitel sein sollte, das versehentlich leer ist (und NICHT von einem Unterkapitel gefolgt wird).
+      
       1. **FORSCHUNGSFRAGE:** Trägt dieses Kapitel zur Beantwortung bei?
          FRAGE: "${researchQuestion}"
 
       2. **SOURCE CHECK & HALLUZINATIONEN (IMPORTANT!):**
          - Vergleiche JEDE Zitation mit der "ERLAUBTEN QUELLEN"-Liste unten.
-         - ERLAUBTE QUELLEN:
+         - ERLAUBTE QUELLEN (IN DIESEM PROMPT ENTHALTEN):
          ${sourceListShort}
          
          - **JAHR-CHECK:** Stimmt das Jahr?
@@ -3014,7 +3017,7 @@ async function critiqueThesis(
          - **VERFASSER-PFLICHT (STRENG!):**
            - VERBOTEN: Quellen ohne Verfasser / "o.V." / "Anonymous".
            - Jede Quelle muss einen Autorennamen haben. -> MELDE FEHLER: "Quelle ohne Verfasser (o.V.) ist nicht erlaubt".
-         - Nutze das 'fileSearch' Werkzeug zur Verifizierung!
+         - Nutze das 'fileSearch' Werkzeug zur Verifizierung von Inhalten, ABER die Liste 'ERLAUBTE QUELLEN' (oben) ist die Wahrheit für "Existenz".
 
       3. **SPRACHE & STIL:**
          - Keine "man", "wir", "ich".
@@ -3024,14 +3027,14 @@ async function critiqueThesis(
       KAPITEL TEXT:
       ${chapterContent}
 
-      ANTWORTE NUR ALS JSON-OBJEKT:
+      ANTWORTE NUR ALS JSON-OBJEKT (KEIN Text davor/danach!):
       {
         "errors": [
           {
             "location": "${chapterTitle}",
             "quote": "Der fehlerhafte Textauschnitt",
             "error": "Beschreibung des Fehlers",
-            "solution": "KONKRETE und PRÄZISELösungsanweisung (z.B. 'Ändere Jahr auf 2015')"
+            "solution": "KONKRETE und PRÄZISE Lösungsanweisung (z.B. 'Ändere Jahr auf 2015')"
           }
         ]
       }
@@ -3050,10 +3053,10 @@ async function critiqueThesis(
       CRITERIA FOR THIS CHAPTER:
 
       0. **EMPTY STRUCTURAL CHAPTERS (IMPORTANT):**
-         - Is this chapter just a main heading (e.g. "1 Introduction", "4 Discussion") acting as a container for subchapters?
-         - EXAMPLE: "1 Introduction" is empty, but is immediately followed by "1.1 Background". -> THIS IS NOT AN ERROR!
-         - RULE: If a chapter is empty but has subchapters or is clearly structural -> REPORT "NO ERRORS".
-         - Report "Error" ONLY if it is a content chapter that is accidentally left blank (e.g. "2.3 Detailed Analysis" is empty).
+         - Is this chapter just a main heading without text?
+         - CHECK NEXT CHAPTER: "${nextChapterTitle}"
+         - RULE: If the next chapter is a direct subsection (e.g. this is "5", next is "5.1"), then this is NOT an error!
+         - Report "Error" ONLY if it is a content chapter that is accidentally left blank AND is NOT followed by a subsection.
       
       1. **RESEARCH QUESTION:** Does this chapter contribute?
          QUESTION: "${researchQuestion}"
@@ -3070,7 +3073,7 @@ async function critiqueThesis(
          - **MANDATORY AUTHOR (STRICT!):**
            - FORBIDDEN: Sources without author / "n.d." / "Anonymous" / "o.V.".
            - Every source must have an author. -> REPORT ERROR: "Source without author is invalid".
-         - USE 'fileSearch' TOOL to verify citations!
+         - Use 'fileSearch' tool to verify content context, but trust the ALLOWED SOURCES list (above) for existence.
 
       3. **LANGUAGE & STYLE:**
          - No "we", "I", "you".
@@ -3080,7 +3083,7 @@ async function critiqueThesis(
       CHAPTER TEXT:
       ${chapterContent}
 
-      OUTPUT ONLY AS JSON OBJECT:
+      OUTPUT ONLY AS JSON OBJECT (NO Text before/after!)::
       {
         "errors": [
           {
@@ -3103,7 +3106,7 @@ async function critiqueThesis(
         model: 'gemini-2.5-flash', // Use Flash as requested
         contents: chapterPrompt,
         config: {
-          responseMimeType: fileSearchStoreId ? undefined : 'application/json',
+          responseMimeType: 'application/json',
           temperature: 0.1, // High precision
           tools: fileSearchStoreId ? [{
             fileSearch: {
@@ -3126,6 +3129,15 @@ async function critiqueThesis(
         const lastClose = jsonStr.lastIndexOf('}')
         if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
           jsonStr = jsonStr.substring(firstOpen, lastClose + 1)
+        } else {
+          // Fallback: if no JSON delimiters found, try to look for explicit [] or assume empty if short
+          if (jsonStr.includes("errors") && jsonStr.includes("[")) {
+            // Maybe it is just the inner part? unlikely.
+          }
+          // If we can't find JSON, invalid.
+          if (!jsonStr.startsWith('{')) {
+            throw new Error("No JSON object found in response");
+          }
         }
 
         const json = JSON.parse(jsonStr)
@@ -3843,7 +3855,12 @@ ${availableSourcesList}
   ✗ "Das Kernproblem? Es ist ungemein schwer..."
   ✗ "Korruption? In der wirtschaftswissenschaftlichen Literatur versteht man darunter..."
   ✗ JEDE Konstruktion mit Fragezeichen gefolgt von einer Antwort ist VERBOTEN!
+  ✗ JEDE Konstruktion mit Fragezeichen gefolgt von einer Antwort ist VERBOTEN!
   ✗ Dieses Muster macht den Text unlesbar und ist unwissenschaftlich!
+  ✗ "Your infection? Unnoticed." → ABSOLUT VERBOTEN! (Nutzer-Beispiel)
+  ✗ "Das Ergebnis? Unklar." → ABSOLUT VERBOTEN!
+  ✗ NIEMALS EINE FRAGE STELLEN UND SOFORT BEANTWORTEN!
+  ✗ "Snappy"-Frage-Antwort-Muster sind der schlimmste Stilfehler!
   ✓ IMMER direkte Aussagen und Feststellungen verwenden
   ✓ Statt "Die Grenze zwischen X und Y? In der öffentlichen Wahrnehmung..." → "Die Grenze zwischen X und Y verwischt in der öffentlichen Wahrnehmung..."
   ✓ Statt "Korruption? In der wirtschaftswissenschaftlichen Literatur..." → "In der wirtschaftswissenschaftlichen Literatur versteht man unter Korruption..."
@@ -3906,7 +3923,10 @@ SCHREIBSTIL
   ✗ "Das Kernproblem? Es ist ungemein schwer..."
   ✗ "Korruption? In der wirtschaftswissenschaftlichen Literatur versteht man darunter..."
   ✗ JEDE Konstruktion mit Fragezeichen gefolgt von einer Antwort ist VERBOTEN!
+  ✗ JEDE Konstruktion mit Fragezeichen gefolgt von einer Antwort ist VERBOTEN!
   ✗ Dieses Muster macht den Text unlesbar und ist unwissenschaftlich!
+  ✗ "Your infection? Unnoticed." → ABSOLUT VERBOTEN!
+  ✗ NIEMALS EINE FRAGE STELLEN UND SOFORT BEANTWORTEN!
   ✓ IMMER direkte Aussagen und Feststellungen verwenden
   ✓ "Die Grenze zwischen X und Y verwischt in der öffentlichen Wahrnehmung..."
   ✓ "Korruption und Lobbyismus sind zwei verschiedene Arten. Lobbyismus ist hingegen unverzichtbar..."
@@ -4065,7 +4085,12 @@ HALTE DICH STRIKT an die vorgegebene Gliederung - KEINE zusätzlichen Kapitel od
 - FORBIDDEN: "But separating these two phenomena? Difficult."
 - FORBIDDEN: "The core problem? It is extremely difficult..."
 - FORBIDDEN: "Corruption? In the economic literature, it is understood as..."
+- FORBIDDEN: "Corruption? In the economic literature, it is understood as..."
 - FORBIDDEN: ANY construction with a question mark followed by an answer!
+- FORBIDDEN: "Your infection? Unnoticed." -> ABSOLUTELY FORBIDDEN! (User Example)
+- FORBIDDEN: "The result? Unclear." -> ABSOLUTELY FORBIDDEN!
+- NEVER ASK A QUESTION AND IMMEDIATELY ANSWER IT!
+- "Snappy" question-answer patterns are the WORST style error!
 - FORBIDDEN: Any rhetorical or suggestive questions!
 - ALWAYS use direct statements: "The boundary between X and Y blurs..." instead of "The boundary between X and Y? In public perception..."
 
@@ -4235,6 +4260,8 @@ The text must sound like written by a human author from the start and must not b
 - FORBIDDEN: "The core problem? It is extremely difficult..."
 - FORBIDDEN: "Corruption? In the economic literature, it is understood as..."
 - FORBIDDEN: ANY construction with a question mark followed by an answer - makes text unreadable!
+- FORBIDDEN: "Your infection? Unnoticed." -> ABSOLUTELY FORBIDDEN!
+- NEVER ASK A QUESTION AND IMMEDIATELY ANSWER IT!
 - Instead: ALWAYS use direct statements and assertions
 - Example: Instead of "The boundary between X and Y? In public perception..." → "The boundary between X and Y blurs in public perception..."
 - Example: Instead of "Corruption? In the economic literature..." → "In the economic literature, corruption is understood as..."
@@ -5154,6 +5181,16 @@ M. **VERBOTENE WÖRTER UND FORMULIERUNGEN (ABSOLUT KRITISCH):**
      - ✓ "Diese Arbeit untersucht..." (Unpersönlich)
      - Dies ist eine Einzelarbeit. "Wir" ist ein logischer Fehler.
 
+   - **ABSOLUT VERBOTEN: "SNAPPY" FRAGE-ANTWORT-MUSTER!**
+     - ✗ "Das Ergebnis? Unklar." -> VERBOTEN!
+     - ✗ "Die Infektion? Unbemerkt." -> VERBOTEN!
+     - ✗ "Your infection? Unnoticed." -> VERBOTEN! (Nutzer-Beispiel)
+     - ✗ NIEMALS eine Frage stellen und sofort beantworten!
+     - ✗ "Rhetorische Fragen? Ein Stilmittel..." -> NEIN, VERBOTEN!
+     - ✓ Schreibe IMMER in vollständigen Aussagesätzen.
+     - ✓ "Das Ergebnis war unklar."
+     - ✓ "Die Infektion blieb unbemerkt."
+
    - **ENDKONTROLLE AUF FLÜCHTIGKEITSFEHLER (KRITISCH):**
      - Prüfe auf doppelte Wörter: "Jahrhunderts. Jahrhunderts." -> Korrigiere zu "Jahrhunderts."
      - Prüfe auf doppelte Satzzeichen: ".." -> Korrigiere zu "."
@@ -5198,6 +5235,13 @@ Follow these rules strictly:
 3. Preserve the overall structure, paragraph order, citation placement, and academic tone.
 
 4. ONLY modify the surface-level linguistic style in order to increase human-like statistical patterns.
+
+5. STRICTLY FORBIDDEN: Use of rhetorical questions followed immediately by short/fragment answers (so-called "snappy" patterns).
+   - BAD: "Your infection? Unnoticed until the outbreak."
+   - BAD: "The result? Catastrophic."
+   - GOOD: "The infection often remains unnoticed until the outbreak occurs."
+   - GOOD: "The result was catastrophic."
+   ALWAYS write in full, coherent sentences. Avoid "question-fragment" structures entirely.
 
 HUMAN-LIKE STYLE REQUIREMENTS (CRITICAL FOR AI DETECTION):
 
@@ -6050,7 +6094,7 @@ function convertUploadedSourcesToSources(uploadedSources: any[]): Source[] {
 /**
  * Main job handler - always runs full thesis generation
  */
-async function processThesisGeneration(thesisId: string, thesisData: ThesisData) {
+async function processThesisGeneration(thesisId: string, thesisData: ThesisData, critiqueOnly: boolean = false) {
   const processStartTime = Date.now()
   console.log('='.repeat(80))
   console.log(`[PROCESS] Starting thesis generation for thesis ${thesisId}`)
@@ -6099,7 +6143,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
 
     // Only skip research if we have enough sources
     // Use database count (unique sources), not FileSearchStore count (which includes chunks)
-    const hasEnoughSources = hasDocuments && hasUploadedSources && uploadedSources.length >= requiredSourceCount
+    const hasEnoughSources = (hasDocuments && hasUploadedSources && uploadedSources.length >= requiredSourceCount) || critiqueOnly
 
     if (hasEnoughSources) {
       // Skip research - use existing sources
@@ -6521,9 +6565,17 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     let thesisStructure: ThesisStructure | undefined
 
     try {
-      const result = await generateThesisContent(thesisData, sourcesForGeneration, thesisPlan)
-      thesisContent = result.content
-      thesisStructure = result.structure
+      let result;
+      if (!critiqueOnly) {
+        result = await generateThesisContent(thesisData, sourcesForGeneration, thesisPlan)
+        thesisContent = result.content
+        thesisStructure = result.structure
+      } else {
+        console.log('[PROCESS] CRITIQUE ONLY MODE: Fetching existing content from database...')
+        const { data: currentT } = await supabase.from('theses').select('content').eq('id', thesisId).single()
+        thesisContent = currentT?.content || ''
+        console.log(`[PROCESS] Loaded ${thesisContent.length} chars of content.`)
+      }
       const step7Duration = Date.now() - step7Start
       console.log(`[PROCESS] Step 7 completed in ${step7Duration}ms`)
     } catch (error) {
@@ -6588,7 +6640,18 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     // Step 7.1 & 7.2: Iterative Critique & Repair Loop
     console.log('\n[PROCESS] ========== Step 7.1 & 7.2: Iterative Critique & Repair Loop ==========')
 
-    const MAX_REPAIR_ITERATIONS = 2
+    // Step 7.1 & 7.2: Iterative Critique & Repair Loop
+    // Extracted to reusable function
+    thesisContent = await performCritiqueLoop(
+      thesisContent,
+      thesisData,
+      sourcesForGeneration || [],
+      supabase,
+      thesisId
+    )
+
+    // OLD LOOP logic below is disabled by setting MAX=0
+    const MAX_REPAIR_ITERATIONS = 0
     let currentIteration = 0
     let critiqueReport = ''
     const critiqueHistory: any[] = []
@@ -7327,15 +7390,14 @@ const worker = new Worker(
     console.log('[WORKER] Attempt:', job.attemptsMade + 1)
     console.log('[WORKER] Started at:', new Date().toISOString())
 
-    const { thesisId, thesisData } = job.data
+    const { thesisId, thesisData, critiqueOnly } = job.data
 
     try {
       // Update job progress
       await job.updateProgress(10)
 
       // Call the main processing function
-      // Call the main processing function
-      await processThesisGeneration(thesisId, thesisData)
+      await processThesisGeneration(thesisId, thesisData, critiqueOnly)
 
       await job.updateProgress(100)
 
@@ -7668,4 +7730,272 @@ async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId:
     console.error('[CitationVerifier] Error:', error)
     return content // Fallback to original
   }
+}
+
+/**
+ * Executes the iterative critique and repair loop on the given thesis content.
+ * Returns the final (repaied) thesis content.
+ * Extracted from thesis generation workflow for re-usability.
+ */
+export async function performCritiqueLoop(
+  initialThesisContent: string,
+  thesisData: any,
+  sourcesForGeneration: Source[],
+  supabase: any,
+  thesisId: string
+): Promise<string> {
+  console.log('\n[PROCESS] ========== Iterative Critique & Repair Loop (Standalone/Triggered) ==========')
+
+  let thesisContent = initialThesisContent
+  const MAX_REPAIR_ITERATIONS = 2
+  let currentIteration = 0
+  let critiqueReport = ''
+  const critiqueHistory: any[] = []
+  let masterReport: string | undefined = undefined
+
+  // Use research question from thesisData or fallback
+  const researchQuestion = thesisData.researchQuestion || 'Thema der Arbeit'
+
+  while (currentIteration < MAX_REPAIR_ITERATIONS) {
+    currentIteration++
+    console.log(`\n[Loop] Starting Critique/Repair Iteration ${currentIteration}/${MAX_REPAIR_ITERATIONS}`)
+
+    // --- CRITIQUE PHASE ---
+    console.log('[Loop] Running Critique Agent...')
+    try {
+      const outlineForCritique = (thesisData.outline || []).map((chapter: any, index: number) => ({
+        number: (chapter?.number ?? `${index + 1}.`).toString().trim(),
+        title: (chapter?.title ?? '').toString().trim(),
+        sections: []
+      }))
+
+      // Ensure fileSearchStoreId is present
+      const fileSearchStoreId = thesisData.fileSearchStoreId || ''
+
+      critiqueReport = await critiqueThesis(
+        thesisContent,
+        outlineForCritique,
+        researchQuestion,
+        sourcesForGeneration || [],
+        thesisData.language === 'german',
+        fileSearchStoreId,
+        masterReport
+      )
+
+      // Convert first report to Master Report
+      if (!masterReport && currentIteration === 1) {
+        masterReport = critiqueReport
+        console.log('[Loop] Master Report locked for verification. Subsequent critiques will ONLY verify fixes for these errors.')
+      }
+      console.log(`[Critique] Report generated (Iteration ${currentIteration}):`)
+      console.log(critiqueReport)
+
+      // Update history
+      // Try to parse report as object for cleaner storage
+      let reportToStore = critiqueReport
+      try {
+        const jsonStr = critiqueReport.replace(/```json\n?|\n?```/g, '').trim()
+        reportToStore = JSON.parse(jsonStr)
+      } catch (e) {
+        // Keep as string if parsing fails
+      }
+
+      critiqueHistory.push({
+        iteration: currentIteration,
+        report: reportToStore,
+        timestamp: new Date().toISOString()
+      })
+
+      // Save critique report and history to database
+      try {
+        await supabase
+          .from('theses')
+          .update({
+            critique_report: `[Iteration ${currentIteration}]\n${critiqueReport}`,
+            critique_history: critiqueHistory
+          })
+          .eq('id', thesisId)
+        console.log('[Critique] Report and history saved to database')
+      } catch (dbError) {
+        console.error('[Critique] Failed to save report to database:', dbError)
+      }
+    } catch (error) {
+      console.error('[PROCESS] ERROR in Thesis Critique:', error)
+      critiqueReport = '' // Clear if failed
+    }
+
+    // --- CHECK PHASE ---
+    // Try to parse JSON report first to detect errors
+    let hasErrors = false
+    let parsedJsonErrors: any[] = []
+
+    try {
+      const jsonStr = critiqueReport.replace(/```json\n?|\n?```/g, '').trim()
+      const reportObj = JSON.parse(jsonStr)
+      if (reportObj.errors && Array.isArray(reportObj.errors) && reportObj.errors.length > 0) {
+        hasErrors = true
+        parsedJsonErrors = reportObj.errors
+        console.log(`[Loop] Parsed ${parsedJsonErrors.length} errors from JSON report`)
+      }
+    } catch (e) {
+      // Not valid JSON, fall back to string checks
+    }
+
+    // Check if the report contains error markers (fallback)
+    if (!hasErrors) {
+      hasErrors = critiqueReport.includes('[FEHLER]') ||
+        critiqueReport.includes('[FEHLERHAFT]') ||
+        critiqueReport.includes('[HALLUZINATIONEN]') ||
+        critiqueReport.includes('Error') ||
+        critiqueReport.includes('Mangel') ||
+        critiqueReport.includes('FEHLER:') || // Catch detailed errors even if status is clean
+        critiqueReport.includes('**FEHLER') ||
+        critiqueReport.includes('LÖSUNG:') || // If there is a solution proposed, there is an error
+        critiqueReport.includes('SOLUTION:')
+    }
+
+    // Check for technical failure
+    const isTechnicalFailure = critiqueReport.includes('CRITIQUE_GENERATION_FAILED_ERROR')
+
+    if (isTechnicalFailure) {
+      console.warn('[Loop] Critique generation failed technically. Validating retry...')
+      if (currentIteration < MAX_REPAIR_ITERATIONS) {
+        console.log('[Loop] Retrying in next iteration...')
+        continue
+      }
+    }
+
+    if (!hasErrors && !isTechnicalFailure && currentIteration > 1) {
+      console.log('[Loop] Critique is clean (no major errors detected). Exiting loop early.')
+      break
+    }
+
+    if (!hasErrors && critiqueReport.length > 100 && currentIteration === 1) {
+      console.log('[Loop] Iteration 1 is clean. Skipping repair loop.')
+      break
+    }
+
+    // --- REPAIR PHASE ---
+    console.log('[Loop] Errors detected or first run. Running Repair Agent...')
+    try {
+      if (critiqueReport && critiqueReport.trim().length > 0) {
+        console.log('[Repair] Starting chunked repair...')
+
+        // 1. REPAIR PHASE: JSON-Driven Iterative Repair
+        let errors: any[] = []
+        try {
+          const jsonStr = critiqueReport.replace(/```json\n?|\n?```/g, '').trim()
+          const reportObj = JSON.parse(jsonStr)
+          errors = reportObj.errors || []
+          console.log(`[Repair] Parsed ${errors.length} errors from Critique Report`)
+        } catch (e) {
+          console.error('[Repair] Failed to parse JSON report.', e)
+          console.warn('[Repair] Raw report sample:', critiqueReport.substring(0, 200))
+          errors = []
+        }
+
+        if (errors.length > 0) {
+          // 2. Split content into chapters (Level 2 headers ##)
+          const chapters = thesisContent.split(/(?=^## [^#])/gm).filter(c => c.trim().length > 0)
+          console.log(`[Repair] Split thesis into ${chapters.length} chunks for processing`)
+
+          const chapterTitles = chapters.map(c => c.split('\n')[0].replace(/#/g, '').trim())
+
+          // 3. Iterate through ERRORS and apply fixes
+          for (let i = 0; i < errors.length; i++) {
+            const err = errors[i]
+            console.log(`[Repair] Processing Error ${i + 1}/${errors.length}: ${err.error?.substring(0, 50)}...`)
+
+            // Identify target chapter index
+            const targetIndex = ((location: string, quote: string, titles: string[], allChapters: string[]): number => {
+              if (!location) return -1
+              const locNumMatch = location.match(/(\d+(?:\.\d+)*)/)
+              const locNum = locNumMatch ? locNumMatch[1] : null
+
+              if (locNum) {
+                // Pass 1: Exact/Prefix match
+                for (let idx = 0; idx < titles.length; idx++) {
+                  const cleanTitle = titles[idx].replace(/#/g, '').trim()
+                  if (cleanTitle.startsWith(locNum + ' ') || cleanTitle === locNum) return idx
+                }
+
+                // Pass 2: Parent match (fallback)
+                for (let idx = 0; idx < titles.length; idx++) {
+                  const cleanTitle = titles[idx].replace(/#/g, '').trim()
+                  const chapterNum = cleanTitle.split(' ')[0]
+                  if (chapterNum && locNum.startsWith(chapterNum + '.')) {
+                    return idx
+                  }
+                }
+              }
+              const locLower = location.toLowerCase()
+              for (let idx = 0; idx < titles.length; idx++) {
+                const titleLower = titles[idx].toLowerCase()
+                if (titleLower.includes(locLower) || locLower.includes(titleLower)) return idx
+              }
+              if (quote && quote.length > 20) {
+                const cleanQuote = quote.replace(/\s+/g, ' ').trim().substring(0, 50)
+                for (let idx = 0; idx < allChapters.length; idx++) {
+                  if (allChapters[idx].includes(cleanQuote)) {
+                    console.log(`[Repair] Found quote in chapter ${idx + 1}, using that as target.`)
+                    return idx
+                  }
+                }
+              }
+              return -1
+            })(err.location, err.quote, chapterTitles, chapters)
+
+            if (targetIndex === -1) {
+              console.warn(`[Repair] Could not map location "${err.location}" to a chapter. Skipping error.`)
+              continue
+            }
+
+            const chunk = chapters[targetIndex]
+            const miniReport = `LÖSUNG ANWENDEN:\nFEHLER: ${err.error}\nLÖSUNG: ${err.solution}\nQUOTE: ${err.quote || ''}`
+
+            console.log(`[Repair] Applying fix to Chapter ${targetIndex + 1} (${chapterTitles[targetIndex]})...`)
+
+            const repairedChunk = await fixChapterContent(
+              chunk,
+              miniReport,
+              thesisData.language === 'german',
+              targetIndex,
+              chapters.length,
+              chapterTitles,
+              thesisData.fileSearchStoreId
+            )
+
+            if (repairedChunk.trim() === '[DELETE_CHAPTER]') {
+              console.warn(`[Repair] Agent requested DELETE for Chapter ${targetIndex + 1}`)
+              chapters[targetIndex] = ''
+            } else {
+              console.log(`[Repair] Update Check: Original ${chunk.length} chars -> repaired ${repairedChunk.length} chars`)
+              if (repairedChunk.length < 200 && chunk.length > 500) {
+                console.error(`[Repair] CRITICAL: Repair result is suspiciously short (${repairedChunk.length} vs ${chunk.length}). Reverting!`)
+              } else if (repairedChunk.length < chunk.length * 0.5 && chunk.length > 200) {
+                console.warn(`[Repair] Fix result dangerously short. Reverting.`)
+              } else {
+                chapters[targetIndex] = repairedChunk
+              }
+            }
+          }
+          thesisContent = chapters.filter(c => c.length > 0).join('\n\n')
+          console.log('[Repair] All errors processed. Thesis reassembled.')
+        } else {
+          console.log('[Repair] No errors parsed to fix (or parsing failed).')
+        }
+      } else {
+        console.log('[Repair] No critique report available. Skipping repair.')
+      }
+    } catch (error) {
+      console.error('[PROCESS] ERROR in Thesis Repair:', error)
+      console.warn('[Repair] Continuing with original content (repair failed)')
+    }
+
+    if (currentIteration === MAX_REPAIR_ITERATIONS) {
+      console.log('[Loop] Max iterations reached. Proceeding with current content.')
+    }
+  }
+
+  return thesisContent
 }    

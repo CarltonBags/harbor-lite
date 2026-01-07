@@ -3270,6 +3270,13 @@ Follow these rules strictly:
 
 4. ONLY modify the surface-level linguistic style in order to increase human-like statistical patterns.
 
+5. STRICTLY FORBIDDEN: Use of rhetorical questions followed immediately by short/fragment answers (so-called "snappy" patterns).
+   - BAD: "Your infection? Unnoticed until the outbreak."
+   - BAD: "The result? Catastrophic."
+   - GOOD: "The infection often remains unnoticed until the outbreak occurs."
+   - GOOD: "The result was catastrophic."
+   ALWAYS write in full, coherent sentences. Avoid "question-fragment" structures entirely.
+
 HUMAN-LIKE STYLE REQUIREMENTS (CRITICAL FOR AI DETECTION):
 
 A. **Sentence Burstiness (VERY IMPORTANT):**
