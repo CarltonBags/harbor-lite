@@ -3203,15 +3203,6 @@ async function critiqueThesis(
  * new text
  * >>>>>>> REPLACE
  */
-/**
- * Applies Search/Replace patches to a text.
- * Format:
- * <<<<<<< SEARCH
- * original text
- * =======
- * new text
- * >>>>>>> REPLACE
- */
 function applySearchReplace(originalText: string, patchText: string): string {
   if (!patchText.includes('<<<<<<< SEARCH')) {
     // If no patch markers found, check if it's just the full text or empty
@@ -3221,9 +3212,6 @@ function applySearchReplace(originalText: string, patchText: string): string {
     // We REJECT potential full rewrites here because they often contain leaked markers or hallucinations.
     // Better to safe-fail (return original) than to corrupt the thesis.
     console.warn('[DiffPatches] No markers found. Rejecting output to prevent corruption. Keeping original text.')
-    return originalText
-
-    // Otherwise, assume no changes needed or invalid output
     return originalText
   }
 
@@ -3242,33 +3230,66 @@ function applySearchReplace(originalText: string, patchText: string): string {
 
     if (!cleanSearch) continue
 
+    // DEBUG: Log what we're trying to find
+    console.log(`[DiffPatches] Searching for: "${cleanSearch.substring(0, 60)}..."`)
+
     // 1. Try Exact Match (strict)
     if (currentText.includes(cleanSearch)) {
       currentText = currentText.replace(cleanSearch, cleanReplace)
       appliedCount++
+      console.log('[DiffPatches] ✓ Applied via exact match.')
     } else {
       // 2. Try soft normalization (ignore leading/trailing whitespace inconsistencies)
       // This is a common AI failure mode (forgetting indentation).
-      console.warn(`[DiffPatches] Could not find exact match for: "${cleanSearch.substring(0, 30)}...". Trying soft match.`)
+      console.warn(`[DiffPatches] Exact match failed. Trying soft match...`)
 
       const escapedSearch = cleanSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')
       // Try to construct a regex that allows variable whitespace
+      let softMatchApplied = false
       try {
         const strictRegex = new RegExp(escapedSearch)
         if (strictRegex.test(currentText)) {
           currentText = currentText.replace(strictRegex, cleanReplace)
           appliedCount++
-          console.log('[DiffPatches] Applied soft match (whitespace agnostic).')
-          continue
+          softMatchApplied = true
+          console.log('[DiffPatches] ✓ Applied via soft match (whitespace agnostic).')
         }
       } catch (e) {
         // regex failed
       }
 
-      // 3. Last Resort: Line-by-line fuzzy locator
-      // If the block is multi-line, try to find unique matching lines?
-      // Too dangerous. If strict and soft-regex fail, we skip.
-      console.error(`[DiffPatches] FAILED to apply patch. Match not found even with soft rules.`)
+      // 3. NEW: Substring fuzzy match
+      // If the SEARCH block is >30 chars, try matching just the first 40 chars to find the region
+      if (!softMatchApplied && cleanSearch.length > 30) {
+        const searchStart = cleanSearch.substring(0, 40).trim()
+        const searchEnd = cleanSearch.substring(cleanSearch.length - 40).trim()
+
+        // Find the position where this substring starts
+        const startIdx = currentText.indexOf(searchStart)
+        if (startIdx !== -1) {
+          // Look for the end substring after the start
+          const searchArea = currentText.substring(startIdx)
+          const endIdx = searchArea.indexOf(searchEnd)
+
+          if (endIdx !== -1) {
+            const fullEndIdx = startIdx + endIdx + searchEnd.length
+            const actualMatch = currentText.substring(startIdx, fullEndIdx)
+
+            console.log(`[DiffPatches] Found fuzzy region (${actualMatch.length} chars). Applying replacement.`)
+            currentText = currentText.substring(0, startIdx) + cleanReplace + currentText.substring(fullEndIdx)
+            appliedCount++
+            softMatchApplied = true
+            console.log('[DiffPatches] ✓ Applied via substring fuzzy match.')
+          }
+        }
+      }
+
+      if (!softMatchApplied) {
+        // DEBUG: Show what's in the chapter for comparison
+        console.error(`[DiffPatches] FAILED to apply patch. Match not found.`)
+        console.error(`[DiffPatches] SEARCH (first 100 chars): "${cleanSearch.substring(0, 100)}"`)
+        console.error(`[DiffPatches] Chapter contains (first 200 chars): "${currentText.substring(0, 200)}"`)
+      }
     }
   }
 
@@ -3307,14 +3328,15 @@ async function fixChapterContent(
     ${critiqueReport}
     
     ANWEISUNGEN:
-    1. Suche die betroffene Stelle im Text.
-    2. Wenn die Anweisung sagt: "LÖSUNG: Ändere X zu Y", dann TUE GENAU DAS.
-    3. Wenn die Anweisung sagt: "LÖSUNG: Lösche dieses Kapitel", antworte NUR mit: [DELETE_CHAPTER]
-    4. KORREKTUR VON DUPLIKATEN: Wenn die Anweisung "Doppeltes Kapitel", "Zweite Instanz" oder "Entferne Duplikat" erwähnt -> Antworte SOFORT mit: [DELETE_CHAPTER]. (Gehe davon aus, dass DU das Duplikat bist).
-    5. Wenn das Kapitel LEER ist (nur Überschrift), und die Lösung Inhalt hinzufügen will:
+    1. Lies die QUOTE in der KORREKTUR-ANWEISUNG. Das ist der Text, den du ändern musst.
+    2. KOPIERE diese QUOTE EXAKT in deinen SEARCH-Block (Copy & Paste, NICHT aus dem Gedächtnis tippen!).
+    3. Wenn die Anweisung sagt: "LÖSUNG: Ändere X zu Y", dann TUE GENAU DAS im REPLACE-Block.
+    4. Wenn die Anweisung sagt: "LÖSUNG: Lösche dieses Kapitel", antworte NUR mit: [DELETE_CHAPTER]
+    5. KORREKTUR VON DUPLIKATEN: Wenn die Anweisung "Doppeltes Kapitel", "Zweite Instanz" oder "Entferne Duplikat" erwähnt -> Antworte SOFORT mit: [DELETE_CHAPTER]. (Gehe davon aus, dass DU das Duplikat bist).
+    6. Wenn das Kapitel LEER ist (nur Überschrift), und die Lösung Inhalt hinzufügen will:
        - Suche nach der Kapite-Überschrift.
        - Ersetze sie durch "Überschrift\n\n[Neuer Inhalt aus Lösung...]"
-    5. Nutze das 'fileSearch' Werkzeug NUR wenn du aufgefordert wirst, eine fehlende Seitenzahl zu suchen.
+    7. Nutze das 'fileSearch' Werkzeug NUR wenn du aufgefordert wirst, eine fehlende Seitenzahl zu suchen.
     
     FORMAT (SEARCH/REPLACE) - ZWINGEND ERFORDERLICH:
     Du MUSST deine Antwort EXAKT in diesem Block-Format zurückgeben. Kein normaler Text!
@@ -3324,13 +3346,14 @@ async function fixChapterContent(
     >>>>>>>
 
     <<<<<<< SEARCH
-    (Der exakte Originaltext, der ersetzt werden soll - Zeichen für Zeichen identisch)
+    (KOPIERE die QUOTE aus der KORREKTUR-ANWEISUNG hierher - Zeichen für Zeichen identisch!)
     =======
-    (Der neue, korrigierte Text)
+    (Der neue, korrigierte Text gemäß der LÖSUNG)
     >>>>>>> REPLACE
     
     WICHTIG:
-    - Der "SEARCH"-Block MUSS exakt mit dem Originaltext übereinstimmen (Copy & Paste).
+    - Der "SEARCH"-Block MUSS die QUOTE aus der KORREKTUR-ANWEISUNG sein (Copy & Paste).
+    - ERFINDE KEINEN TEXT für den SEARCH-Block! Nutze die QUOTE!
     - Wenn du NICHTS ändern kannst/musst, antworte leer oder mit "KEINE ÄNDERUNG".
     - Antworte NIEMALS ohne diese Marker, sonst wird deine Arbeit verworfen!
     
@@ -3360,14 +3383,15 @@ async function fixChapterContent(
     ${critiqueReport}
     
     INSTRUCTIONS:
-    1. Locate the affected text.
-    2. If instruction says "SOLUTION: Change X to Y", DO EXACTLY THAT.
-    3. If instruction says "SOLUTION: Delete this chapter", reply ONLY with: [DELETE_CHAPTER]
-    4. DUPLICATE CORRECTION: If instruction mentions "Duplicate chapter", "Second instance" or "Remove duplicate" -> Reply IMMEDIATELY with: [DELETE_CHAPTER]. (Assume YOU are the duplicate).
-    5. If Chapter is EMPTY (only title) and solution wants to add content:
+    1. Read the QUOTE in the CORRECTION INSTRUCTION. That is the text you need to change.
+    2. COPY this QUOTE EXACTLY into your SEARCH block (Copy & Paste, DO NOT retype from memory!).
+    3. If instruction says "SOLUTION: Change X to Y", DO EXACTLY THAT in the REPLACE block.
+    4. If instruction says "SOLUTION: Delete this chapter", reply ONLY with: [DELETE_CHAPTER]
+    5. DUPLICATE CORRECTION: If instruction mentions "Duplicate chapter", "Second instance" or "Remove duplicate" -> Reply IMMEDIATELY with: [DELETE_CHAPTER]. (Assume YOU are the duplicate).
+    6. If Chapter is EMPTY (only title) and solution wants to add content:
        - Search for the Chapter Title line.
        - Replace it with "Title\n\n[New Content from solution...]"
-    5. Use 'fileSearch' tool ONLY if asked to find a missing page number.
+    7. Use 'fileSearch' tool ONLY if asked to find a missing page number.
     
     FORMAT (SEARCH/REPLACE):
     Return ONLY changes in this format (no full text):
@@ -3377,13 +3401,14 @@ async function fixChapterContent(
     >>>>>>>
 
     <<<<<<< SEARCH
-    (The exact original text to be replaced - character match)
+    (COPY the QUOTE from the CORRECTION INSTRUCTION here - character for character!)
     =======
-    (The new, corrected text)
+    (The new, corrected text per the SOLUTION)
     >>>>>>> REPLACE
     
     RULES:
-    - The "SEARCH" block must match original text EXACTLY.
+    - The "SEARCH" block MUST BE the QUOTE from the CORRECTION INSTRUCTION (Copy & Paste).
+    - DO NOT INVENT TEXT for the SEARCH block! Use the QUOTE!
     - The "REPLACE" block is your correction.
     - Change only what is necessary. Surgeon style.
     - If error is not found, return NOTHING.
@@ -3709,7 +3734,15 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
     let combinedContent = chapterContents.join('\n\n\n')
 
-    if (totalWordCount < expectedWordCount) {
+    // EXTENSION PROCESS DISABLED (2026-01-07)
+    // This legacy code was causing duplicate chapters by appending content after the Fazit.
+    // Keeping the code commented out for potential rollback if needed.
+    // To re-enable: uncomment the block below and set ENABLE_EXTENSION = true
+    const ENABLE_EXTENSION = false
+
+    if (ENABLE_EXTENSION && totalWordCount < expectedWordCount) {
+      console.log(`[ThesisGeneration] Extension DISABLED - skipping word count extension`)
+      /*
       const extensionResult = await extendThesisContent({
         thesisData,
         thesisPlan: thesisPlan || '',
@@ -3759,21 +3792,10 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
       }
 
       // Update the structure with the extended content
-      // Since extension is global or iterates chapters, we might lose granularity here.
-      // Extension usually appends or modifies existing text.
-      // For simplicity, we RE-SPLIT or just update the whole thing?
-      // 'extensionResult.content' acts as the master.
-      // Re-splitting is hard and error-prone.
-      // Ideally, the extension should be chapter-aware.
-      // But 'extendThesisContent' works on the full string.
-      // This is a limitation. If extension runs, our granular JSON might be out of sync with 'combinedContent'.
-      // STRATEGY: 
-      // 1. If extension happens, we accept that 'combinedContent' is the truth.
-      // 2. We can try to re-parse 'combinedContent' into the JSON structure.
-      //    We can write a helper `parseMarkdownToStructure(markdown, outline)` to do this.
-      //    This is robust.
-
       thesisStructure = parseContentToStructure(combinedContent, outlineChapters)
+      */
+    } else if (totalWordCount < expectedWordCount) {
+      console.warn(`[ThesisGeneration] Word count below target (${totalWordCount}/${expectedWordCount}) but extension is DISABLED. Continuing with current content.`)
     }
 
     // Attach structure to the result?
@@ -6177,6 +6199,10 @@ function convertUploadedSourcesToSources(uploadedSources: any[]): Source[] {
       chapterNumber: metadata.chapterNumber || null,
       chapterTitle: metadata.chapterTitle || null,
       mandatory: uploaded.mandatory || false, // Preserve mandatory flag from database
+      // CRITICAL: Include page numbers from stored metadata
+      pageStart: metadata.pageStart || null,
+      pageEnd: metadata.pageEnd || null,
+      pages: metadata.pages || (metadata.pageStart && metadata.pageEnd ? `${metadata.pageStart}-${metadata.pageEnd}` : null),
     }
   })
 }
