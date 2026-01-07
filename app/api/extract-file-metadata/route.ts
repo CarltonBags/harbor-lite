@@ -58,9 +58,9 @@ Extrahiere folgende Informationen:
 - DOI (doi) - falls vorhanden
 - ISBN (isbn) - falls vorhanden
 - URL (url) - falls vorhanden
-- Erste Seite (pageStart) - z.B. "123"
-- Letzte Seite (pageEnd) - z.B. "145"
-- Seitenzahlen (pages) - z.B. "123-145" (kann aus pageStart und pageEnd konstruiert werden)
+- Erste Seite (pageStart) - Die physisch gedruckte Seitenzahl. Ignoriere "Article ID" (z.B. e12345).
+- Letzte Seite (pageEnd)
+- Seitenzahlen (pages) - z.B. "123-145"
 - Band/Volume (volume) - falls vorhanden
 - Ausgabe/Issue (issue) - falls vorhanden
 - Abstract (abstract) - falls vorhanden
@@ -136,13 +136,105 @@ Wenn eine Information nicht gefunden werden kann, lasse das Feld weg oder setze 
 
     const metadata = JSON.parse(jsonMatch[0])
 
-    // VALIDATION: Forbid page numbers starting with a letter due to AI hallucinations (e.g. "a006841")
+    // VALIDATION & RETRY: If page numbers start with a letter (Article ID), try to find real printed numbers
     const invalidPagePattern = /^[a-zA-Z]/
 
+    let pageStart = metadata.pageStart
+    let pageEnd = metadata.pageEnd
+
+    const needsRetry = (pageStart && invalidPagePattern.test(pageStart)) ||
+      (pageEnd && invalidPagePattern.test(pageEnd))
+
+    if (needsRetry) {
+      console.log('Detected invalid page numbers (Article ID). Attempting visual scan for printed page numbers...')
+
+      try {
+        const retryPrompt = `Du hast beim ersten Versuch eine Artikel-ID (z.B. "${pageStart || 'e...'}") statt einer Seitenzahl gefunden.
+        
+Deine Aufgabe ist jetzt ausschließlich, die **gedruckten Seitenzahlen** auf den Seiten dieses Dokuments zu finden.
+1. Suche in der Kopf- oder Fußzeile der ersten Seite nach einer Zahl.
+2. Suche in der Kopf- oder Fußzeile der letzten Seite nach einer Zahl.
+3. Wenn keine Zahlen gedruckt sind, zähle die Seiten (Start=1).
+
+Antworte NUR mit diesem JSON:
+{
+  "pageStart": "1",
+  "pageEnd": "25"
+}`
+
+        const retryResponse = await ai.models.generateContent({
+          model: 'gemini-2.5-pro',
+          contents: [
+            {
+              parts: [
+                { fileData: { fileUri: fileData.uri, mimeType: fileData.mimeType } },
+                { text: retryPrompt }
+              ]
+            }
+          ]
+        })
+
+        const retryText = retryResponse.text
+        const retryJsonMatch = retryText?.match(/\{[\s\S]*\}/)
+
+        if (retryJsonMatch) {
+          const retryMetadata = JSON.parse(retryJsonMatch[0])
+
+          // Only adopt if they look valid now (digits)
+          if (retryMetadata.pageStart && !invalidPagePattern.test(retryMetadata.pageStart)) {
+            console.log(`Retry successful. Replaced ${metadata.pageStart} with ${retryMetadata.pageStart}`)
+            metadata.pageStart = retryMetadata.pageStart
+          }
+          if (retryMetadata.pageEnd && !invalidPagePattern.test(retryMetadata.pageEnd)) {
+            console.log(`Retry successful. Replaced ${metadata.pageEnd} with ${retryMetadata.pageEnd}`)
+            metadata.pageEnd = retryMetadata.pageEnd
+          }
+
+          // Reconstruct 'pages' field
+          if (metadata.pageStart && metadata.pageEnd) {
+            metadata.pages = `${metadata.pageStart}-${metadata.pageEnd}`
+          }
+        }
+      } catch (retryError) {
+        console.error('Retry scan failed:', retryError)
+        // Fallback: If retry fails, we just nullify the bad ones below
+      }
+    }
+
+    // FINAL SAFETY CHECK & PDF FALLBACK
+    // If still invalid after retry (or retry failed), use physical PDF page count
+    if ((metadata.pageStart && invalidPagePattern.test(metadata.pageStart)) ||
+      (metadata.pageEnd && invalidPagePattern.test(metadata.pageEnd)) ||
+      (!metadata.pageStart && !metadata.pageEnd)) { // Also fallback if null
+
+      console.warn(`Still have invalid page numbers (or none). Falling back to PDF physical page count.`)
+
+      try {
+        const pdflib = require('pdf-parse')
+        const data = await pdflib(buffer)
+        const totalPages = data.numpages
+
+        console.log(`PDF Parse successful. Total pages: ${totalPages}`)
+
+        metadata.pageStart = "1"
+        metadata.pageEnd = String(totalPages)
+        metadata.pages = `1-${totalPages}`
+
+        console.log(`Fallback applied: Pages set to 1-${totalPages}`)
+
+      } catch (pdfError) {
+        console.error('PDF Parse fallback failed:', pdfError)
+        // If even this fails, we finally succumb to null, but this is unlikely for valid PDFs
+        metadata.pageStart = null
+        metadata.pages = null
+      }
+    }
+
+    // FINAL SAFETY CHECK: If still invalid after retry, kill them
     if (metadata.pageStart && invalidPagePattern.test(metadata.pageStart)) {
-      console.warn(`Blocked invalid pageStart: ${metadata.pageStart}`)
+      console.warn(`Blocked invalid pageStart (Final): ${metadata.pageStart}`)
       metadata.pageStart = null
-      metadata.pages = null // Invalidate combined field too
+      metadata.pages = null
     }
 
     if (metadata.pageEnd && invalidPagePattern.test(metadata.pageEnd)) {

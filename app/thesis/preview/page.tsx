@@ -73,10 +73,15 @@ const ThesisPreviewContent = () => {
   // Quiz State
   const [showQuizModal, setShowQuizModal] = useState(false)
   const [quizQuestions, setQuizQuestions] = useState<any[]>([])
-  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false)
-  const [quizAnswers, setQuizAnswers] = useState<number[]>([])
-  const [showQuizResult, setShowQuizResult] = useState(false)
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [quizScore, setQuizScore] = useState(0)
+  const [showQuizResult, setShowQuizResult] = useState(false)
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false)
+  const [quizAnswers, setQuizAnswers] = useState<number[]>([]) // Store user answers
+
+  const handleOpenQuiz = () => {
+    setShowQuizModal(true)
+  }
 
   // Extract sources from bibliography section
   const extractBibliographySources = (content: string, uploadedSources: any[]): any[] => {
@@ -1402,13 +1407,7 @@ const ThesisPreviewContent = () => {
               <Lightbulb className="w-4 h-4 mr-2" />
               Quiz
             </button>
-            <button
-              onClick={() => handleOpenQuiz()}
-              className="hidden md:flex items-center px-4 py-2 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors border border-purple-200 mr-2"
-            >
-              <Lightbulb className="w-4 h-4 mr-2" />
-              Quiz
-            </button>
+
           </div>
 
           {/* Mobile Menu Toggle Button */}

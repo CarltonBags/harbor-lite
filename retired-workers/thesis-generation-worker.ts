@@ -3901,19 +3901,14 @@ ${availableSourcesList}
 **SEITENZAHLEN - ABSOLUT EXAKT ERFORDERLICH:**
 - JEDE Zitation muss die EXAKTE Seitenzahl enthalten, auf der der zitierte Inhalt tatsächlich steht
 - Die Seitenzahl muss STIMMEN - nicht nur im Toleranzbereich liegen!
-- **KRITISCH:** Verwende die Seitenzahl, die im FileSearchStore-Retrieval-Ergebnis angezeigt wird
-- Der FileSearchStore zeigt dir beim Retrieval die EXAKTE Seitenzahl, auf der der zitierte Text steht
-- Die Seitenzahl muss die TATSÄCHLICHE Seite sein, auf der der zitierte Text/Inhalt im Dokument steht
-- NIEMALS Seitenzahlen erfinden, schätzen oder zufällig wählen!
-- NIEMALS eine Seitenzahl verwenden, nur weil sie im gültigen Bereich liegt - sie muss EXAKT sein!
-- **WARNUNG VOR DEM AUDITOR:**
-  - Ein STRENGER AUDITOR-ALGORITHMUS wird deinen Text sofort überprüfen.
-  - Wenn er **EINE** erfundene Seitenzahl findet (z.B. "S. 1" als Platzhalter), fällt die gesamte Thesis durch!
-  - Es ist BESSER, die Seitenzahl wegzulassen (Autor, Jahr), als eine flasche zu erfinden.
-  - "(Autor, Jahr, S. 1)" -> AUDITOR FAIL (wenn falsch).
-  - "(Autor, Jahr)" -> AUDITOR PASS (akzeptabel).
-- Wenn der FileSearchStore keine Seitenzahl liefert, lasse die Seitenzahl KOMPLETT weg. Erfinde NICHTS!
-- Prüfe IMMER: Ist die verwendete Seitenzahl die EXAKTE Seite, die der FileSearchStore für diesen Inhalt anzeigt?
+- **KRITISCH:** Verwende AUSSCHLIESSLICH die Seitenzahlen, die oben in der Liste "VERFÜGBARE QUELLEN" stehen!
+- Ignoriere alle Seitenzahlen oder IDs (wie "e12345", "a017..."), die du im Textinhalt selbst findest.
+- Die "VERFÜGBARE QUELLEN"-Liste ist deine EINZIGE Wahrheit für korrekte Seitenzahlen.
+- Wenn im Text "Seite e39284" steht, aber in der Quellenliste "Seiten: 10-25", dann nutze eine Seite aus dem Bereich 10-25 (z.B. S. 12).
+- NIEMALS Article-IDs oder kryptische Nummern als Seitenzahlen verwenden!
+- NIEMALS Seitenzahlen erfinden, die nicht zum Bereich in der Quellenliste passen.
+- Wenn die Quellenliste sagt "Seiten: keine Angabe", dann zitiere OHNE Seitenzahl (Autor, Jahr). Erfinde keine!
+- Prüfe IMMER: Liegt meine gewählte Seitenzahl im Bereich, der in der "VERFÜGBARE QUELLEN"-Liste angegeben ist? Wenn nein -> KORRIGIEREN!
 
 
 - Im Text: Verwende "^N" direkt nach dem zitierten Inhalt
