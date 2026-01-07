@@ -3106,7 +3106,7 @@ async function critiqueThesis(
         model: 'gemini-2.5-flash', // Use Flash as requested
         contents: chapterPrompt,
         config: {
-          responseMimeType: 'application/json',
+          // responseMimeType: 'application/json', // DISABLING: Conflict with tools (fileSearch) usage in Gemini
           temperature: 0.1, // High precision
           tools: fileSearchStoreId ? [{
             fileSearch: {
