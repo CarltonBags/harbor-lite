@@ -2994,9 +2994,10 @@ async function critiqueThesis(
       PRÜFUNGSKRITERIEN FÜR DIESES KAPITEL:
       
       0. **LEERE STRUKTUR-KAPITEL (WICHTIG):**
-         - Ist dieses Kapitel nur eine Hauptüberschrift (z.B. "1 Einleitung"), ohne eigenen Text, weil danach direkt Unterkapitel folgen (z.B. "1.1 ...")?
-         - FALLS JA: Das ist KEIN Fehler! Melde "Keine Fehler".
-         - FALLS NEIN (Kaptiel ist leer und sollte Text haben): Melde es als Fehler.
+         - Ist dieses Kapitel nur eine Hauptüberschrift (z.B. "1 Einleitung", "4 Diskussion"), die als Container für Unterkapitel dient?
+         - BEISPIEL: "1 Einleitung" ist leer, aber danach folgt direkt "1.1 ...". -> DAS IST KEIN FEHLER!
+         - REGEL: Wenn ein Kapitel leer ist, aber Unterkapitel hat oder offensichtlich nur der Strukturierung dient -> MELDE "KEINE FEHLER".
+         - Melde "Fehler" NUR wenn es ein inhaltliches Kapitel sein sollte, das versehentlich leer ist (z.B. "2.3 Detailanalyse" ist leer).
 
       1. **FORSCHUNGSFRAGE:** Trägt dieses Kapitel zur Beantwortung bei?
          FRAGE: "${researchQuestion}"
@@ -3044,9 +3045,10 @@ async function critiqueThesis(
       CRITERIA FOR THIS CHAPTER:
 
       0. **EMPTY STRUCTURAL CHAPTERS (IMPORTANT):**
-         - Is this chapter just a main heading (e.g. "1 Introduction") with no text, because subchapters follow immediately?
-         - IF YES: This is NOT an error! Report no errors.
-         - IF NO (Chapter is empty but should have content): Report as error.
+         - Is this chapter just a main heading (e.g. "1 Introduction", "4 Discussion") acting as a container for subchapters?
+         - EXAMPLE: "1 Introduction" is empty, but is immediately followed by "1.1 Background". -> THIS IS NOT AN ERROR!
+         - RULE: If a chapter is empty but has subchapters or is clearly structural -> REPORT "NO ERRORS".
+         - Report "Error" ONLY if it is a content chapter that is accidentally left blank (e.g. "2.3 Detailed Analysis" is empty).
       
       1. **RESEARCH QUESTION:** Does this chapter contribute?
          QUESTION: "${researchQuestion}"
@@ -3239,8 +3241,7 @@ async function fixChapterContent(
   allChapterTitles: string[],
   fileSearchStoreId?: string
 ): Promise<string> {
-  // If the content is too short (e.g. placeholder), don't touch it
-  if (chapterContent.length < 100) return chapterContent
+  // REMOVED: if (chapterContent.length < 100) check to allow fixing empty chapters
 
   const chunkTitle = chapterContent.split('\n')[0].replace(/#/g, '').trim()
 
@@ -3262,7 +3263,10 @@ async function fixChapterContent(
     1. Suche die betroffene Stelle im Text.
     2. Wenn die Anweisung sagt: "LÖSUNG: Ändere X zu Y", dann TUE GENAU DAS.
     3. Wenn die Anweisung sagt: "LÖSUNG: Lösche dieses Kapitel", antworte NUR mit: [DELETE_CHAPTER]
-    4. Nutze das 'fileSearch' Werkzeug NUR wenn du aufgefordert wirst, eine fehlende Seitenzahl zu suchen.
+    4. Wenn das Kapitel LEER ist (nur Überschrift), und die Lösung Inhalt hinzufügen will:
+       - Suche nach der Kapite-Überschrift.
+       - Ersetze sie durch "Überschrift\n\n[Neuer Inhalt aus Lösung...]"
+    5. Nutze das 'fileSearch' Werkzeug NUR wenn du aufgefordert wirst, eine fehlende Seitenzahl zu suchen.
     
     FORMAT (SEARCH/REPLACE):
     Gib NUR die Änderungen im folgenden Format zurück (kein Volltext):
@@ -3302,7 +3306,10 @@ async function fixChapterContent(
     1. Locate the affected text.
     2. If instruction says "SOLUTION: Change X to Y", DO EXACTLY THAT.
     3. If instruction says "SOLUTION: Delete this chapter", reply ONLY with: [DELETE_CHAPTER]
-    4. Use 'fileSearch' tool ONLY if asked to find a missing page number.
+    4. If Chapter is EMPTY (only title) and solution wants to add content:
+       - Search for the Chapter Title line.
+       - Replace it with "Title\n\n[New Content from solution...]"
+    5. Use 'fileSearch' tool ONLY if asked to find a missing page number.
     
     FORMAT (SEARCH/REPLACE):
     Return ONLY changes in this format (no full text):
@@ -6571,7 +6578,7 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
     // Step 7.1 & 7.2: Iterative Critique & Repair Loop
     console.log('\n[PROCESS] ========== Step 7.1 & 7.2: Iterative Critique & Repair Loop ==========')
 
-    const MAX_REPAIR_ITERATIONS = 5
+    const MAX_REPAIR_ITERATIONS = 2
     let currentIteration = 0
     let critiqueReport = ''
     const critiqueHistory: any[] = []
@@ -6743,8 +6750,32 @@ async function processThesisGeneration(thesisId: string, thesisData: ThesisData)
 
                 if (locNum) {
                   for (let idx = 0; idx < titles.length; idx++) {
-                    // Check if title STARTS with the number (e.g. "1.1 Title") or IS the number
-                    if (titles[idx].startsWith(locNum + ' ') || titles[idx] === locNum) return idx
+                    const cleanTitle = titles[idx].replace(/#/g, '').trim()
+
+                    // Match Exact Number (e.g. "1.1")
+                    if (cleanTitle.startsWith(locNum + ' ') || cleanTitle === locNum) return idx
+
+                    // Match Sub-Sections to Parent Chapter (e.g. "3.1.1" maps to "3 Title...")
+                    // If the locNum starts with the chapter number (e.g. loc="3.1.1", chapter="3")
+                    const chapterNum = cleanTitle.split(' ')[0] // Get "1", "2.1", "3" etc.
+                    if (chapterNum && locNum.startsWith(chapterNum + '.')) {
+                      // Only strict map if it's the specific parent? 
+                      // Actually, we usually want to search IN that chapter.
+                      // But if we have multiple levels, e.g. "3" and "3.1", mapping "3.1.1" to "3.1" is better than "3".
+                      // So we'll skip this broad generic match here and rely on fuzzy/quote match,
+                      // OR we implement a "best fit" strategy.
+                      // Let's implement a 'contains' strategy:
+                    }
+
+                    // BETTER STRATEGY:
+                    // If location is "3.1.1", and title is "3 Analysis", does that map?
+                    // Typically our chunks are the MAIN chapters (H1/H2).
+                    // So "3.1.1" is INSIDE "3 Analysis" or "3.1 Subsection".
+                    // If titles[idx] is "3 Analysis", its number is "3".
+                    // "3.1.1".startsWith("3.") is true.
+                    if (locNum.startsWith(chapterNum + '.')) {
+                      return idx
+                    }
                   }
                 }
 
