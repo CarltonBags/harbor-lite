@@ -171,6 +171,48 @@ function updateNodeContent(structure: ThesisStructure, nodeId: string, newConten
 }
 
 /**
+ * Flattens the outline hierarchy for subchapter-level generation.
+ * For long theses (>8000 words), we generate each subchapter separately.
+ * Returns an array of OutlineChapterInfo where each item is a "leaf" to generate.
+ */
+function flattenToSubchapters(chapters: OutlineChapterInfo[]): OutlineChapterInfo[] {
+  const flattened: OutlineChapterInfo[] = []
+
+  for (const chapter of chapters) {
+    // Always include the main chapter (for intro paragraph)
+    flattened.push({
+      number: chapter.number,
+      title: chapter.title,
+      sections: [] // Mark as no sections - we'll generate them separately
+    })
+
+    // Add each section as a separate "chapter" to generate
+    if (chapter.sections && chapter.sections.length > 0) {
+      for (const section of chapter.sections) {
+        flattened.push({
+          number: section.number,
+          title: section.title,
+          sections: [] // Flatten subsections too if needed
+        })
+
+        // Add subsections if they exist
+        if (section.subsections && section.subsections.length > 0) {
+          for (const subsection of section.subsections) {
+            flattened.push({
+              number: subsection.number,
+              title: subsection.title,
+              sections: []
+            })
+          }
+        }
+      }
+    }
+  }
+
+  return flattened
+}
+
+/**
  * Finds a node by ID.
  */
 function findNodeById(structure: ThesisStructure, id: string): ThesisNode | null {
@@ -3699,6 +3741,14 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     })
 
     console.log(`[ThesisGeneration] Sanitized outline: ${sortedChapters.length} unique chapters (was ${outlineChapters.length})`)
+
+    // SUBCHAPTER GENERATION: For long theses (>8000 words), flatten to subchapter level
+    const useSubchapterGeneration = targetWordCount > 8000
+    if (useSubchapterGeneration) {
+      console.log(`[ThesisGeneration] Using SUBCHAPTER-level generation (thesis > 8000 words)`)
+      sortedChapters = flattenToSubchapters(sortedChapters)
+      console.log(`[ThesisGeneration] Flattened to ${sortedChapters.length} generation units`)
+    }
 
     for (let i = 0; i < sortedChapters.length; i++) {
       const chapter = sortedChapters[i]
