@@ -152,6 +152,16 @@ function generateLaTeXDocument(
   {\\normalfont\\fontsize{12}{14.4}\\bfseries}
   {}{0em}{}
 
+% TOC depth: show all levels (section=1, subsection=2, subsubsection=3, paragraph=4)
+\\setcounter{tocdepth}{4}
+
+% TOC indentation for subchapters
+\\usepackage{tocloft}
+\\cftsetindents{section}{0em}{2.5em}
+\\cftsetindents{subsection}{2.5em}{3.5em}
+\\cftsetindents{subsubsection}{6em}{4.5em}
+\\cftsetindents{paragraph}{9.5em}{5.5em}
+
 \\begin{document}
 
 `
@@ -303,6 +313,22 @@ function generateLaTeXDocument(
         latex += sanitized + '\n\n\\vspace{0.5em}\n\n'
       }
     }
+  } else if (thesis.uploaded_sources && thesis.uploaded_sources.length > 0) {
+    // Generate bibliography from uploaded_sources
+    console.log('[ExportLaTeX] Generating bibliography from uploaded_sources...')
+    latex += `\\setlength{\\parskip}{1em}\n\n`
+
+    // Sort sources alphabetically by first author's last name
+    const sortedSources = [...thesis.uploaded_sources].sort((a: any, b: any) => {
+      const authorA = getFirstAuthorLastName(a)
+      const authorB = getFirstAuthorLastName(b)
+      return authorA.localeCompare(authorB, 'de')
+    })
+
+    for (const source of sortedSources) {
+      const entry = formatBibliographyEntryLaTeX(source, citationStyle)
+      latex += entry + '\n\n\\vspace{0.5em}\n\n'
+    }
   } else {
     latex += `% Bibliography entries will be added here
 % You can use BibTeX or manually add entries
@@ -421,7 +447,6 @@ function convertMarkdownToLaTeX(
         listIsOrdered = false
       }
 
-      const hashCount = headingMatch[1].length
       const headingText = headingMatch[2].trim()
 
       // Skip empty headings
@@ -434,22 +459,40 @@ function convertMarkdownToLaTeX(
         continue
       }
 
-      // Map heading levels to LaTeX commands
-      // Use unnumbered versions (*) since content already has numbers (e.g., "1. Introduction")
-      if (hashCount === 1) {
-        // H1: Main chapter - add page break
+      // IMPORTANT: Determine level from NUMBERING (dots) not hash count
+      // This ensures "# 4.1 Title" is still treated as subsection (one dot = level 1)
+      const numberMatch = headingText.match(/^(\d+(?:\.\d+)*\.?)\s+/)
+      let effectiveLevel = 0 // 0=section, 1=subsection, 2=subsubsection
+
+      if (numberMatch) {
+        const number = numberMatch[1].replace(/\.$/, '') // Remove trailing dot
+        const dotCount = (number.match(/\./g) || []).length
+        effectiveLevel = dotCount // 0 dots = section, 1 dot = subsection, 2 dots = subsubsection
+      } else {
+        // No numbering, fall back to hash count
+        effectiveLevel = headingMatch[1].length - 1
+      }
+
+      // Map effective level to LaTeX commands
+      if (effectiveLevel === 0) {
+        // Main chapter - add page break
         latex += '\\newpage\n'
         latex += `\\section*{${escapeLaTeX(headingText)}}\n`
         latex += `\\addcontentsline{toc}{section}{${escapeLaTeX(headingText)}}\n\n`
-      } else if (hashCount === 2) {
-        // H2: Section
+      } else if (effectiveLevel === 1) {
+        // Subsection (e.g., 1.1, 4.1)
         latex += `\\subsection*{${escapeLaTeX(headingText)}}\n`
         latex += `\\addcontentsline{toc}{subsection}{${escapeLaTeX(headingText)}}\n\n`
-      } else if (hashCount === 3) {
-        // H3: Subsection
-        latex += `\\subsubsection*{${escapeLaTeX(headingText)}}\n\n`
+      } else if (effectiveLevel === 2) {
+        // Subsubsection (e.g., 1.1.1, 3.1.2)
+        latex += `\\subsubsection*{${escapeLaTeX(headingText)}}\n`
+        latex += `\\addcontentsline{toc}{subsubsection}{${escapeLaTeX(headingText)}}\n\n`
+      } else if (effectiveLevel === 3) {
+        // Paragraph (e.g., 1.1.1.1, 4.3.2.1)
+        latex += `\\paragraph{${escapeLaTeX(headingText)}}\n`
+        latex += `\\addcontentsline{toc}{paragraph}{${escapeLaTeX(headingText)}}\n\n`
       } else {
-        // H4-H6: Use paragraph style (smaller)
+        // Deeper levels (1.1.1.1) - use paragraph style
         latex += `\\paragraph{${escapeLaTeX(headingText)}}\n\n`
       }
       continue
@@ -557,7 +600,8 @@ function convertMarkdownToLaTeX(
           latex += `\\subsection*{${escapeLaTeX(headingText)}}\n`
           latex += `\\addcontentsline{toc}{subsection}{${escapeLaTeX(headingText)}}\n\n`
         } else {
-          latex += `\\subsubsection*{${escapeLaTeX(headingText)}}\n\n`
+          latex += `\\subsubsection*{${escapeLaTeX(headingText)}}\n`
+          latex += `\\addcontentsline{toc}{subsubsection}{${escapeLaTeX(headingText)}}\n\n`
         }
 
         // If there was run-in text, add it as a paragraph
@@ -1294,3 +1338,86 @@ function escapeLaTeX(text: string): string {
     .replace(/[\uD800-\uDFFF]/g, '')
 }
 
+// Helper function to get first author's last name for sorting
+function getFirstAuthorLastName(source: any): string {
+  const authors = source.metadata?.authors || source.authors || []
+  if (Array.isArray(authors) && authors.length > 0) {
+    const firstAuthor = String(authors[0])
+    // Extract last name (before comma or first word)
+    return firstAuthor.split(/[,]/)[0].trim().toLowerCase()
+  }
+  if (typeof authors === 'string') {
+    return authors.split(/[,]/)[0].trim().toLowerCase()
+  }
+  return 'zzz' // Unknown authors go to end
+}
+
+// Format a bibliography entry for LaTeX
+function formatBibliographyEntryLaTeX(source: any, citationStyle: string): string {
+  const title = escapeLaTeX(source.title || source.metadata?.title || 'Ohne Titel')
+  const authors = formatAuthorsLaTeX(source.metadata?.authors || source.authors || [])
+  const year = source.metadata?.year || source.year || 'o.J.'
+  const journal = source.metadata?.venue || source.journal || ''
+  const doi = source.doi || ''
+  const pages = source.metadata?.pages || ''
+
+  switch (citationStyle) {
+    case 'deutsche-zitierweise':
+      // German style: Author(s): Title. In: Journal (Year), S. Pages.
+      let deEntry = `${authors}: ${title}.`
+      if (journal) deEntry += ` In: \\textit{${escapeLaTeX(journal)}}`
+      deEntry += ` (${year})`
+      if (pages) deEntry += `, S. ${escapeLaTeX(pages)}`
+      deEntry += '.'
+      if (doi) deEntry += ` DOI: ${escapeLaTeX(doi)}`
+      return deEntry
+
+    case 'harvard':
+      // Harvard: Author(s) (Year) Title. Journal, pages.
+      let harvardEntry = `${authors} (${year}) ${title}.`
+      if (journal) harvardEntry += ` \\textit{${escapeLaTeX(journal)}}`
+      if (pages) harvardEntry += `, ${escapeLaTeX(pages)}`
+      harvardEntry += '.'
+      if (doi) harvardEntry += ` DOI: ${escapeLaTeX(doi)}`
+      return harvardEntry
+
+    case 'mla':
+      // MLA: Author(s). "Title." Journal, Year, pages.
+      let mlaEntry = `${authors}. ''${title}.''`
+      if (journal) mlaEntry += ` \\textit{${escapeLaTeX(journal)}},`
+      mlaEntry += ` ${year}`
+      if (pages) mlaEntry += `, ${escapeLaTeX(pages)}`
+      mlaEntry += '.'
+      if (doi) mlaEntry += ` DOI: ${escapeLaTeX(doi)}`
+      return mlaEntry
+
+    case 'apa':
+    default:
+      // APA: Author(s) (Year). Title. Journal, pages. DOI
+      let apaEntry = `${authors} (${year}). ${title}.`
+      if (journal) apaEntry += ` \\textit{${escapeLaTeX(journal)}}`
+      if (pages) apaEntry += `, ${escapeLaTeX(pages)}`
+      apaEntry += '.'
+      if (doi) apaEntry += ` https://doi.org/${escapeLaTeX(doi)}`
+      return apaEntry
+  }
+}
+
+// Format authors for LaTeX bibliography
+function formatAuthorsLaTeX(authors: any): string {
+  if (!authors) return 'Unbekannt'
+
+  if (typeof authors === 'string') {
+    return escapeLaTeX(authors)
+  }
+
+  if (Array.isArray(authors)) {
+    if (authors.length === 0) return 'Unbekannt'
+    if (authors.length === 1) return escapeLaTeX(String(authors[0]))
+    if (authors.length === 2) return `${escapeLaTeX(String(authors[0]))} \\& ${escapeLaTeX(String(authors[1]))}`
+    // 3+ authors: First author et al.
+    return `${escapeLaTeX(String(authors[0]))} et al.`
+  }
+
+  return 'Unbekannt'
+}

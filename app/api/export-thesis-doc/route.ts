@@ -49,7 +49,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Thesis content is empty' }, { status: 400 })
     }
 
-    // 2. Prepare Pandoc Input
+    // 2. Generate Bibliography from uploaded_sources if not already present
+    const hasExistingBibliography = /^#{1,2}\s*(Literaturverzeichnis|Bibliography|References)/mi.test(content)
+
+    if (!hasExistingBibliography && thesis.uploaded_sources && thesis.uploaded_sources.length > 0) {
+      console.log('[ExportDOCX] Generating bibliography from uploaded_sources...')
+      const bibliography = generateBibliography(thesis.uploaded_sources, thesis.citation_style || 'apa')
+      content = content + '\n\n' + bibliography
+      console.log(`[ExportDOCX] Added bibliography with ${thesis.uploaded_sources.length} sources`)
+    }
+
+    // 3. Prepare Pandoc Input
     // Add YAML frontmatter
     const title = thesis.title || thesis.topic || 'Thesis'
     const date = new Date().toLocaleDateString('de-DE')
@@ -242,6 +252,63 @@ async function createReferenceDocument(path: string) {
             spacing: { line: 240 }, // Single spacing
           },
         },
+        // TOC Styles - prevent weird formatting in table of contents
+        {
+          id: 'TOC1',
+          name: 'toc 1',
+          basedOn: 'Normal',
+          run: {
+            font: 'Times New Roman',
+            size: 24, // 12pt
+            bold: true,
+          },
+          paragraph: {
+            spacing: { before: 120, after: 60 },
+          },
+        },
+        {
+          id: 'TOC2',
+          name: 'toc 2',
+          basedOn: 'Normal',
+          run: {
+            font: 'Times New Roman',
+            size: 24, // 12pt
+            bold: false,
+          },
+          paragraph: {
+            spacing: { before: 60, after: 30 },
+            indent: { left: 240 }, // Indent sub-entries
+          },
+        },
+        {
+          id: 'TOC3',
+          name: 'toc 3',
+          basedOn: 'Normal',
+          run: {
+            font: 'Times New Roman',
+            size: 24, // 12pt
+            bold: false,
+          },
+          paragraph: {
+            spacing: { before: 30, after: 30 },
+            indent: { left: 480 }, // More indent for sub-sub
+          },
+        },
+        // First Paragraph style - no extra spacing after heading
+        {
+          id: 'FirstParagraph',
+          name: 'First Paragraph',
+          basedOn: 'Normal',
+          run: {
+            font: 'Times New Roman',
+            size: 24,
+            bold: false,
+          },
+          paragraph: {
+            spacing: { line: 360 },
+            alignment: AlignmentType.JUSTIFIED,
+          },
+        },
       ],
     },
     sections: [{ children: [new Paragraph("Reference")] }],
@@ -249,4 +316,105 @@ async function createReferenceDocument(path: string) {
 
   const buffer = await Packer.toBuffer(doc)
   await writeFile(path, buffer)
+}
+
+// Generate bibliography markdown from uploaded sources
+function generateBibliography(sources: any[], citationStyle: string): string {
+  if (!sources || sources.length === 0) return ''
+
+  // Sort sources alphabetically by first author's last name
+  const sortedSources = [...sources].sort((a, b) => {
+    const authorA = getFirstAuthorLastName(a)
+    const authorB = getFirstAuthorLastName(b)
+    return authorA.localeCompare(authorB, 'de')
+  })
+
+  const entries = sortedSources.map(source => formatBibliographyEntry(source, citationStyle))
+
+  // Choose heading based on language (default German)
+  const heading = '# Literaturverzeichnis\n\n'
+
+  // Join with blank line between each source for visual separation
+  return heading + entries.join('\n\n\n')
+}
+
+function getFirstAuthorLastName(source: any): string {
+  const authors = source.metadata?.authors || source.authors || []
+  if (Array.isArray(authors) && authors.length > 0) {
+    const firstAuthor = String(authors[0])
+    // Extract last name (before comma or first word)
+    return firstAuthor.split(/[,]/)[0].trim().toLowerCase()
+  }
+  if (typeof authors === 'string') {
+    return authors.split(/[,]/)[0].trim().toLowerCase()
+  }
+  return 'zzz' // Unknown authors go to end
+}
+
+function formatBibliographyEntry(source: any, citationStyle: string): string {
+  const title = source.title || source.metadata?.title || 'Ohne Titel'
+  const authors = formatAuthors(source.metadata?.authors || source.authors || [])
+  const year = source.metadata?.year || source.year || 'o.J.'
+  const journal = source.metadata?.venue || source.journal || ''
+  const doi = source.doi || ''
+  const pages = source.metadata?.pages || ''
+
+  switch (citationStyle) {
+    case 'deutsche-zitierweise':
+      // German style: Author(s): Title. In: Journal (Year), S. Pages.
+      let deEntry = `${authors}: ${title}.`
+      if (journal) deEntry += ` In: *${journal}*`
+      deEntry += ` (${year})`
+      if (pages) deEntry += `, S. ${pages}`
+      deEntry += '.'
+      if (doi) deEntry += ` DOI: ${doi}`
+      return deEntry
+
+    case 'harvard':
+      // Harvard: Author(s) (Year) Title. Journal, pages.
+      let harvardEntry = `${authors} (${year}) ${title}.`
+      if (journal) harvardEntry += ` *${journal}*`
+      if (pages) harvardEntry += `, ${pages}`
+      harvardEntry += '.'
+      if (doi) harvardEntry += ` DOI: ${doi}`
+      return harvardEntry
+
+    case 'mla':
+      // MLA: Author(s). "Title." Journal, Year, pages.
+      let mlaEntry = `${authors}. "${title}."`
+      if (journal) mlaEntry += ` *${journal}*,`
+      mlaEntry += ` ${year}`
+      if (pages) mlaEntry += `, ${pages}`
+      mlaEntry += '.'
+      if (doi) mlaEntry += ` DOI: ${doi}`
+      return mlaEntry
+
+    case 'apa':
+    default:
+      // APA: Author(s) (Year). Title. Journal, pages. DOI
+      let apaEntry = `${authors} (${year}). ${title}.`
+      if (journal) apaEntry += ` *${journal}*`
+      if (pages) apaEntry += `, ${pages}`
+      apaEntry += '.'
+      if (doi) apaEntry += ` https://doi.org/${doi}`
+      return apaEntry
+  }
+}
+
+function formatAuthors(authors: any): string {
+  if (!authors) return 'Unbekannt'
+
+  if (typeof authors === 'string') {
+    return authors
+  }
+
+  if (Array.isArray(authors)) {
+    if (authors.length === 0) return 'Unbekannt'
+    if (authors.length === 1) return String(authors[0])
+    if (authors.length === 2) return `${authors[0]} & ${authors[1]}`
+    // 3+ authors: First author et al.
+    return `${authors[0]} et al.`
+  }
+
+  return 'Unbekannt'
 }

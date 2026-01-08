@@ -2528,11 +2528,9 @@ ${availableSourcesList}
   - NEVER cite works not in your provided source list.
   - WRONG: Citing (Freud, 1920) if you only have a book by (Miller, 2023) mentioning Freud.
   - CORRECT: "(Freud, 1920, cited in Miller, 2023, p. 45)" or just (Miller, 2023, p. 45).
-  - CORRECT: "(Freud, 1920, cited in Miller, 2023, p. 45)" or just (Miller, 2023, p. 45).
   - Use ONLY the provided sources.
 - **RULE 6: ONLY EXISTING PAGE NUMBERS**
   - If source list says "pp. 1-10", you MUST NOT cite "p. 1585"!
-  - Article numbers (e1293) are NOT page numbers.
   - Article numbers (e1293) are NOT page numbers.
   - If unsure, stick to (Author, Year) without page. DO NOT INVENT PAGE NUMBERS. DO NOT USE "p. 1".
 
@@ -3122,17 +3120,16 @@ async function critiqueThesis(
       (Leave array empty [] if no errors.)`
     }
 
-    // Call Model (Gemini 2.5 Flash)
+    // Call Model (Gemini 2.5 Pro)
     try {
       // Small delay to avoid rate limits
       if (i > 0) await new Promise(r => setTimeout(r, 500))
 
       const response = await retryApiCall(() => ai.models.generateContent({
-        model: 'gemini-2.5-pro', // Use Pro as requested
+        model: 'gemini-3-pro-preview', // Using Gemini 3 for better critique accuracy
         contents: chapterPrompt,
         config: {
-          // responseMimeType: 'application/json', // DISABLING: Conflict with tools (fileSearch) usage in Gemini
-          temperature: 0.1, // High precision
+          temperature: 0.1,
           tools: fileSearchStoreId ? [{
             fileSearch: {
               fileSearchStoreNames: [fileSearchStoreId],
@@ -3430,7 +3427,7 @@ async function fixChapterContent(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const response = await retryApiCall(() => ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-3-pro-preview', // Using Gemini 3 for better repair precision
         contents: prompt,
         config: {
           maxOutputTokens: 50000,
@@ -3440,7 +3437,7 @@ async function fixChapterContent(
               fileSearchStoreNames: [fileSearchStoreId],
             },
           }] : undefined,
-        }, // Increase temp slightly on retry
+        },
       }), 'Fix Chapter Content')
 
       const modifiedContent = response.text ? response.text.trim() : ''

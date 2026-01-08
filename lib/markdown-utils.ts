@@ -12,7 +12,19 @@ export function convertToCleanMarkdown(content: string): string {
         const trimmedLine = line.trim()
 
         if (!trimmedLine) {
+            // Skip excessive blank lines (more than 2 in a row)
+            const lastLines = processedLines.slice(-2)
+            if (lastLines.every(l => l === '')) {
+                continue // Skip this blank line
+            }
             processedLines.push('')
+            continue
+        }
+
+        // SAFETY: Skip orphan # lines (e.g., "#", "##", "###" with no text)
+        // These are malformed headings that will cause empty TOC entries
+        if (/^#{1,6}\s*$/.test(trimmedLine)) {
+            console.warn(`[MarkdownUtils] Skipping orphan heading: "${trimmedLine}"`)
             continue
         }
 
@@ -215,5 +227,22 @@ export function convertToCleanMarkdown(content: string): string {
         processedLines.push(line)
     }
 
-    return processedLines.join('\n')
+    // FINAL CLEANUP: Ensure proper markdown structure for Pandoc
+    // This post-processing ensures:
+    // 1. Every heading is followed by exactly one blank line
+    // 2. Remove any orphan # that slipped through
+    // 3. Paragraphs are properly separated
+    let result = processedLines.join('\n')
+
+    // Ensure heading followed by blank line (Pandoc requirement)
+    // Match: # Heading\nParagraph -> # Heading\n\nParagraph
+    result = result.replace(/^(#{1,6}\s+[^\n]+)\n([^#\n])/gm, '$1\n\n$2')
+
+    // Remove orphan # lines that might still exist
+    result = result.replace(/^#{1,6}\s*$/gm, '')
+
+    // Collapse multiple blank lines into max 2
+    result = result.replace(/\n{4,}/g, '\n\n\n')
+
+    return result
 }

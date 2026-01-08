@@ -123,7 +123,6 @@ export async function POST(request: Request) {
       }
 
       console.log('[EditThesis] Prompt validation passed')
-      console.log('[EditThesis] Prompt validation passed')
     } catch (error) {
       console.error('[EditThesis] Prompt validation error (Fail-Closed):', error)
       return NextResponse.json(
@@ -279,7 +278,6 @@ ${contextAfter}
    - STRICTLY maintains and correctly applies the ${citationStyleLabel} citation style
    - Fits seamlessly between the context before and after
    - **STRICTLY FORBIDDEN:** Rhetorical questions followed immediately by fragment answers (e.g., "The result? Failure.", "Your infection? Unnoticed."). Always use full, academic sentences.
-   - **STRICTLY FORBIDDEN:** Rhetorical questions followed immediately by fragment answers (e.g., "The result? Failure.", "Your infection? Unnoticed."). Always use full, academic sentences.
 
 **CRITICAL - Citation Style (${citationStyleLabel}):**
 ${citationStyle === 'deutsche-zitierweise' ? `
@@ -364,9 +362,22 @@ ${citationStyle === 'deutsche-zitierweise' ? `
 
     // Replace the selected text with the new text in the full content
     const oldText = selectedText || ''
-    const newContent = selectedIndex >= 0
-      ? currentContent.substring(0, selectedIndex) + newText + currentContent.substring(selectedIndex + oldText.length)
-      : currentContent // Fallback if selected text not found
+
+    // Validation: Ensure selected text was found in content
+    if (selectedIndex === -1) {
+      console.error(`[EditThesis] Selected text not found in content. First 50 chars of selection: "${oldText.substring(0, 50)}..."`)
+      return NextResponse.json(
+        {
+          error: 'Text not found',
+          message: language === 'german'
+            ? 'Der markierte Text konnte im Dokument nicht gefunden werden. Bitte markieren Sie den Text erneut.'
+            : 'The selected text could not be found in the document. Please select the text again.'
+        },
+        { status: 400 }
+      )
+    }
+
+    const newContent = currentContent.substring(0, selectedIndex) + newText + currentContent.substring(selectedIndex + oldText.length)
 
     console.log(`[EditThesis] Successfully edited text segment`)
     console.log(`[EditThesis] Old text: ${oldText.length} chars, New text: ${newText.length} chars`)
