@@ -2777,7 +2777,19 @@ ${startInstruction}`
     if (attempts === 1 || !chapterContent) {
       chapterContent = newText
     } else {
-      chapterContent += `\n\n${newText}`
+      // CRITICAL: Strip any headers from extension to prevent duplicates
+      // AI often regenerates section headers when extending, causing duplicates like "## 1.1 Title" appearing twice
+      let cleanExtension = newText
+        .replace(/^#{1,6}\s+.*?\n/gm, '') // Remove markdown headers
+        .replace(/^\*\*\d+(?:\.\d+)*\.?\s+[^*]+\*\*\s*\n/gm, '') // Remove bold number headers
+        .trim()
+
+      if (cleanExtension.length > 0) {
+        chapterContent += `\n\n${cleanExtension}`
+        console.log(`[ThesisGeneration] Appended ${cleanExtension.split(/\s+/).length} words (stripped duplicate headers)`)
+      } else {
+        console.warn(`[ThesisGeneration] Extension was all headers, skipping append`)
+      }
     }
 
     const updatedWords = chapterContent.split(/\s+/).length
@@ -3047,6 +3059,12 @@ async function critiqueThesis(
          - Keine rhetorischen Fragen.
          - Keine Umgangssprache ("halt", "quasi").
 
+       4. **SATZINTEGRITÄT (WICHTIG!):**
+          - Prüfe auf ABGESCHNITTENE oder UNVOLLSTÄNDIGE Sätze.
+          - MELDE FEHLER wenn ein Satz mit "..." gefolgt von Kleinbuchstaben beginnt (z.B. "...tigmatisierten Gruppe").
+          - MELDE FEHLER wenn ein Satz mitten im Wort abgebrochen ist.
+          - LÖSUNG: "Schreibe den vollständigen Satz von Anfang an neu."
+
       KAPITEL TEXT:
       ${chapterContent}
 
@@ -3055,12 +3073,15 @@ async function critiqueThesis(
         "errors": [
           {
             "location": "${chapterTitle}",
-            "quote": "Der fehlerhafte Textauschnitt",
+            "quote": "MINDESTENS 30 ZEICHEN! Der EXAKTE fehlerhafte Satz oder Satzteil. NICHT nur die Zitation, sondern den GESAMTEN Satz mit der Zitation.",
             "error": "Beschreibung des Fehlers",
             "solution": "KONKRETE und PRÄZISE Lösungsanweisung (z.B. 'Ändere Jahr auf 2015')"
           }
         ]
       }
+      WICHTIG: Das 'quote' Feld MUSS einen EINDEUTIGEN, KOPIERBAREN Textausschnitt (min 30 Zeichen) enthalten!
+      - FALSCH: "(Sharp & Hahn, 2011)" (zu kurz, kommt mehrfach vor)
+      - RICHTIG: "Die Entstehung des Virus wird als zoonotischer Ursprung beschrieben (Sharp & Hahn, 2011)."
       (Lass das Array leer [], wenn keine Fehler gefunden wurden.)`
 
         : `You are an academic reviewer. Critique this CHAPTER for errors.
@@ -3103,20 +3124,29 @@ async function critiqueThesis(
          - No rhetorical questions.
          - Academic tone.
 
+       4. **SENTENCE INTEGRITY (IMPORTANT!):**
+          - Check for TRUNCATED or INCOMPLETE sentences.
+          - REPORT ERROR if sentence starts with "..." followed by lowercase (e.g. "...tigmatisierten Gruppe").
+          - REPORT ERROR if sentence is cut mid-word.
+          - SOLUTION: "Rewrite the complete sentence from the beginning."
+
       CHAPTER TEXT:
       ${chapterContent}
 
-      OUTPUT ONLY AS JSON OBJECT (NO Text before/after!)::
+      OUTPUT ONLY AS JSON OBJECT (NO Text before/after!):
       {
         "errors": [
           {
             "location": "${chapterTitle}",
-            "quote": "The problematic text",
+            "quote": "AT LEAST 30 CHARS! The EXACT problematic sentence including context. NOT just the citation, but the ENTIRE sentence containing it.",
             "error": "Error description",
             "solution": "CONCRETE and PRECISE solution instruction"
           }
         ]
       }
+      IMPORTANT: The 'quote' field MUST contain a UNIQUE, COPY-PASTE-READY excerpt (min 30 chars)!
+      - WRONG: "(Sharp & Hahn, 2011)" (too short, appears multiple times)
+      - RIGHT: "The virus origins are described as zoonotic in nature (Sharp & Hahn, 2011)."
       (Leave array empty [] if no errors.)`
     }
 
@@ -6951,23 +6981,35 @@ async function processThesisGeneration(
 
                 // STRATEGY 0 (NEW): Quote-based search FIRST if quote is available
                 // This is the most reliable way to find the actual content
-                if (quote && quote.length > 20) {
-                  const cleanQuote = quote.replace(/\s+/g, ' ').trim().substring(0, 60)
+                if (quote && quote.length > 10) {
+                  // Strip ellipsis that critique agent adds
+                  let cleanQuote = quote
+                    .replace(/^\.{2,}/g, '')
+                    .replace(/\.{2,}$/g, '')
+                    .replace(/^…/g, '')
+                    .replace(/…$/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+
+                  const searchStr = cleanQuote.substring(0, Math.min(60, cleanQuote.length))
+
                   for (let idx = 0; idx < allChapters.length; idx++) {
                     // Normalize whitespace in chapter content for matching
                     const normalizedChapter = allChapters[idx].replace(/\s+/g, ' ')
-                    if (normalizedChapter.includes(cleanQuote)) {
+                    if (normalizedChapter.includes(searchStr)) {
                       console.log(`[Repair] ✓ Found quote in chapter ${idx + 1} (${titles[idx]?.substring(0, 40)}...)`)
                       return idx
                     }
                   }
                   // Try shorter substring if full quote not found
-                  const shortQuote = cleanQuote.substring(0, 30)
-                  for (let idx = 0; idx < allChapters.length; idx++) {
-                    const normalizedChapter = allChapters[idx].replace(/\s+/g, ' ')
-                    if (normalizedChapter.includes(shortQuote)) {
-                      console.log(`[Repair] ✓ Found short quote in chapter ${idx + 1} (${titles[idx]?.substring(0, 40)}...)`)
-                      return idx
+                  if (searchStr.length > 15) {
+                    const shortQuote = searchStr.substring(0, 15)
+                    for (let idx = 0; idx < allChapters.length; idx++) {
+                      const normalizedChapter = allChapters[idx].replace(/\s+/g, ' ')
+                      if (normalizedChapter.includes(shortQuote)) {
+                        console.log(`[Repair] ✓ Found short quote in chapter ${idx + 1} (${titles[idx]?.substring(0, 40)}...)`)
+                        return idx
+                      }
                     }
                   }
                 }
