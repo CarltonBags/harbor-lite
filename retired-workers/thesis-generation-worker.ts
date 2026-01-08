@@ -3222,10 +3222,19 @@ function applySearchReplace(originalText: string, patchText: string): string {
 
   while ((match = regex.exec(patchText)) !== null) {
     const [fullMatch, searchBlock, replaceBlock] = match
-    const cleanSearch = searchBlock.trim()
+    let cleanSearch = searchBlock.trim()
     const cleanReplace = replaceBlock.trim()
 
     if (!cleanSearch) continue
+
+    // NORMALIZE: Strip leading/trailing ellipsis that critique agent adds
+    // The critique agent often quotes like "...text here..." but actual content has no dots
+    cleanSearch = cleanSearch
+      .replace(/^\.{2,}/g, '')  // Remove leading dots (.. or ...)
+      .replace(/\.{2,}$/g, '')  // Remove trailing dots
+      .replace(/^…/g, '')       // Remove Unicode ellipsis at start
+      .replace(/…$/g, '')       // Remove Unicode ellipsis at end
+      .trim()
 
     // DEBUG: Log what we're trying to find
     console.log(`[DiffPatches] Searching for: "${cleanSearch.substring(0, 60)}..."`)
