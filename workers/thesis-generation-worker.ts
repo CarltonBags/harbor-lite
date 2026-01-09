@@ -371,11 +371,18 @@ async function queryOpenAlex(query: string, language: 'german' | 'english'): Pro
 
   try {
     const startTime = Date.now()
-    const response = await retryApiCall(
+    let response = await retryApiCall(
       () => fetch(url),
       `Query OpenAlex: ${query}`
     )
     const duration = Date.now() - startTime
+
+    // Retry once after 5 seconds if we get a 503 (Service Unavailable)
+    if (response.status === 503) {
+      console.warn(`[OpenAlex] 503 Service Unavailable for query: "${query}", retrying in 5 seconds...`)
+      await new Promise(resolve => setTimeout(resolve, 5000))
+      response = await fetch(url)
+    }
 
     if (!response.ok) {
       console.error(`[OpenAlex] ERROR: ${response.status} ${response.statusText} for query: "${query}"`)
