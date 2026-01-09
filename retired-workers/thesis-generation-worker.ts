@@ -173,35 +173,91 @@ function updateNodeContent(structure: ThesisStructure, nodeId: string, newConten
 /**
  * Flattens the outline hierarchy for subchapter-level generation.
  * For long theses (>8000 words), we generate each subchapter separately.
- * Returns an array of OutlineChapterInfo where each item is a "leaf" to generate.
+ * IMPORTANT: Word budget for each main chapter is split among its subchapters.
+ * Returns items with a wordBudget property for proper distribution.
  */
-function flattenToSubchapters(chapters: OutlineChapterInfo[]): OutlineChapterInfo[] {
-  const flattened: OutlineChapterInfo[] = []
+interface FlattenedChapter extends OutlineChapterInfo {
+  wordBudget: number
+  isIntroOnly: boolean
+}
+
+function flattenToSubchapters(chapters: OutlineChapterInfo[], targetWordCount: number): FlattenedChapter[] {
+  const flattened: FlattenedChapter[] = []
+  const mainChapterCount = chapters.length
+  const budgetPerMainChapter = Math.round(targetWordCount / mainChapterCount)
 
   for (const chapter of chapters) {
-    // Always include the main chapter (for intro paragraph)
-    flattened.push({
-      number: chapter.number,
-      title: chapter.title,
-      sections: [] // Mark as no sections - we'll generate them separately
-    })
+    const hasSubchapters = chapter.sections && chapter.sections.length > 0
 
-    // Add each section as a separate "chapter" to generate
-    if (chapter.sections && chapter.sections.length > 0) {
+    if (!hasSubchapters) {
+      // No subchapters - this IS a leaf node, gets full chapter budget
+      flattened.push({
+        number: chapter.number,
+        title: chapter.title,
+        sections: [],
+        wordBudget: budgetPerMainChapter,
+        isIntroOnly: false
+      })
+    } else {
+      // Has subchapters - calculate how many leaf nodes to split budget among
+      let leafCount = 0
       for (const section of chapter.sections) {
-        flattened.push({
-          number: section.number,
-          title: section.title,
-          sections: [] // Flatten subsections too if needed
-        })
-
-        // Add subsections if they exist
         if (section.subsections && section.subsections.length > 0) {
+          leafCount += section.subsections.length + 1 // subsections + section intro
+        } else {
+          leafCount += 1
+        }
+      }
+      leafCount += 1 // +1 for main chapter intro
+
+      // Budget per leaf (including intro paragraphs with smaller share)
+      const introShare = 0.1 // Intro gets 10% of budget each
+      const contentShare = (1 - introShare) / Math.max(1, leafCount - 1) // Rest split among content sections
+
+      const introBudget = Math.round(budgetPerMainChapter * introShare)
+      const sectionBudget = Math.round(budgetPerMainChapter * contentShare)
+
+      // Add main chapter intro
+      flattened.push({
+        number: chapter.number,
+        title: chapter.title,
+        sections: [],
+        wordBudget: introBudget,
+        isIntroOnly: true
+      })
+
+      for (const section of chapter.sections) {
+        const hasSubsections = section.subsections && section.subsections.length > 0
+
+        if (!hasSubsections) {
+          // Leaf section - gets full section budget
+          flattened.push({
+            number: section.number,
+            title: section.title,
+            sections: [],
+            wordBudget: sectionBudget,
+            isIntroOnly: false
+          })
+        } else {
+          // Has subsections - split budget among them
+          const subBudget = Math.round(sectionBudget / (section.subsections.length + 1))
+
+          // Section intro
+          flattened.push({
+            number: section.number,
+            title: section.title,
+            sections: [],
+            wordBudget: Math.round(subBudget * 0.3), // Section intro smaller
+            isIntroOnly: true
+          })
+
           for (const subsection of section.subsections) {
             flattened.push({
               number: subsection.number,
               title: subsection.title,
-              sections: []
+              sections: [],
+              wordBudget: subBudget,
+              isIntroOnly: false
             })
           }
         }
@@ -3744,14 +3800,16 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
     // SUBCHAPTER GENERATION: For long theses (>8000 words), flatten to subchapter level
     const useSubchapterGeneration = targetWordCount > 8000
+    let flattenedChapters: (OutlineChapterInfo & { wordBudget?: number; isIntroOnly?: boolean })[] = sortedChapters
+
     if (useSubchapterGeneration) {
       console.log(`[ThesisGeneration] Using SUBCHAPTER-level generation (thesis > 8000 words)`)
-      sortedChapters = flattenToSubchapters(sortedChapters)
-      console.log(`[ThesisGeneration] Flattened to ${sortedChapters.length} generation units`)
+      flattenedChapters = flattenToSubchapters(sortedChapters, targetWordCount)
+      console.log(`[ThesisGeneration] Flattened to ${flattenedChapters.length} generation units`)
     }
 
-    for (let i = 0; i < sortedChapters.length; i++) {
-      const chapter = sortedChapters[i]
+    for (let i = 0; i < flattenedChapters.length; i++) {
+      const chapter = flattenedChapters[i]
 
       // Skip non-content chapters (Verzeichnisse, Bibliography, etc.)
       if (shouldSkipChapter(chapter)) {
@@ -3759,9 +3817,11 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
         continue
       }
 
-      // Lower floor to 300 words to accommodate short theses (e.g. 3500 words / 6 chapters = ~600 words)
-      const chapterTarget = Math.max(300, Math.round(targetWordCount / outlineChapters.length))
-      console.log(`[ThesisGeneration] Generating chapter ${chapter.number} (${chapterTarget} words target)`)
+      // Word target: use wordBudget from flattened chapter if available, else calculate
+      const isIntroOnly = chapter.isIntroOnly ?? false
+      const chapterTarget = chapter.wordBudget ?? Math.min(1500, Math.max(5, Math.round(targetWordCount / flattenedChapters.length)))
+
+      console.log(`[ThesisGeneration] Generating ${chapter.number} "${chapter.title}"${isIntroOnly ? ' [INTRO]' : ''} (${chapterTarget} words target)`)
 
       const { content: chapterText, wordCount: chapterWordCount } = await generateChapterContent({
         thesisData,
