@@ -2351,7 +2351,7 @@ async function generateChapterContent({
 
   // GOAL: Reach the target word count for this chapter
   // CRITICAL: But generation must NEVER fail - if we can't reach the target, we continue anyway
-  const minChapterWords = Math.max(600, Math.round(chapterTargetWords * 0.9))
+  const minChapterWords = Math.max(50, Math.round(chapterTargetWords * 0.9))
   let chapterContent = ''
   let attempts = 0
 
@@ -2862,8 +2862,8 @@ ${startInstruction}`
     const newText = response.text?.trim() || ''
     const generatedWordCount = newText ? newText.split(/\s+/).length : 0
 
-    if (generatedWordCount < 300) {
-      console.warn(`[ThesisGeneration] Chapter ${chapterLabel} attempt ${attempts} returned insufficient text (${generatedWordCount} words, min 300).`)
+    if (generatedWordCount < 50) {
+      console.warn(`[ThesisGeneration] Chapter ${chapterLabel} attempt ${attempts} returned insufficient text (${generatedWordCount} words, min 50).`)
       // If this was the last attempt, we are in trouble.
       if (attempts >= 3) {
         console.error(`[ThesisGeneration] CRITICAL: Chapter ${chapterLabel} failed 3 times.`)
@@ -3819,9 +3819,19 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
       // Word target: use wordBudget from flattened chapter if available, else calculate
       const isIntroOnly = chapter.isIntroOnly ?? false
+
+      // SKIP WRAPPER CHAPTERS: Don't generate content for parent chapters (1 Einleitung, 2 Grundlagen etc.)
+      // They're just structural headings - actual content lives in subchapters (1.1, 1.2, etc.)
+      if (isIntroOnly) {
+        console.log(`[ThesisGeneration] Skipping wrapper chapter ${chapter.number} "${chapter.title}" (content in subchapters)`)
+        // Just add the heading, no content
+        chapterContents.push(`## ${chapter.number} ${chapter.title}\n`)
+        continue
+      }
+
       const chapterTarget = chapter.wordBudget ?? Math.min(1500, Math.max(5, Math.round(targetWordCount / flattenedChapters.length)))
 
-      console.log(`[ThesisGeneration] Generating ${chapter.number} "${chapter.title}"${isIntroOnly ? ' [INTRO]' : ''} (${chapterTarget} words target)`)
+      console.log(`[ThesisGeneration] Generating ${chapter.number} "${chapter.title}" (${chapterTarget} words target)`)
 
       const { content: chapterText, wordCount: chapterWordCount } = await generateChapterContent({
         thesisData,
