@@ -199,30 +199,25 @@ function flattenToSubchapters(chapters: OutlineChapterInfo[], targetWordCount: n
         isIntroOnly: false
       })
     } else {
-      // Has subchapters - calculate how many leaf nodes to split budget among
+      // Has subchapters - count ONLY leaf nodes (not intro wrappers)
       let leafCount = 0
       for (const section of chapter.sections) {
         if (section.subsections && section.subsections.length > 0) {
-          leafCount += section.subsections.length + 1 // subsections + section intro
+          leafCount += section.subsections.length // Only count subsections as leaves
         } else {
-          leafCount += 1
+          leafCount += 1 // Section is a leaf
         }
       }
-      leafCount += 1 // +1 for main chapter intro
 
-      // Budget per leaf (including intro paragraphs with smaller share)
-      const introShare = 0.1 // Intro gets 10% of budget each
-      const contentShare = (1 - introShare) / Math.max(1, leafCount - 1) // Rest split among content sections
+      // Full chapter budget split evenly among leaf nodes only
+      const leafBudget = Math.round(budgetPerMainChapter / Math.max(1, leafCount))
 
-      const introBudget = Math.round(budgetPerMainChapter * introShare)
-      const sectionBudget = Math.round(budgetPerMainChapter * contentShare)
-
-      // Add main chapter intro
+      // Add main chapter wrapper (skipped, no content)
       flattened.push({
         number: chapter.number,
         title: chapter.title,
         sections: [],
-        wordBudget: introBudget,
+        wordBudget: 0, // No budget - will be skipped
         isIntroOnly: true
       })
 
@@ -230,24 +225,21 @@ function flattenToSubchapters(chapters: OutlineChapterInfo[], targetWordCount: n
         const hasSubsections = section.subsections && section.subsections.length > 0
 
         if (!hasSubsections) {
-          // Leaf section - gets full section budget
+          // Leaf section - gets full leaf budget
           flattened.push({
             number: section.number,
             title: section.title,
             sections: [],
-            wordBudget: sectionBudget,
+            wordBudget: leafBudget,
             isIntroOnly: false
           })
         } else {
-          // Has subsections - split budget among them
-          const subBudget = Math.round(sectionBudget / (section.subsections.length + 1))
-
-          // Section intro
+          // Has subsections - section is wrapper (skipped), subsections are leaves
           flattened.push({
             number: section.number,
             title: section.title,
             sections: [],
-            wordBudget: Math.round(subBudget * 0.3), // Section intro smaller
+            wordBudget: 0, // No budget - will be skipped
             isIntroOnly: true
           })
 
@@ -256,7 +248,7 @@ function flattenToSubchapters(chapters: OutlineChapterInfo[], targetWordCount: n
               number: subsection.number,
               title: subsection.title,
               sections: [],
-              wordBudget: subBudget,
+              wordBudget: leafBudget,
               isIntroOnly: false
             })
           }
@@ -3146,7 +3138,8 @@ async function critiqueThesis(
          - **JAHR-CHECK:** Stimmt das Jahr?
          - **SEITENZAHL-PFLICHT (STRENG!):**
            - JEDE Zitation MUSS eine Seitenzahl haben (z.B. (Müller, 2020, S. 12)).
-           - VERBOTEN: Zitationen ohne Seite (z.B. nur (Müller, 2020)). -> MELDE FEHLER: "Fehlende Seitenzahl".
+            - VERBOTEN: Zitationen ohne Seite (z.B. nur (Müller, 2020)). -> MELDE FEHLER: "Fehlende Seitenzahl".
+            - **VERDÄCHTIGE SEITENZAHLEN:** Seitenzahlen über 10.000 sind VERDÄCHTIG (wahrscheinlich ein Fehler). -> MELDE FEHLER: "Unplausible Seitenzahl".
          - **VERFASSER-PFLICHT (STRENG!):**
            - VERBOTEN: Quellen ohne Verfasser / "o.V." / "Anonymous".
            - Jede Quelle muss einen Autorennamen haben. -> MELDE FEHLER: "Quelle ohne Verfasser (o.V.) ist nicht erlaubt".
@@ -7764,14 +7757,14 @@ const worker = new Worker(
   {
     connection: workerConnection,
     concurrency: 1,
-    lockDuration: 300000, // 5 minutes (increased from 60s for long AI tasks)
+    lockDuration: 1800000, // 30 minutes (thesis generation can take 2+ hours between updates)
 
-    maxStalledCount: 0, // Do not retry if stalled (avoids infinite loops on timeout)
+    maxStalledCount: 2, // Allow 2 stall recoveries before failing (network hiccups happen)
     // REDIS OPTIMIZATION: Reduce polling frequency when idle
     // Default is 5000ms, we use 30000ms (30 seconds) to save commands
     drainDelay: 30000, // Wait 30 seconds between drain checks when queue is empty
-    lockRenewTime: 30000, // Renew lock every 30 seconds (MUST be < lockDuration)
-    stalledInterval: 600000, // Check for stalled jobs every 10 minutes (not default 30s)
+    lockRenewTime: 60000, // Renew lock every 60 seconds (MUST be < lockDuration)
+    stalledInterval: 900000, // Check for stalled jobs every 15 minutes
     // Remove limiter - not needed with concurrency 1
   }
 )
