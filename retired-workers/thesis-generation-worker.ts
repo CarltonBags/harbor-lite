@@ -2429,7 +2429,14 @@ ${mandatorySources.map((s, i) => `[MANDATORY] "${s.title}" (${s.authors.slice(0,
           - Keine Spiegelstriche - fließender Text!` : ''}
 
          **WICHTIG - KEINE REDUNDANZ:**
-         Prüfe die "Zusammenfassung der vorherigen Kapitel" oder den "Vorherigen Textausschnitt". Wenn ein Begriff (z.B. "KI") bereits definiert wurde, definieren ihn NICHT erneut. Setze das Wissen beim Leser voraus.`
+         Prüfe die "Zusammenfassung der vorherigen Kapitel" oder den "Vorherigen Textausschnitt". Wenn ein Begriff (z.B. "KI") bereits definiert wurde, definieren ihn NICHT erneut. Setze das Wissen beim Leser voraus.
+         
+         **⚠️ KAPITEL-FOKUS (80/20 REGEL):**
+         - Mindestens 80% des Inhalts MUSS direkt dem Kapiteltitel "${chapterLabel}" gewidmet sein.
+         - Kurze Verweise auf andere Kapitel sind ERLAUBT (z.B. "Wie in Kapitel 2 erläutert..." oder "Dies wird in Kapitel 5 vertieft...").
+         - ABER: Der Hauptteil MUSS das behandeln, was der Kapiteltitel verspricht.
+         - VERBOTEN: Absätze, die primär andere Themen behandeln und nur am Rande den Kapiteltitel berühren.
+         - Frage dich: "Wenn jemand dieses Kapitel liest, erfährt er primär etwas über '${chapterLabel}'?"`
       : `You are writing the chapter "${chapterLabel}" of an academic thesis titled "${thesisData.title}".${isExtension ? ' You have already written the first part of the chapter. Your task is now to CONTINUE and complete the chapter.' : ''}
          \n**IMPORTANT - RESEARCH QUESTION (IMMUTABLE):**
          The central research question is: "${thesisData.researchQuestion}"
@@ -2437,7 +2444,14 @@ ${mandatorySources.map((s, i) => `[MANDATORY] "${s.title}" (${s.authors.slice(0,
          **RULE:** DO NOT strictly answer this question in THIS chapter (unless it is the Conclusion). Your job is analysis and exploration. The answer belongs in the Conclusion.
 
          **IMPORTANT - NO REDUNDANCY:**
-         Check the "Summary of previous chapters" or "Previous text excerpt". If a term has already been defined, DO NOT define it again. Assume reader knowledge.`
+         Check the "Summary of previous chapters" or "Previous text excerpt". If a term has already been defined, DO NOT define it again. Assume reader knowledge.
+         
+         **⚠️ CHAPTER FOCUS (80/20 RULE):**
+         - At least 80% of the content MUST be directly dedicated to the chapter title "${chapterLabel}".
+         - Brief references to other chapters are ALLOWED (e.g., "As explained in Chapter 2..." or "This is elaborated in Chapter 5...").
+         - BUT: The main body MUST address what the chapter title promises.
+         - FORBIDDEN: Paragraphs that primarily discuss other topics and only tangentially relate to the chapter title.
+         - Ask yourself: "If someone reads this chapter, will they primarily learn about '${chapterLabel}'?"`
 
     const strictRules = isGerman
       ? `═══════════════════════════════════════════════════════════════════════════════
@@ -2723,12 +2737,22 @@ INSTEAD - Attribute research to REAL authors:
 
       if (previousSummariesText) {
         contextInstruction = isGerman
-          ? `**GRUNDLAGE: ZUSAMMENFASSUNG DER VORHERIGEN KAPITEL:**
-             (Damit du weißt, was bereits definiert/diskutiert wurde - Wiederhole dies NICHT, sondern baue darauf auf)
-             <<<\n${previousSummariesText}\n>>>\n`
-          : `**CONTEXT: SUMMARY OF PREVIOUS CHAPTERS:**
-             (So you know what has already been defined/discussed - DO NOT repeat this, but build upon it)
-             <<<\n${previousSummariesText}\n>>>\n`
+          ? `**⚠️ KRITISCH - BEREITS ABGEDECKTE THEMEN (NICHT WIEDERHOLEN!):**
+             Die folgenden Themen wurden bereits in vorherigen Kapiteln behandelt.
+             Du DARFST diese Inhalte NICHT erneut erklären oder definieren!
+             Baue darauf auf, verweise darauf, aber wiederhole sie NICHT.
+             
+             <<<\n${previousSummariesText}\n>>>
+             
+             **WENN DU ETWAS AUS DIESER LISTE WIEDERHOLST, IST DAS EIN FEHLER!**\n`
+          : `**⚠️ CRITICAL - ALREADY COVERED TOPICS (DO NOT REPEAT!):**
+             The following topics have already been covered in previous chapters.
+             You MUST NOT explain or define these contents again!
+             Build upon them, reference them, but do NOT repeat them.
+             
+             <<<\n${previousSummariesText}\n>>>
+             
+             **IF YOU REPEAT ANYTHING FROM THIS LIST, IT IS AN ERROR!**\n`
       } else {
         // Fallback to text excerpt if no summaries (e.g. Chapter 1 or legacy mode)
         contextInstruction = previousContent
@@ -2942,23 +2966,45 @@ ${startInstruction}`
 async function summarizeChapter(chapterTitle: string, content: string, isGerman: boolean): Promise<string> {
   // Use a cheaper/faster model for summarization if available, or standard model
   const prompt = isGerman
-    ? `Fasse das folgende Buchkapitel ("${chapterTitle}") in ca. 150-200 Wörtern zusammen.
-       Konzentriere dich auf:
-       1. Welche Begriffe wurden definiert?
-       2. Welche Hauptargumente wurden gemacht?
-       3. Was ist das Fazit dieses Kapitels?
+    ? `Erstelle eine KONFLIKT-VERMEIDUNGSLISTE für das Kapitel "${chapterTitle}".
        
-       Ziel: Ein nachfolgendes Kapitel soll wissen, was hier bereits besprochen wurde, um Wiederholungen zu vermeiden.
+       **AUFGABE:** Liste ALLE spezifischen Themen, Konzepte und Fakten auf, die in diesem Kapitel behandelt wurden.
+       
+       **FORMAT (STRIKT):**
+       KAPITEL: ${chapterTitle}
+       ABGEDECKTE THEMEN:
+       • [Thema 1 - kurze Beschreibung in 5-10 Wörtern]
+       • [Thema 2 - kurze Beschreibung]
+       • [Thema 3 - kurze Beschreibung]
+       ... (alle wichtigen Themen)
+       
+       DEFINIERTE BEGRIFFE: [Liste aller definierten Fachbegriffe]
+       ZITIERTE STUDIEN: [Kurze Liste der Hauptautoren/Jahre]
+       HAUPTARGUMENT: [1 Satz]
+       
+       **ZIEL:** Das nächste Kapitel muss wissen, was BEREITS gesagt wurde, um KEINE Wiederholungen zu machen.
+       Sei PRÄZISE und VOLLSTÄNDIG - jedes fehlende Thema kann zu Wiederholungen führen!
        
        TEXT:
        ${content.substring(0, 15000)}`
-    : `Summarize the following book chapter ("${chapterTitle}") in approx 150-200 words.
-       Focus on:
-       1. What terms were defined?
-       2. What were the main arguments?
-       3. What is the conclusion of this chapter?
+    : `Create a CONFLICT-AVOIDANCE LIST for chapter "${chapterTitle}".
        
-       Goal: A subsequent chapter should know what has already been discussed here to avoid repetition.
+       **TASK:** List ALL specific topics, concepts, and facts covered in this chapter.
+       
+       **FORMAT (STRICT):**
+       CHAPTER: ${chapterTitle}
+       COVERED TOPICS:
+       • [Topic 1 - brief description in 5-10 words]
+       • [Topic 2 - brief description]
+       • [Topic 3 - brief description]
+       ... (all important topics)
+       
+       DEFINED TERMS: [List all defined technical terms]
+       CITED STUDIES: [Brief list of main authors/years]
+       MAIN ARGUMENT: [1 sentence]
+       
+       **GOAL:** The next chapter must know what has ALREADY been said to AVOID repetitions.
+       Be PRECISE and COMPLETE - any missing topic can lead to repetitions!
        
        TEXT:
        ${content.substring(0, 15000)}`
