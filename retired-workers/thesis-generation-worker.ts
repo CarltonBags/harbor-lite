@@ -53,6 +53,34 @@ const MAX_CONCURRENT_JOBS = parseInt(process.env.MAX_CONCURRENT_JOBS || '3', 10)
 let activeJobs = 0
 const jobQueue: Array<{ thesisId: string; thesisData: ThesisData; resolve: () => void }> = []
 
+// Token usage tracking for cost calculation
+let totalInputTokens = 0
+let totalOutputTokens = 0
+
+/**
+ * Track token usage from AI response for cost calculation
+ * Extracts usageMetadata from response and accumulates totals
+ */
+function trackTokenUsage(response: any, label: string): void {
+  const meta = response?.usageMetadata
+  if (meta) {
+    const input = meta.promptTokenCount || 0
+    const output = meta.candidatesTokenCount || 0
+    totalInputTokens += input
+    totalOutputTokens += output
+    console.log(`[Tokens] ${label}: +${input} input, +${output} output (total: ${totalInputTokens}/${totalOutputTokens})`)
+  }
+}
+
+/**
+ * Reset token counters at start of each job
+ */
+function resetTokenCounters(): void {
+  totalInputTokens = 0
+  totalOutputTokens = 0
+  console.log('[Tokens] Counters reset for new job')
+}
+
 // Types
 interface ThesisData {
   title: string
@@ -528,6 +556,7 @@ Antworte NUR mit einem JSON-Objekt im folgenden Format:
     }),
     'Generate search queries (Gemini)'
   )
+  trackTokenUsage(response, 'Generate search queries')
 
   const content = response.text
   if (!content) {
@@ -935,6 +964,7 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
         }),
         `Rank sources batch ${batchIndex + 1}/${batches.length} (Gemini)`
       )
+      trackTokenUsage(response, `Rank sources batch ${batchIndex + 1}`)
       const batchDuration = Date.now() - batchStart
       console.log(`[Ranking] Batch ${batchIndex + 1} completed in ${batchDuration}ms`)
 
@@ -1188,6 +1218,7 @@ async function extractPageNumbers(pdfBuffer: Buffer): Promise<{ pageStart: strin
       }),
       'Extract page numbers (Gemini 2.5 Flash)'
     )
+    trackTokenUsage(response, 'Extract page numbers')
 
     const content = response.text
     if (content) {
@@ -1978,6 +2009,7 @@ Return a structured plan in Markdown:
       2,
       2000
     )
+    trackTokenUsage(response, 'Generate Thesis Plan')
 
     console.log('[ThesisPlan] Plan generated successfully')
     return response.text || ''
@@ -2294,6 +2326,7 @@ ${extensionInstruction}
       1,
       2000
     )
+    trackTokenUsage(extensionResponse, `Extend thesis pass ${pass}`)
 
     const extensionText = extensionResponse.text?.trim()
 
@@ -2874,6 +2907,7 @@ ${startInstruction}`
       1,
       2000
     )
+    trackTokenUsage(response, `Generate chapter ${chapterLabel}`)
 
     const newText = response.text?.trim() || ''
     const generatedWordCount = newText ? newText.split(/\s+/).length : 0
@@ -3015,6 +3049,7 @@ async function summarizeChapter(chapterTitle: string, content: string, isGerman:
       contents: prompt,
       config: { maxOutputTokens: 500, temperature: 0.3 },
     }), `Summarize chapter ${chapterTitle}`)
+    trackTokenUsage(response, `Summarize chapter`)
     return response.text || ''
   } catch (error) {
     console.warn('[ThesisGeneration] Failed to summarize chapter:', error)
@@ -3304,6 +3339,7 @@ async function critiqueThesis(
           }] : undefined,
         },
       }), `Critique Chapter ${i + 1}`)
+      trackTokenUsage(response, `Critique Chapter ${i + 1}`)
 
       const responseText = response.text || '{}'
       console.log(`[ThesisCritique] Chapter ${i + 1} Raw Response:`, responseText.substring(0, 500))
@@ -3615,6 +3651,7 @@ async function fixChapterContent(
           }] : undefined,
         },
       }), 'Fix Chapter Content')
+      trackTokenUsage(response, 'Fix Chapter Content')
 
       const modifiedContent = response.text ? response.text.trim() : ''
 
@@ -3713,6 +3750,7 @@ async function syncStructureInIntroduction(
       contents: prompt,
       config: { maxOutputTokens: 8000, temperature: 0.1 },
     }), 'Sync Structure')
+    trackTokenUsage(response, 'Sync Structure')
     return response.text ? response.text.trim() : introContent
   } catch (error) {
     console.warn('[StructureSync] Failed to sync:', error)
@@ -4869,6 +4907,7 @@ If you write too little again, the thesis will be delivered incomplete!
         1, // Single retry per attempt (we're doing 3 attempts total)
         3000 // 3 second delay between attempts
       )
+      trackTokenUsage(response, `Generate thesis content attempt ${attempt}`)
 
       content = response.text || ''
       let contentLength = content.length
@@ -5136,6 +5175,7 @@ Respond ONLY with a JSON array of rewritten sentences. No explanations.
         }),
         `Rewrite sentences batch ${Math.floor(i / BATCH_SIZE) + 1}`
       )
+      trackTokenUsage(response, `Rewrite sentences batch ${Math.floor(i / BATCH_SIZE) + 1}`)
 
       const responseText = response.text
       if (!responseText) {
@@ -5731,6 +5771,7 @@ Your goal is to produce text that reads like it was written by a competent human
         3,
         2000
       )
+      trackTokenUsage(response, `Humanize section ${i + 1}`)
 
       const sectionHumanized = response.text || section
 
@@ -6236,6 +6277,7 @@ Do not include markdown formatting or explanation.
           { role: 'user', parts: [{ text: prompt }] }
         ]
       })
+      trackTokenUsage(result, 'Plagiarism repair batch')
 
       const responseText = result.text?.replace(/```json/g, '').replace(/```/g, '').trim()
 
@@ -6419,6 +6461,9 @@ async function processThesisGeneration(
   console.log(`[PROCESS] Type: ${thesisData.thesisType}`)
   console.log(`[PROCESS] Language: ${thesisData.language}`)
   console.log('='.repeat(80))
+
+  // Reset token counters for this job
+  resetTokenCounters()
 
   try {
     // Check if FileSearchStore already has documents
@@ -7313,31 +7358,21 @@ async function processThesisGeneration(
     }
 
     // Step 7.5: Humanize the text to avoid AI detection
-    // SKIP if Step 7.4 already achieved a good score (>= 75%)
-    const humanScoreThreshold = 75
-    const alreadyHumanEnough = winstonResult && winstonResult.score >= humanScoreThreshold
-
-    if (alreadyHumanEnough) {
-      console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
-      console.log(`[PROCESS] ✓ SKIPPING humanization - content already scored ${winstonResult.score}% human (>= ${humanScoreThreshold}%)`)
-      console.log('[PROCESS] No additional humanization needed')
+    // NOTE: SKIPPED - The Winston check/rewrite loop (Step 7.4) already handles humanization
+    // by identifying and rewriting AI-detected sentences. Running a full humanization pass
+    // on top of that is:
+    // 1. Expensive (66+ Gemini API calls for a typical thesis)
+    // 2. Redundant (Winston already rewrote the problematic sentences)
+    // 3. Risk of quality degradation (over-processing the text)
+    // 
+    // If more aggressive humanization is needed in the future, increase MAX_ITERATIONS
+    // in ensureHumanLikeContent instead of running a separate full-thesis pass.
+    console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
+    if (winstonResult) {
+      console.log(`[PROCESS] ✓ SKIPPING full humanization - Winston loop (Step 7.4) already processed content`)
+      console.log(`[PROCESS] Final Winston score: ${winstonResult.score}% human (achieved after sentence rewrites)`)
     } else {
-      console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
-      if (winstonResult) {
-        console.log(`[PROCESS] Content scored ${winstonResult.score}% human - running additional humanization`)
-      } else {
-        console.log('[PROCESS] No Winston score available - running humanization as fallback')
-      }
-      const humanizeStart = Date.now()
-      try {
-        thesisContent = await humanizeThesisContent(thesisContent, thesisData)
-        const humanizeDuration = Date.now() - humanizeStart
-        console.log(`[PROCESS] Humanization completed in ${humanizeDuration}ms`)
-      } catch (error) {
-        console.error('[PROCESS] ERROR in humanization:', error)
-        console.warn('[PROCESS] Continuing with original content (humanization failed)')
-        // Continue with original content if humanization fails
-      }
+      console.log('[PROCESS] ✓ SKIPPING full humanization - Winston check was already attempted')
     }
 
     // Step 7.6: Plagiarism Check & Auto-Fix (Winston AI)
@@ -7523,7 +7558,15 @@ async function processThesisGeneration(
     console.log('\n[PROCESS] ========== Thesis Generation Complete ==========')
     console.log(`[PROCESS] Total processing time: ${Math.round(processDuration / 1000)}s (${processDuration}ms)`)
     console.log(`[PROCESS] Thesis generation completed for thesis ${thesisId}`)
+    console.log(`[PROCESS] Total tokens used: ${totalInputTokens} input, ${totalOutputTokens} output`)
     console.log('='.repeat(80))
+
+    // Save token usage to database
+    await supabase.from('theses').update({
+      input_tokens: totalInputTokens,
+      output_tokens: totalOutputTokens
+    }).eq('id', thesisId)
+    console.log('[Tokens] Token usage saved to database')
 
     return { success: true }
   } catch (error) {
@@ -8071,6 +8114,7 @@ async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId:
       2, // 2 Retries
       1000
     )
+    trackTokenUsage(response, 'Verify citations')
 
     let verifiedText = response.text?.trim()
 
