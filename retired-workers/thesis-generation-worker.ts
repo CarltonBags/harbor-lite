@@ -57,6 +57,16 @@ const jobQueue: Array<{ thesisId: string; thesisData: ThesisData; resolve: () =>
 let totalInputTokens = 0
 let totalOutputTokens = 0
 
+// Health tracking for production monitoring
+let workerStartTime = Date.now()
+let lastJobCompletedAt: string | null = null
+let lastJobFailedAt: string | null = null
+let totalJobsCompleted = 0
+let totalJobsFailed = 0
+let totalJobsStalled = 0
+let currentJobId: string | null = null
+let currentJobStartedAt: string | null = null
+
 /**
  * Track token usage from AI response for cost calculation
  * Extracts usageMetadata from response and accumulates totals
@@ -459,30 +469,54 @@ function buildOutlineSummary(outlineChapters: OutlineChapterInfo[]): string {
     .join('\n')
 }
 
-// Retry wrapper for API calls
+// Timeout wrapper for API calls (prevents indefinite hangs)
+const API_TIMEOUT_MS = 120000 // 2 minutes
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number = API_TIMEOUT_MS, operationName: string = 'API call'): Promise<T> {
+  let timeoutId: NodeJS.Timeout
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${operationName} timed out after ${timeoutMs / 1000}s`))
+    }, timeoutMs)
+  })
+
+  try {
+    const result = await Promise.race([promise, timeoutPromise])
+    clearTimeout(timeoutId!)
+    return result
+  } catch (error) {
+    clearTimeout(timeoutId!)
+    throw error
+  }
+}
+
+// Retry wrapper for API calls with timeout
 async function retryApiCall<T>(
   fn: () => Promise<T>,
   operationName: string,
   maxRetries: number = 3,
-  baseDelay: number = 1000
+  baseDelay: number = 1000,
+  timeoutMs: number = API_TIMEOUT_MS
 ): Promise<T> {
   let lastError: Error | unknown
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      return await fn()
+      // Wrap each attempt with timeout
+      return await withTimeout(fn(), timeoutMs, operationName)
     } catch (error) {
       lastError = error
       const isLastAttempt = attempt === maxRetries
+      const isTimeout = error instanceof Error && error.message.includes('timed out')
 
       if (isLastAttempt) {
         console.error(`${operationName} failed after ${maxRetries} attempts:`, error)
         throw error
       }
 
-      // Exponential backoff: 1s, 2s, 4s
-      const delay = baseDelay * Math.pow(2, attempt - 1)
-      console.warn(`${operationName} failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`)
+      // Shorter delay for timeouts (already waited long enough)
+      const delay = isTimeout ? baseDelay : baseDelay * Math.pow(2, attempt - 1)
+      console.warn(`${operationName} failed (attempt ${attempt}/${maxRetries})${isTimeout ? ' [TIMEOUT]' : ''}, retrying in ${delay}ms...`)
       await new Promise(resolve => setTimeout(resolve, delay))
     }
   }
@@ -7737,10 +7771,30 @@ app.get('/jobs/:thesisId', authenticate, async (req: Request, res: Response) => 
   }
 })
 
-// Health check endpoint
+// Health check endpoint with worker metrics
 app.get('/health', (req: Request, res: Response) => {
-  console.log('[API] Health check requested')
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+  const uptimeSeconds = Math.floor((Date.now() - workerStartTime) / 1000)
+  const uptimeFormatted = `${Math.floor(uptimeSeconds / 3600)}h ${Math.floor((uptimeSeconds % 3600) / 60)}m ${uptimeSeconds % 60}s`
+
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: uptimeFormatted,
+    uptimeSeconds,
+    worker: {
+      currentJobId,
+      currentJobStartedAt,
+      totalJobsCompleted,
+      totalJobsFailed,
+      totalJobsStalled,
+      lastJobCompletedAt,
+      lastJobFailedAt,
+    },
+    tokens: {
+      currentSessionInput: totalInputTokens,
+      currentSessionOutput: totalOutputTokens,
+    }
+  })
 })
 
 // ============================================================================
@@ -7858,13 +7912,34 @@ const worker = new Worker(
   }
 )
 
-// Worker event handlers
+// Worker event handlers with health tracking
 worker.on('completed', (job) => {
   console.log(`[WORKER] Job ${job.id} completed successfully`)
+  lastJobCompletedAt = new Date().toISOString()
+  totalJobsCompleted++
+  currentJobId = null
+  currentJobStartedAt = null
 })
 
 worker.on('failed', (job, err) => {
   console.error(`[WORKER] Job ${job?.id} failed:`, err)
+  lastJobFailedAt = new Date().toISOString()
+  totalJobsFailed++
+  currentJobId = null
+  currentJobStartedAt = null
+})
+
+worker.on('stalled', (jobId) => {
+  console.error(`[WORKER] ⚠️ JOB STALLED: ${jobId}`)
+  console.error('[WORKER] This usually means the worker crashed or an API call hung indefinitely')
+  console.error('[WORKER] The job will be retried automatically (maxStalledCount: 2)')
+  totalJobsStalled++
+})
+
+worker.on('active', (job) => {
+  console.log(`[WORKER] Job ${job.id} is now active`)
+  currentJobId = job.id || null
+  currentJobStartedAt = new Date().toISOString()
 })
 
 worker.on('error', (err) => {
