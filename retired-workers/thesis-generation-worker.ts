@@ -3081,7 +3081,7 @@ async function summarizeChapter(chapterTitle: string, content: string, isGerman:
     const response = await retryApiCall(() => ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
-      config: { maxOutputTokens: 500, temperature: 0.3 },
+      config: { maxOutputTokens: 600, temperature: 0.3 },
     }), `Summarize chapter ${chapterTitle}`)
     trackTokenUsage(response, `Summarize chapter`)
     return response.text || ''
@@ -5256,6 +5256,7 @@ Respond ONLY with a JSON array of rewritten sentences. No explanations.
 
 /**
  * Check content with Winston AI and rewrite if needed to achieve >90% human score
+ * Returns all iteration results for tracking/analysis
  */
 async function ensureHumanLikeContent(content: string, thesisData: ThesisData): Promise<{
   content: string
@@ -5264,6 +5265,13 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
     sentences: any
     checkedAt: string
   } | null
+  winstonIterations: Array<{
+    iteration: number
+    score: number
+    sentenceCount: number
+    flaggedCount: number
+    checkedAt: string
+  }>
 }> {
   console.log('[HumanCheck] Starting Winston AI check and potential rewrite...')
 
@@ -5273,6 +5281,15 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
   let currentContent = content
   let iteration = 0
   let finalResult: any = null
+
+  // Track all iterations for database storage
+  const winstonIterations: Array<{
+    iteration: number
+    score: number
+    sentenceCount: number
+    flaggedCount: number
+    checkedAt: string
+  }> = []
 
   while (iteration < MAX_ITERATIONS) {
     iteration++
@@ -5285,9 +5302,24 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
       console.warn('[HumanCheck] Winston API unavailable, returning content without score')
       return {
         content: currentContent,
-        winstonResult: null // NO FAKE SCORES - null means "not checked"
+        winstonResult: null, // NO FAKE SCORES - null means "not checked"
+        winstonIterations
       }
     }
+
+    // Track this iteration
+    const sentenceCount = Array.isArray(result.sentences) ? result.sentences.length : 0
+    const flaggedCount = Array.isArray(result.sentences)
+      ? result.sentences.filter((s: any) => s.score < 60).length
+      : 0
+
+    winstonIterations.push({
+      iteration,
+      score: result.score,
+      sentenceCount,
+      flaggedCount,
+      checkedAt: new Date().toISOString()
+    })
 
     finalResult = result // Store the latest valid result
 
@@ -5299,7 +5331,8 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
           score: result.score,
           sentences: result.sentences,
           checkedAt: new Date().toISOString(),
-        }
+        },
+        winstonIterations
       }
     }
 
@@ -5342,7 +5375,8 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
           score: result.score,
           sentences: result.sentences,
           checkedAt: new Date().toISOString(),
-        }
+        },
+        winstonIterations
       }
     }
 
@@ -5363,7 +5397,8 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
       score: finalResult.score,
       sentences: finalResult.sentences,
       checkedAt: new Date().toISOString(),
-    } : null
+    } : null,
+    winstonIterations
   }
 }
 
@@ -6033,7 +6068,7 @@ async function checkWinston(content: string): Promise<{
 
   console.log('[Winston] Checking text with Winston AI API...')
 
-  const CHUNK_SIZE = 100000 // Winston limit is 150k, we use 100k for safety
+  const CHUNK_SIZE = 150000 // Winston limit is 150k
 
   try {
     // Extract plain text from markdown (remove markdown syntax for better detection)
@@ -7376,14 +7411,32 @@ async function processThesisGeneration(
     console.log('\n[PROCESS] ========== Step 7.4: Winston AI Check & Sentence Rewrite ==========')
     const winstonCheckStart = Date.now()
     let winstonResult: any = null
+    let winstonIterations: any[] = []
     try {
       const result = await ensureHumanLikeContent(thesisContent, thesisData)
       thesisContent = result.content
       winstonResult = result.winstonResult
+      winstonIterations = result.winstonIterations || []
       const winstonCheckDuration = Date.now() - winstonCheckStart
       console.log(`[PROCESS] Winston check and rewrite completed in ${winstonCheckDuration}ms`)
+      console.log(`[PROCESS] Winston iterations tracked: ${winstonIterations.length}`)
       if (winstonResult) {
         console.log(`[PROCESS] Final Winston score: ${winstonResult.score}% human`)
+      }
+
+      // Save Winston iterations to database
+      if (winstonIterations.length > 0) {
+        console.log('[PROCESS] Saving Winston check iterations to database...')
+        const { error: winstonSaveError } = await supabase
+          .from('theses')
+          .update({ winston_checks: winstonIterations })
+          .eq('id', thesisId)
+
+        if (winstonSaveError) {
+          console.error('[PROCESS] Failed to save Winston iterations:', winstonSaveError)
+        } else {
+          console.log(`[PROCESS] Saved ${winstonIterations.length} Winston check iterations to database`)
+        }
       }
     } catch (error) {
       console.error('[PROCESS] ERROR in Winston check/rewrite:', error)
