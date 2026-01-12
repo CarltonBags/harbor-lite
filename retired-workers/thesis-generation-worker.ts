@@ -3809,7 +3809,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
     // Convert words to pages (assuming ~250 words per page)
     targetPages = Math.ceil(thesisData.targetLength / 250)
   }
-
+  //
   let recommendedSourceCount: number
   let sourceUsageGuidance: string
 
