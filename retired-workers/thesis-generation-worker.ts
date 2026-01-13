@@ -470,7 +470,7 @@ function buildOutlineSummary(outlineChapters: OutlineChapterInfo[]): string {
 }
 
 // Timeout wrapper for API calls (prevents indefinite hangs)
-const API_TIMEOUT_MS = 120000 // 2 minutes
+const API_TIMEOUT_MS = 300000 // 5 minutes
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number = API_TIMEOUT_MS, operationName: string = 'API call'): Promise<T> {
   let timeoutId: NodeJS.Timeout
@@ -5133,7 +5133,217 @@ async function checkWithGPTZero(content: string): Promise<{
 }
 
 /**
- * Rewrite flagged sentences using Gemini 2.5 Flash to make them more human-like
+ * Find the paragraph containing a given sentence
+ * Returns the full paragraph text and its start/end indices in the content
+ */
+function findParagraphForSentence(content: string, sentence: string): { paragraph: string, startIdx: number, endIdx: number } | null {
+  // Split content into paragraphs (double newline or markdown paragraph breaks)
+  const paragraphPattern = /\n\n+|\r\n\r\n+/
+  const paragraphs = content.split(paragraphPattern)
+
+  let currentIdx = 0
+  for (const paragraph of paragraphs) {
+    if (paragraph.includes(sentence)) {
+      return {
+        paragraph: paragraph.trim(),
+        startIdx: content.indexOf(paragraph, currentIdx),
+        endIdx: content.indexOf(paragraph, currentIdx) + paragraph.length
+      }
+    }
+    currentIdx += paragraph.length + 2 // +2 for the newlines
+  }
+  return null
+}
+
+/**
+ * Rewrite flagged sentences by humanizing their parent paragraphs
+ * This provides better context for more natural rewrites while preserving all content
+ */
+async function rewriteFlaggedParagraphs(
+  content: string,
+  flaggedSentences: string[],
+  thesisData: ThesisData
+): Promise<string> {
+  if (flaggedSentences.length === 0) {
+    return content
+  }
+
+  console.log(`[Rewrite] Grouping ${flaggedSentences.length} flagged sentences by paragraph...`)
+
+  const isGerman = thesisData.language === 'german'
+  let rewrittenContent = content
+
+  // Group sentences by their parent paragraph
+  const paragraphMap = new Map<string, { paragraph: string, sentences: string[], startIdx: number, endIdx: number }>()
+
+  for (const sentence of flaggedSentences) {
+    const found = findParagraphForSentence(content, sentence)
+    if (found) {
+      const key = found.paragraph
+      if (paragraphMap.has(key)) {
+        paragraphMap.get(key)!.sentences.push(sentence)
+      } else {
+        paragraphMap.set(key, {
+          paragraph: found.paragraph,
+          sentences: [sentence],
+          startIdx: found.startIdx,
+          endIdx: found.endIdx
+        })
+      }
+    } else {
+      console.warn(`[Rewrite] Could not find paragraph for sentence: "${sentence.substring(0, 50)}..."`)
+    }
+  }
+
+  console.log(`[Rewrite] Found ${paragraphMap.size} paragraphs containing flagged sentences`)
+
+  // Process each paragraph
+  let processedCount = 0
+  let successCount = 0
+  let failCount = 0
+
+  for (const [key, data] of paragraphMap) {
+    processedCount++
+    console.log(`[Rewrite] Processing paragraph ${processedCount}/${paragraphMap.size} (${data.sentences.length} flagged sentences)`)
+
+    const prompt = isGerman
+      ? `Du bist ein Experte darin, akademische Texte menschlicher klingen zu lassen.
+
+**AUFGABE:**
+Schreibe den folgenden Absatz so um, dass er natürlicher und menschlicher klingt und von AI-Detektoren wie Winston AI als "menschlich" erkannt wird.
+
+**ABSOLUT KRITISCHE REGELN:**
+1. **INHALT 100% BEWAHREN:** ALLE Fakten, Daten, Namen, Argumente und Bedeutungen EXAKT beibehalten
+2. **ZITATIONEN NIEMALS ÄNDERN:** Zitate wie (Müller, 2023, S. 14) NIEMALS modifizieren, löschen oder verschieben
+3. **NUR STIL ÄNDERN:** Nur Satzbau, Wortwahl und Rhythmus anpassen
+
+**HUMANISIERUNGS-REGELN:**
+- EXTREME Satz-Burstiness: Mische kurze (5-8 Wörter) mit langen Sätzen (25-35 Wörter)
+- Variiere Satzanfänge: Nicht immer mit Subjekt beginnen
+- Verwende unerwartete aber passende Synonyme
+- VERBOTEN: "zunächst", "ferner", "des Weiteren", "zusammenfassend", "darüber hinaus", "diesbezüglich", "beleuchten", "ergründen", "tiefgreifend", "facettenreich"
+- VERBOTEN: Frage-Antwort-Muster ("X? Y.")
+- VERBOTEN: "Man", "Wir", "Uns" - nutze Passiv
+
+**BESONDERS PROBLEMATISCHE SÄTZE (diese unbedingt stark umformulieren):**
+${data.sentences.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
+
+**ABSATZ ZUM UMSCHREIBEN:**
+${data.paragraph}
+
+**FORMAT:**
+Antworte NUR mit dem umgeschriebenen Absatz. Keine Erklärungen, keine Einleitungen.`
+      : `You are an expert at making academic texts sound more human.
+
+**TASK:**
+Rewrite the following paragraph to sound more natural and human, so AI detectors like Winston AI classify it as "human-written".
+
+**ABSOLUTELY CRITICAL RULES:**
+1. **PRESERVE 100% OF CONTENT:** Keep ALL facts, data, names, arguments and meanings EXACTLY as they are
+2. **NEVER CHANGE CITATIONS:** Citations like (Smith, 2023, p. 14) must NEVER be modified, deleted or moved
+3. **ONLY CHANGE STYLE:** Only adjust sentence structure, word choice and rhythm
+
+**HUMANIZATION RULES:**
+- EXTREME sentence burstiness: Mix short (5-8 words) with long sentences (25-35 words)
+- Vary sentence beginnings: Don't always start with subject
+- Use unexpected but appropriate synonyms
+- FORBIDDEN: "firstly", "furthermore", "moreover", "in conclusion", "additionally", "delves into", "crucial", "pivotal", "landscape", "multifaceted", "nuanced"
+- FORBIDDEN: Q&A patterns ("X? Y.")
+- FORBIDDEN: Generic "We", "I", "One" - use passive voice
+
+**PARTICULARLY PROBLEMATIC SENTENCES (strongly rephrase these):**
+${data.sentences.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
+
+**PARAGRAPH TO REWRITE:**
+${data.paragraph}
+
+**FORMAT:**
+Respond ONLY with the rewritten paragraph. No explanations, no introductions.`
+
+    // Retry loop for paragraph rewriting (up to 3 attempts)
+    const MAX_PARAGRAPH_RETRIES = 3
+    let paragraphSuccess = false
+
+    for (let attempt = 1; attempt <= MAX_PARAGRAPH_RETRIES && !paragraphSuccess; attempt++) {
+      try {
+        if (attempt > 1) {
+          console.log(`[Rewrite] Retrying paragraph ${processedCount} (attempt ${attempt}/${MAX_PARAGRAPH_RETRIES})...`)
+        }
+
+        const response = await retryApiCall(
+          () => ai.models.generateContent({
+            model: 'gemini-2.5-pro',
+            contents: prompt,
+          }),
+          `Rewrite paragraph ${processedCount}`
+        )
+        trackTokenUsage(response, `Rewrite paragraph ${processedCount}`)
+
+        const responseText = response.text?.trim()
+        if (!responseText) {
+          console.warn(`[Rewrite] ⚠️ No response for paragraph ${processedCount}, attempt ${attempt}`)
+          if (attempt === MAX_PARAGRAPH_RETRIES) {
+            failCount++
+          }
+          continue
+        }
+
+        // Verify citations are preserved
+        const citationPattern = /\([A-ZÄÖÜ][a-zäöüß]+(?:\s+et\s+al\.?)?,?\s+\d{4}(?:,\s+(?:S\.|p\.|pp\.)\s+\d+(?:-\d+)?)?\)/g
+        const originalCitations = data.paragraph.match(citationPattern) || []
+        const newCitations = responseText.match(citationPattern) || []
+
+        if (originalCitations.length !== newCitations.length) {
+          console.warn(`[Rewrite] ⚠️ Citation count mismatch (${originalCitations.length} → ${newCitations.length}), attempt ${attempt}/${MAX_PARAGRAPH_RETRIES}`)
+          if (attempt === MAX_PARAGRAPH_RETRIES) {
+            console.warn(`[Rewrite] ⚠️ Giving up on paragraph ${processedCount} after ${MAX_PARAGRAPH_RETRIES} attempts`)
+            failCount++
+          }
+          await new Promise(resolve => setTimeout(resolve, 500)) // Short delay before retry
+          continue
+        }
+
+        // Replace the paragraph in content
+        const escapedParagraph = data.paragraph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const beforeLength = rewrittenContent.length
+        rewrittenContent = rewrittenContent.replace(data.paragraph, responseText)
+
+        if (rewrittenContent.length !== beforeLength || rewrittenContent.includes(responseText)) {
+          successCount++
+          paragraphSuccess = true
+          console.log(`[Rewrite] ✓ Paragraph ${processedCount} rewritten (${data.sentences.length} sentences humanized)`)
+        } else {
+          console.warn(`[Rewrite] ⚠️ Failed to replace paragraph ${processedCount}, attempt ${attempt}`)
+          if (attempt === MAX_PARAGRAPH_RETRIES) {
+            failCount++
+          }
+        }
+
+        // Small delay to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 300))
+
+      } catch (error) {
+        console.error(`[Rewrite] Error processing paragraph ${processedCount} (attempt ${attempt}):`, error)
+        if (attempt === MAX_PARAGRAPH_RETRIES) {
+          failCount++
+        }
+      }
+    }
+  }
+
+  console.log(`[Rewrite] Paragraph rewriting completed: ✓${successCount} succeeded, ✗${failCount} failed`)
+
+  // Post-processing: Fix common formatting issues
+  rewrittenContent = rewrittenContent.replace(/(\.)([A-ZÄÖÜ])/g, '$1 $2')
+  rewrittenContent = rewrittenContent.replace(/(\)\.)([A-ZÄÖÜ])/g, '$1 $2')
+  rewrittenContent = rewrittenContent.replace(/\s+\.{3}\s*/g, ' ')
+  rewrittenContent = rewrittenContent.replace(/^\.{3}\s*/gm, '')
+
+  return rewrittenContent
+}
+
+/**
+ * Rewrite flagged sentences using Gemini 2.5 Pro to make them more human-like
  */
 async function rewriteFlaggedSentences(
   content: string,
@@ -5274,19 +5484,35 @@ Respond ONLY with a JSON array of rewritten sentences. No explanations.
 
       const rewrittenSentences = JSON.parse(jsonMatch[0]) as string[]
 
-      // Replace sentences in content
+      // Replace sentences in content and track success/failure
+      let successCount = 0
+      let failCount = 0
+
       batch.forEach((originalSentence, idx) => {
         if (rewrittenSentences[idx]) {
           // Escape special regex characters in the original sentence
           const escapedOriginal = originalSentence.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          const beforeLength = rewrittenContent.length
           rewrittenContent = rewrittenContent.replace(
             new RegExp(escapedOriginal, 'g'),
             rewrittenSentences[idx]
           )
+
+          // Check if replacement actually happened
+          if (rewrittenContent.length !== beforeLength || rewrittenContent.includes(rewrittenSentences[idx])) {
+            successCount++
+          } else {
+            failCount++
+            // Log first 80 chars of failed sentence for debugging
+            console.warn(`[Rewrite] ⚠️ Failed to find/replace: "${originalSentence.substring(0, 80)}..."`)
+          }
+        } else {
+          failCount++
+          console.warn(`[Rewrite] ⚠️ No rewritten version for sentence ${idx + 1}`)
         }
       })
 
-      console.log(`[Rewrite] Batch ${Math.floor(i / BATCH_SIZE) + 1} completed`)
+      console.log(`[Rewrite] Batch ${Math.floor(i / BATCH_SIZE) + 1} completed: ✓${successCount} replaced, ✗${failCount} failed`)
 
       // Small delay between batches
       if (i + BATCH_SIZE < flaggedSentences.length) {
@@ -5412,37 +5638,68 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
 
     const flaggedSentences: string[] = []
 
-    if (Array.isArray(result.sentences)) {
-      // Winston sentence object usually has { text, score, label }
-      // Let's filter for score < 60 or label 'AI'
-      result.sentences.forEach((s: any) => {
-        if (s.score < 60) {
-          flaggedSentences.push(s.text)
+    if (Array.isArray(result.sentences) && result.sentences.length > 0) {
+      // IMPROVED: Sort sentences by score (ascending) and take the worst ones
+      // This ensures we always have targets for rewriting, even when individual
+      // sentence scores are deceptively high but overall score is low
+      const sortedSentences = [...result.sentences]
+        .filter((s: any) => s.text && typeof s.score === 'number')
+        .sort((a: any, b: any) => a.score - b.score)
+
+      // Take the worst 30 sentences OR 15% of total (whichever is higher)
+      // But cap at 50 to avoid overwhelming the rewriter
+      const minToRewrite = Math.max(30, Math.ceil(sortedSentences.length * 0.15))
+      const maxToRewrite = Math.min(50, sortedSentences.length)
+      const numToRewrite = Math.min(minToRewrite, maxToRewrite)
+
+      // Only flag sentences if score is below target (70%)
+      // If we're already at 70%+, don't flag any
+      if (result.score < MIN_HUMAN_SCORE) {
+        const worstSentences = sortedSentences.slice(0, numToRewrite)
+        worstSentences.forEach((s: any) => {
+          if (s.text) {
+            flaggedSentences.push(s.text)
+          }
+        })
+
+        // Log score distribution for debugging
+        if (worstSentences.length > 0) {
+          const lowestScore = worstSentences[0]?.score || 0
+          const highestOfWorst = worstSentences[worstSentences.length - 1]?.score || 0
+          console.log(`[HumanCheck] Worst sentences score range: ${lowestScore} - ${highestOfWorst}`)
         }
-      })
+      }
     }
 
     console.log(`[HumanCheck] identified ${flaggedSentences.length} suspicious sentences...`)
 
     if (flaggedSentences.length === 0) {
-      console.log('[HumanCheck] Low score but no specific sentences flagged, forcing general rewrite')
-      // If score is low but no specific sentences found (maybe structure mismatch), 
-      // might need to force rewrite of the whole thing or return as is?
-      // Let's just return to avoid infinite loops if we can't target.
-      // OR: Just continue with current content for now.
-      return {
-        content: currentContent,
-        winstonResult: {
-          score: result.score,
-          sentences: result.sentences,
-          checkedAt: new Date().toISOString(),
-        },
-        winstonIterations
+      console.log('[HumanCheck] Low score but no specific sentences flagged, triggering full humanization pass...')
+      // Score is low but Winston couldn't identify specific sentences
+      // This means the AI patterns are structural/paragraph-level, not sentence-level
+      // Trigger full humanization as fallback
+      try {
+        currentContent = await humanizeThesisContent(currentContent, thesisData)
+        console.log('[HumanCheck] Full humanization completed, continuing to next iteration...')
+        // Don't return - let the loop continue to re-check with Winston
+        continue
+      } catch (humanizeError) {
+        console.error('[HumanCheck] Full humanization failed:', humanizeError)
+        // If humanization fails, return current content
+        return {
+          content: currentContent,
+          winstonResult: {
+            score: result.score,
+            sentences: result.sentences,
+            checkedAt: new Date().toISOString(),
+          },
+          winstonIterations
+        }
       }
     }
 
-    // Rewrite flagged sentences
-    currentContent = await rewriteFlaggedSentences(
+    // Rewrite flagged sentences by humanizing their parent paragraphs (provides better context)
+    currentContent = await rewriteFlaggedParagraphs(
       currentContent,
       flaggedSentences,
       thesisData
