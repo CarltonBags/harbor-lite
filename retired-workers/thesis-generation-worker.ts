@@ -5159,18 +5159,42 @@ async function rewriteFlaggedSentences(
       ? `Du bist ein Experte darin, akademische Texte menschlicher klingen zu lassen, ohne die Bedeutung zu verändern.
 
 **Aufgabe:**
-Schreibe die folgenden Sätze so um, dass sie natürlicher und menschlicher klingen. Dein Ziel ist es, dass diese Sätze von KI-Detektoren (wie GPTZero) als "menschlich" erkannt werden.
+Schreibe die folgenden Sätze so um, dass sie natürlicher und menschlicher klingen. Dein Ziel ist es, dass diese Sätze von KI-Detektoren (wie Winston AI, GPTZero) als "menschlich" erkannt werden.
 
-**Strikte Regeln für maximalen "Human Score":**
-1. **Aggressive Satz-Burstiness:** Variiere die Satzlänge extrem. Mische sehr kurze (3-5 Wörter) mit langen, komplexen Sätzen. Vermeide gleichförmige Rhythmen.
-2. **Perplexität erhöhen:** Verwende unerwartete, aber passende Synonyme. Vermeide die vorhersehbarsten Wortwahlen.
-3. **Syntax-Variation:** Nutze unterschiedliche Satzstrukturen (Inversionen, Einschübe, Ellipsen). Beginne Sätze nicht immer mit dem Subjekt.
-4. **KI-Marker VERBOTEN:** Verwende NIEMALS Wörter wie: "zunächst", "ferner", "des Weiteren", "zusammenfassend", "es ist wichtig zu beachten", "in diesem Zusammenhang", "darüber hinaus", "diesbezüglich".
-5. **Inhalt bewahren:** Behalte ALLE Fakten, Daten, Namen und vor allem Zitationen (z.B. (Müller, 2023)) exakt bei.
-6. **VERBOTENE MUSTER (KILL LIST):**
-   - "Thema? Aussage." (Frage-Antwort) -> VERBOTEN! Mache einen normalen Satz daraus.
-   - "Grund? Einfach." -> VERBOTEN!
-   - "Man", "Wir", "Uns" -> VERBOTEN! Nutze Passiv/Unpersönlich.
+**KRITISCHE Regeln für maximalen "Human Score":**
+
+1. **EXTREME Satz-Burstiness (WICHTIGSTE REGEL):**
+   - Mindestens 1 Satz pro Batch muss UNTER 8 Wörter haben (z.B. "Das änderte alles.")
+   - Mindestens 1 Satz pro Batch muss ÜBER 30 Wörter haben
+   - NIEMALS 3 aufeinanderfolgende Sätze mit ähnlicher Länge (±5 Wörter)
+   - Rhythmus soll "holprig" wirken, nicht glatt fließend
+
+2. **Perplexität AGGRESSIV erhöhen:**
+   - Verwende pro Satz mindestens 1-2 unerwartete, aber passende Synonyme
+   - Vermeide die 3 vorhersehbarsten Wortwahlen für jeden Begriff
+   - Nutze gelegentlich weniger frequente Wörter aus dem akademischen Register
+   - Beginne MINDESTENS 40% der Sätze NICHT mit dem Subjekt
+
+3. **Syntax-Variation ERZWINGEN:**
+   - Starte manche Sätze mit Nebensatz, Partizip oder Präpositionalphrase
+   - Baue Einschübe ein (in Gedankenstrichen oder Klammern)
+   - Verwende gelegentlich Ellipsen oder verkürzte Konstruktionen
+   - Variiere zwischen Aktiv und Passiv innerhalb eines Absatzes
+
+4. **Natürliche Imperfektionen:**
+   - Verwende gelegentlich leicht umständliche, aber korrekte Formulierungen
+   - Variiere Interpunktion: Gedankenstrich, Klammern, Doppelpunkt, Semikolon
+   - Baue bewusst kleine syntaktische "Unebenheiten" ein (grammatisch korrekt!)
+
+5. **KI-MARKER KILL LIST 2025 (ABSOLUT VERBOTEN):**
+   - ALTE Marker: "zunächst", "ferner", "des Weiteren", "zusammenfassend", "darüber hinaus", "diesbezüglich", "in diesem Zusammenhang", "es ist wichtig zu beachten"
+   - NEUE Marker: "beleuchten", "ergründen", "tiefgreifend", "facettenreich", "vielschichtig", "hervorzuheben ist", "von zentraler Bedeutung", "maßgeblich prägen", "im Kern", "fundamental"
+   - MUSTER: "X? Y." (Frage-Antwort) → VERBOTEN, mache normalen Satz
+   - PRONOMEN: "Man", "Wir", "Uns" → VERBOTEN, nutze Passiv
+
+6. **Inhalt 100% bewahren:**
+   - Behalte ALLE Fakten, Daten, Namen exakt bei
+   - ZITATIONEN (z.B. (Müller, 2023, S. 14)) NIEMALS ändern oder entfernen!
 
 **Zu überarbeitende Sätze:**
 ${batch.map((s, idx) => `${idx + 1}. ${s}`).join('\n\n')}
@@ -5181,18 +5205,42 @@ Antworte NUR mit einem JSON-Array der umgeschriebenen Sätze. Keine Erklärungen
       : `You are an expert at making academic texts sound more human without changing their meaning.
 
 **Task:**
-Rewrite the following sentences to sound more natural and human. Your goal is to make these sentences pass AI detectors (like GPTZero) as "human-written".
+Rewrite the following sentences to sound more natural and human. Your goal is to make these sentences pass AI detectors (like Winston AI, GPTZero) as "human-written".
 
-**Strict Rules for Maximum "Human Score":**
-1. **Aggressive Sentence Burstiness:** Vary sentence length extremely. Mix very short (3-5 words) with long, complex sentences. Avoid uniform rhythms.
-2. **Increase Perplexity:** Use unexpected but appropriate synonyms. Avoid the most predictable word choices.
-3. **Syntax Variation:** Use different sentence structures (inversions, parentheticals, ellipses). Do not always start sentences with the subject.
-4. **FORBIDDEN AI Markers:** NEVER use words like: "firstly", "furthermore", "moreover", "in conclusion", "it is important to note", "in this context", "additionally", "regarding".
-5. **Preserve Content:** Keep ALL facts, data, names, and especially citations (e.g., (Smith, 2023)) exactly as they are.
-6. **FORBIDDEN PATTERNS (KILL LIST):**
-   - "Topic? Statement." (Q&A Pattern) -> FORBIDDEN! Use a statement.
-   - "Reason? Simple." -> FORBIDDEN!
-   - "We", "I", "One" -> FORBIDDEN! Use passive voice.
+**CRITICAL Rules for Maximum "Human Score":**
+
+1. **EXTREME Sentence Burstiness (MOST IMPORTANT RULE):**
+   - At least 1 sentence per batch MUST be UNDER 8 words (e.g., "That changed everything.")
+   - At least 1 sentence per batch MUST be OVER 30 words
+   - NEVER have 3 consecutive sentences with similar length (±5 words)
+   - Rhythm should feel "bumpy", not smoothly flowing
+
+2. **AGGRESSIVELY Increase Perplexity:**
+   - Use at least 1-2 unexpected but appropriate synonyms per sentence
+   - Avoid the 3 most predictable word choices for any given term
+   - Occasionally use less frequent words from the academic register
+   - Start AT LEAST 40% of sentences WITHOUT the subject first
+
+3. **FORCE Syntax Variation:**
+   - Start some sentences with subordinate clause, participle, or prepositional phrase
+   - Build in parenthetical insertions (using em-dashes or parentheses)
+   - Occasionally use ellipses or shortened constructions
+   - Vary between active and passive voice within a paragraph
+
+4. **Natural Imperfections:**
+   - Occasionally use slightly roundabout but correct phrasing
+   - Vary punctuation: em-dash, parentheses, colon, semicolon
+   - Build in conscious slight syntactic "unevenness" (grammatically correct!)
+
+5. **AI MARKER KILL LIST 2025 (ABSOLUTELY FORBIDDEN):**
+   - OLD Markers: "firstly", "furthermore", "moreover", "in conclusion", "additionally", "in this context", "it is important to note", "regarding"
+   - NEW Markers: "delves into", "crucial", "pivotal", "landscape", "embark", "realm", "tapestry", "multifaceted", "nuanced", "underscore", "paramount", "comprehensive"
+   - PATTERNS: "X? Y." (Q&A style) → FORBIDDEN, make normal statement
+   - PRONOUNS: "We", "I", "One" (generic) → FORBIDDEN, use passive voice
+
+6. **Preserve Content 100%:**
+   - Keep ALL facts, data, names exactly as they are
+   - CITATIONS (e.g., (Smith, 2023, p. 14)) NEVER change or remove!
 
 **Sentences to rewrite:**
 ${batch.map((s, idx) => `${idx + 1}. ${s}`).join('\n\n')}
@@ -5204,7 +5252,7 @@ Respond ONLY with a JSON array of rewritten sentences. No explanations.
     try {
       const response = await retryApiCall(
         () => ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-2.5-pro',
           contents: prompt,
         }),
         `Rewrite sentences batch ${Math.floor(i / BATCH_SIZE) + 1}`
@@ -5251,6 +5299,19 @@ Respond ONLY with a JSON array of rewritten sentences. No explanations.
   }
 
   console.log('[Rewrite] Sentence rewriting completed')
+
+  // Post-processing: Fix missing spaces after periods before next sentence
+  // Matches: period/closing paren followed immediately by uppercase letter (no space)
+  // e.g., "S. 3).ADI" → "S. 3). ADI"
+  rewrittenContent = rewrittenContent.replace(/(\.)([A-ZÄÖÜ])/g, '$1 $2')
+  rewrittenContent = rewrittenContent.replace(/(\)\.)([A-ZÄÖÜ])/g, '$1 $2')
+
+  // Post-processing: Remove stray ellipsis from partial quote markers
+  // These come from critique loop when sentences start with "..." to indicate partial quotes
+  // e.g., " ...Investitionsrisiken" → " Investitionsrisiken"
+  rewrittenContent = rewrittenContent.replace(/\s+\.{3}\s*/g, ' ')  // " ... " or " ..." → " "
+  rewrittenContent = rewrittenContent.replace(/^\.{3}\s*/gm, '')    // "..." at line start → ""
+
   return rewrittenContent
 }
 
@@ -7444,22 +7505,62 @@ async function processThesisGeneration(
       // Continue with original content if check fails
     }
 
-    // Step 7.5: Humanize the text to avoid AI detection
-    // NOTE: SKIPPED - The Winston check/rewrite loop (Step 7.4) already handles humanization
-    // by identifying and rewriting AI-detected sentences. Running a full humanization pass
-    // on top of that is:
-    // 1. Expensive (66+ Gemini API calls for a typical thesis)
-    // 2. Redundant (Winston already rewrote the problematic sentences)
-    // 3. Risk of quality degradation (over-processing the text)
-    // 
-    // If more aggressive humanization is needed in the future, increase MAX_ITERATIONS
-    // in ensureHumanLikeContent instead of running a separate full-thesis pass.
-    console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content ==========')
-    if (winstonResult) {
-      console.log(`[PROCESS] ✓ SKIPPING full humanization - Winston loop (Step 7.4) already processed content`)
-      console.log(`[PROCESS] Final Winston score: ${winstonResult.score}% human (achieved after sentence rewrites)`)
+    // Step 7.5: Full Humanization Pass (Fallback)
+    // Only runs if Winston score is still below threshold after targeted rewrites
+    const MIN_HUMAN_SCORE_THRESHOLD = 70
+    console.log('\n[PROCESS] ========== Step 7.5: Humanize Thesis Content (Fallback) ==========')
+
+    const currentScore = winstonResult?.score || 0
+
+    if (currentScore >= MIN_HUMAN_SCORE_THRESHOLD) {
+      console.log(`[PROCESS] ✓ SKIPPING full humanization - Winston score ${currentScore}% already meets threshold`)
+    } else if (!winstonResult) {
+      console.log('[PROCESS] ✓ SKIPPING full humanization - Winston check was unavailable')
     } else {
-      console.log('[PROCESS] ✓ SKIPPING full humanization - Winston check was already attempted')
+      console.log(`[PROCESS] ⚠️ Winston score ${currentScore}% is below ${MIN_HUMAN_SCORE_THRESHOLD}% threshold`)
+      console.log('[PROCESS] Running full humanization pass as fallback...')
+
+      try {
+        const humanizeStart = Date.now()
+        thesisContent = await humanizeThesisContent(thesisContent, thesisData)
+        const humanizeDuration = Date.now() - humanizeStart
+        console.log(`[PROCESS] Full humanization completed in ${humanizeDuration}ms`)
+
+        // Re-check with Winston after full humanization
+        console.log('[PROCESS] Re-checking with Winston after full humanization...')
+        const recheckResult = await checkWinston(thesisContent)
+        if (recheckResult) {
+          console.log(`[PROCESS] Post-humanization Winston score: ${recheckResult.score}% human`)
+          winstonResult = {
+            score: recheckResult.score,
+            sentences: recheckResult.sentences,
+            checkedAt: new Date().toISOString()
+          }
+          // Add this iteration to tracking
+          winstonIterations.push({
+            iteration: winstonIterations.length + 1,
+            score: recheckResult.score,
+            sentenceCount: Array.isArray(recheckResult.sentences) ? recheckResult.sentences.length : 0,
+            flaggedCount: Array.isArray(recheckResult.sentences)
+              ? recheckResult.sentences.filter((s: any) => s.score < 60).length
+              : 0,
+            checkedAt: new Date().toISOString()
+          })
+
+          // Update database with new iterations
+          const { error: updateError } = await supabase
+            .from('theses')
+            .update({ winston_checks: winstonIterations })
+            .eq('id', thesisId)
+
+          if (updateError) {
+            console.error('[PROCESS] Failed to update Winston iterations:', updateError)
+          }
+        }
+      } catch (error) {
+        console.error('[PROCESS] ERROR in full humanization:', error)
+        console.warn('[PROCESS] Continuing with current content')
+      }
     }
 
     // Step 7.6: Plagiarism Check & Auto-Fix (Winston AI)
