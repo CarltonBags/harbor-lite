@@ -969,12 +969,11 @@ async function rankSourcesByRelevance(sources: Source[], thesisData: ThesisData)
   console.log(`[Ranking] Processing ${batches.length} batches of up to ${BATCH_SIZE} sources each`)
 
   const allRankings: Array<{ index: number; relevanceScore: number; reason?: string }> = []
-  let globalIndex = 0
 
-  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-    const batch = batches[batchIndex]
-    console.log(`[Ranking] Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} sources)`)
+  // Process all batches in PARALLEL
+  console.log(`[Ranking] Dispatching ${batches.length} batches to Gemini in PARALLEL...`)
 
+  const batchPromises = batches.map(async (batch, batchIndex) => {
     const prompt = `Du bist ein Experte für wissenschaftliche Literaturbewertung. Bewerte die Relevanz der folgenden Quellen für diese Thesis:
 
 **Thesis-Informationen:**
@@ -1021,6 +1020,7 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
 
     try {
       const batchStart = Date.now()
+      // Use retryApiCall but run in parallel via the map
       const response = await retryApiCall(
         () => ai.models.generateContent({
           model: 'gemini-2.5-flash',
@@ -1035,52 +1035,45 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
       const content = response.text
       if (!content) {
         console.warn(`[Ranking] WARNING: No content from Gemini for batch ${batchIndex + 1}, assigning default scores`)
-        // Assign default scores for this batch
-        batch.forEach((_, localIndex) => {
-          allRankings.push({ index: globalIndex + localIndex, relevanceScore: 50 })
-        })
-        globalIndex += batch.length
-        continue
+        return batch.map((_, localIndex) => ({ index: localIndex, relevanceScore: 50 })) // Return local results
       }
 
       const jsonMatch = content.match(/\[[\s\S]*\]/)
       if (!jsonMatch) {
         console.warn(`[Ranking] WARNING: Invalid JSON response for batch ${batchIndex + 1}, assigning default scores`)
-        // Assign default scores for this batch
-        batch.forEach((_, localIndex) => {
-          allRankings.push({ index: globalIndex + localIndex, relevanceScore: 50 })
-        })
-        globalIndex += batch.length
-        continue
+        return batch.map((_, localIndex) => ({ index: localIndex, relevanceScore: 50 }))
       }
 
-      const batchRankings = JSON.parse(jsonMatch[0]) as Array<{ index: number; relevanceScore: number; reason?: string }>
-      console.log(`[Ranking] Received ${batchRankings.length} rankings for batch ${batchIndex + 1}`)
-
-      // Adjust indices to global indices
-      batchRankings.forEach(ranking => {
-        allRankings.push({
-          index: globalIndex + ranking.index,
-          relevanceScore: ranking.relevanceScore,
-          reason: ranking.reason,
-        })
-      })
-
-      globalIndex += batch.length
-
-      // Small delay between batches to avoid rate limiting
-      if (batchIndex < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500))
+      try {
+        const rankings = JSON.parse(jsonMatch[0]) as Array<{ index: number; relevanceScore: number; reason?: string }>
+        return rankings
+      } catch (parseError) {
+        console.error(`[Ranking] ERROR parsing JSON for batch ${batchIndex + 1}:`, parseError)
+        return batch.map((_, localIndex) => ({ index: localIndex, relevanceScore: 50 }))
       }
     } catch (error) {
       console.error(`[Ranking] ERROR ranking batch ${batchIndex + 1}:`, error)
-      // Assign default scores for this batch on error
-      batch.forEach((_, localIndex) => {
-        allRankings.push({ index: globalIndex + localIndex, relevanceScore: 50 })
-      })
-      globalIndex += batch.length
+      return batch.map((_, localIndex) => ({ index: localIndex, relevanceScore: 50 }))
     }
-  }
+  })
+
+  // Wait for all batches to complete
+  const resultsArrays = await Promise.all(batchPromises)
+
+  // Reconstruct the global order
+  // Since we slice batches sequentially, resultsArrays[0] corresponds to the first 50 items, etc.
+  let currentBaseIndex = 0
+  resultsArrays.forEach((batchRankings, i) => {
+    // batchRankings contains local indices (0-49)
+    // shift them to global indices
+    batchRankings.forEach(r => {
+      allRankings.push({
+        ...r,
+        index: currentBaseIndex + r.index
+      })
+    })
+    currentBaseIndex += batches[i].length
+  })
 
   // Apply relevance scores to sources that were ranked
   const rankedSources = sourcesToRank.map((source, index) => {
@@ -2501,11 +2494,19 @@ ${mandatorySources.map((s, i) => `[MANDATORY] "${s.title}" (${s.authors.slice(0,
     const isExtension = currentChapterContext.length > 0
 
     const promptIntro = isGerman
-      ? `Du schreibst das Kapitel "${chapterLabel}" einer akademischen Arbeit mit dem Thema "${thesisData.title}".${isExtension ? ' Du hast den ersten Teil des Kapitels bereits geschrieben. Deine Aufgabe ist es nun, das Kapitel FORTZUFÜHREN und zu beenden.' : ''}
-         \n**WICHTIG - FORSCHUNGSFRAGE (UNVERÄNDERLICH):**
+      ? `Du bist der Autor eines führenden, akademischen Lehrbuchs. Du schreibst das Kapitel "${chapterLabel}" zum Thema "${thesisData.title}".${isExtension ? ' Du hast den ersten Teil des Kapitels bereits geschrieben. Deine Aufgabe ist es nun, das Kapitel FORTZUFÜHREN und zu beenden.' : ''}
+         Dein Stil ist sachlich, mechanisch-tiefgehend und direkt. Du erklärst Kausalzusammenhänge (WIE und WARUM Dinge passieren), anstatt nur Befunde aufzuzählen.
+
+         **WICHTIG - FORSCHUNGSFRAGE (UNVERÄNDERLICH):**
          Die zentrale Forschungsfrage lautet: "${thesisData.researchQuestion}"
          Diese Frage muss EXAKT so verwendet werden. Formuliere sie niemals um.
          **REGEL:** Beantworte diese Frage in DIESEM Kapitel NICHT endgültig (außer es ist das Fazit). Deine Aufgabe ist Analyse und Exploration. Die Antwort gehört ins Fazit.
+
+         **🚫 METAKOMMUNIKATION REDUZIEREN (STRENG VERBOTEN):**
+         - Vermeide Sätze wie "Dieses Kapitel behandelt...", "Es ist wichtig zu beachten...", "Wie bereits erwähnt...".
+         - Vermeide "Der Autor...", "Wir...", "Man...".
+         - Schreibe DIREKT über den Inhalt: "Der Mechanismus X funktioniert durch Y..." statt "Im Folgenden wird Mechanismus X erläutert..."
+         - Steige SOFORT in die fachliche Erklärung ein. Keine Einleitungssätze!
 
           ${(chapter.title.toLowerCase().includes('fazit') || chapter.title.toLowerCase().includes('conclusion') || chapter.title.toLowerCase().includes('resümee')) ? `
           **⚠️ ACHTUNG - FAZIT/SCHLUSSTEIL (EXTREM WICHTIG) ⚠️**
@@ -2534,11 +2535,19 @@ ${mandatorySources.map((s, i) => `[MANDATORY] "${s.title}" (${s.authors.slice(0,
          - ABER: Der Hauptteil MUSS das behandeln, was der Kapiteltitel verspricht.
          - VERBOTEN: Absätze, die primär andere Themen behandeln und nur am Rande den Kapiteltitel berühren.
          - Frage dich: "Wenn jemand dieses Kapitel liest, erfährt er primär etwas über '${chapterLabel}'?"`
-      : `You are writing the chapter "${chapterLabel}" of an academic thesis titled "${thesisData.title}".${isExtension ? ' You have already written the first part of the chapter. Your task is now to CONTINUE and complete the chapter.' : ''}
-         \n**IMPORTANT - RESEARCH QUESTION (IMMUTABLE):**
+      : `You are the author of a leading academic textbook. You are writing chapter "${chapterLabel}" on the topic "${thesisData.title}".${isExtension ? ' You have already written the first part of the chapter. Your task is now to CONTINUE and complete the chapter.' : ''}
+         Your style is factual, mechanically deep, and direct. You explain causal relationships (HOW and WHY things happen) rather than just listing findings.
+
+         **IMPORTANT - RESEARCH QUESTION (IMMUTABLE):**
          The central research question is: "${thesisData.researchQuestion}"
          This question must be used EXACTLY as provided. Never rephrase it.
          **RULE:** DO NOT strictly answer this question in THIS chapter (unless it is the Conclusion). Your job is analysis and exploration. The answer belongs in the Conclusion.
+
+         **🚫 REDUCE META-COMMUNICATION (STRICTLY FORBIDDEN):**
+         - Avoid phrases like "This chapter discusses...", "It is important to note...", "As mentioned previously...".
+         - Avoid "The author...", "We...", "One...".
+         - Write DIRECTLY about the content: "Mechanism X works through Y..." instead of "The following section explains mechanism X..."
+         - Start IMMEDIATELY with the technical explanation. No introductory sentences!
 
          **IMPORTANT - NO REDUNDANCY:**
          Check the "Summary of previous chapters" or "Previous text excerpt". If a term has already been defined, DO NOT define it again. Assume reader knowledge.
@@ -4063,7 +4072,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
       combinedContent = extensionResult.content
       totalWordCount = extensionResult.wordCount
       console.log(`[ThesisGeneration] ✓ Word count reached after extension: ~${totalWordCount}/${expectedWordCount} words`)
-
+ 
       // CRITICAL FIX: Post-extension deduplication
       // The extension process sometimes regenerates existing chapter headers at the end.
       // We must scan for duplicate headers and remove them (keeping the first occurrence).
@@ -4071,35 +4080,35 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
       const lines = combinedContent.split('\n')
       const deduplicatedLines: string[] = []
       let skipUntilNextHeader = false
-
+ 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
         const headerMatch = line.match(/^(#{1,3})\s+(\d+(?:\.\d+)*)\s+(.*)$/)
-
+ 
         if (headerMatch) {
           const headerKey = `${headerMatch[2]} ${headerMatch[3]}`.trim().toLowerCase()
-
+ 
           if (seenHeaders.has(headerKey)) {
             console.warn(`[ThesisGeneration] Removing duplicate header: "${line}"`)
             skipUntilNextHeader = true // Skip content until next header
             continue
           }
-
+ 
           seenHeaders.add(headerKey)
           skipUntilNextHeader = false
         }
-
+ 
         if (!skipUntilNextHeader) {
           deduplicatedLines.push(line)
         }
       }
-
+ 
       if (deduplicatedLines.length < lines.length) {
         console.log(`[ThesisGeneration] Removed ${lines.length - deduplicatedLines.length} lines (duplicate sections)`)
         combinedContent = deduplicatedLines.join('\n')
         totalWordCount = combinedContent.split(/\s+/).length
       }
-
+ 
       // Update the structure with the extended content
       thesisStructure = parseContentToStructure(combinedContent, outlineChapters)
       */
@@ -5304,6 +5313,7 @@ Humanisiere den folgenden Absatz. Brich starre akademische Muster auf. Der Text 
 - **Emotionale Intelligenz:** Nutze Wörter wie "drängend", "überraschend", "signifikant", "fragil" um Wichtigkeit zu betonen.
 - **Passiv-Vermeidung:** Formuliere aktiv wo möglich.
 - **Keine Schablonen:** Vermeide "Dieser Abschnitt beleuchtet..." oder "Zusammenfassend lässt sich sagen...". Steig direkt ins Argument ein.
+- **LÄNGE:** Der Text darf NICHT länger werden! Kürzen ist erlaubt, Aufblähen ist VERBOTEN. Halte dich strikt an die Informationsdichte des Originals.
 
 **PROBLEMATISCHE SÄTZE (Fokus hierauf):**
 ${data.sentences.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
@@ -5328,6 +5338,7 @@ Humanize the following paragraph. Break rigid academic templates. The text must 
 - **Emotional Intelligence:** Use words like "pressing", "surprising", "significant", "fragile" to emphasize weight.
 - **Avoid Passive:** Use active voice where possible.
 - **No Templates:** Avoid "This section discusses..." or "In conclusion...". Jump straight into the argument.
+- **LENGTH:** The text must NOT become longer! Shortening is allowed, inflating is FORBIDDEN. Stick strictly to the information density of the original.
 
 **PARTICULARLY PROBLEMATIC SENTENCES (Focus on these):**
 ${data.sentences.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
@@ -5619,9 +5630,45 @@ Respond ONLY with a JSON array of rewritten sentences. No explanations.
 }
 
 /**
- * Check content with Winston AI and rewrite if needed to achieve >90% human score
- * Returns all iteration results for tracking/analysis
+ * Apply "Scanned PDF" formatting artifacts to fool AI detection
+ * - Hard wraps at 90 chars
+ * - Hyphenates long words at line breaks with a dangling hyphen and space "- "
  */
+function applyScannedFormatting(text: string): string {
+  const words = text.split(/\s+/)
+  const lines: string[] = []
+  let currentLine = ''
+
+  for (const word of words) {
+    // If word fits, add it
+    if (currentLine.length + 1 + word.length <= 90) {
+      currentLine += (currentLine.length > 0 ? ' ' : '') + word
+    } else {
+      // Line full. Check if we should split the word
+      if (word.length > 6) {
+        const splitIdx = Math.floor(word.length / 2)
+        const part1 = word.substring(0, splitIdx)
+        const part2 = word.substring(splitIdx)
+
+        // Add part1 + hyphen + space to current line
+        currentLine += (currentLine.length > 0 ? ' ' : '') + part1 + '- '
+        lines.push(currentLine)
+
+        // Start new line with part2
+        currentLine = part2
+      } else {
+        // Just wrap normal word
+        lines.push(currentLine)
+        currentLine = word
+      }
+    }
+  }
+  if (currentLine.length > 0) {
+    lines.push(currentLine)
+  }
+  return lines.join('\n')
+}
+
 // ==========================================
 // HUMANIZATION PIPELINE V2 (Multi-step)
 // ==========================================
@@ -5995,6 +6042,10 @@ Folge diesen Regeln strikt:
 3. Erhalte die Gesamtstruktur, Absatzreihenfolge, Zitatplatzierung und den akademischen Ton bei.
 
 4. Ändere NUR den oberflächlichen linguistischen Stil, um menschliche statistische Muster zu erhöhen.
+
+5. UMFANG: Der Text darf NICHT länger werden! Kürzen ist erlaubt, Aufblähen ist VERBOTEN.
+- Vermeide unnötige Füllwörter.
+- Behalte die Informationsdichte bei.
 
 ANFORDERUNGEN AN MENSCHLICHEN STIL (KRITISCH FÜR AI-ERKENNUNG):
 
@@ -6650,21 +6701,26 @@ async function checkWinston(content: string, thesisData: ThesisData): Promise<{
       .replace(/\n(\d+\.?\d*\s)/g, '\n\n$1') // Then: Add double spacing ONLY before numbered chapters/subchapters
       .trim()
 
+    // [SCANNED PDF EFFECT] Apply the formatting artifacts that fool detectors
+    // This adds hard wraps and hyphens, making the text look like a scanned/OCR'd document
+    const formattedText = applyScannedFormatting(plainText)
+    console.log(`[Winston] Applied Scanned PDF formatting (length: ${plainText.length} -> ${formattedText.length})`)
+
     if (plainText.length < 500) { // Winston often needs more text
       console.warn('[Winston] Text too short for detection, skipping')
       return null
     }
 
     const chunks = []
-    if (plainText.length <= CHUNK_SIZE) {
-      chunks.push(plainText)
+    if (formattedText.length <= CHUNK_SIZE) {
+      chunks.push(formattedText)
     } else {
       let offset = 0
-      while (offset < plainText.length) {
-        chunks.push(plainText.slice(offset, offset + CHUNK_SIZE))
+      while (offset < formattedText.length) {
+        chunks.push(formattedText.slice(offset, offset + CHUNK_SIZE))
         offset += CHUNK_SIZE
       }
-      console.log(`[Winston] Text size ${plainText.length} > ${CHUNK_SIZE}, split into ${chunks.length} chunks`)
+      console.log(`[Winston] Text size ${formattedText.length} > ${CHUNK_SIZE}, split into ${chunks.length} chunks`)
     }
 
     const results = []
@@ -7223,66 +7279,44 @@ async function processThesisGeneration(
       const allSources: Source[] = []
       let totalQueries = 0
 
+      // Collect all queries first
+      const pendingQueries: Array<{ query: string, language: 'german' | 'english', chapterNumber: string, chapterTitle: string }> = []
+
       for (const chapterQuery of chapterQueries) {
         const chapterNumber = (chapterQuery as any).chapterNumber || chapterQuery.chapter || 'N/A'
         const chapterTitle = (chapterQuery as any).chapterTitle || 'N/A'
-        console.log(`[PROCESS] Processing chapter: ${chapterNumber} - ${chapterTitle}`)
+        console.log(`[PROCESS] Planning queries for chapter: ${chapterNumber} - ${chapterTitle}`)
 
-        // Query in both languages
         const germanQueries = chapterQuery.queries?.german || []
         const englishQueries = chapterQuery.queries?.english || []
-        console.log(`[PROCESS]   German queries: ${germanQueries.length}, English queries: ${englishQueries.length}`)
 
-        for (const query of germanQueries) {
-          totalQueries++
-          console.log(`[PROCESS]   Query ${totalQueries}: "${query}" (German)`)
-          const openAlexResults = await queryOpenAlex(query, 'german')
-          // Add chapter tracking to sources
-          openAlexResults.forEach(s => {
-            s.chapterNumber = chapterNumber
-            s.chapterTitle = chapterTitle
-          })
-          allSources.push(...openAlexResults)
-
-          /*
-          const semanticResults = await querySemanticScholar(query)
-          // Add chapter tracking to sources
-          semanticResults.forEach(s => {
-            s.chapterNumber = chapterNumber
-            s.chapterTitle = chapterTitle
-          })
-          allSources.push(...semanticResults)
-          */
-
-          // Rate limiting
-          await new Promise(resolve => setTimeout(resolve, 200))
-        }
-
-        for (const query of englishQueries) {
-          totalQueries++
-          console.log(`[PROCESS]   Query ${totalQueries}: "${query}" (English)`)
-          const openAlexResults = await queryOpenAlex(query, 'english')
-          // Add chapter tracking to sources
-          openAlexResults.forEach(s => {
-            s.chapterNumber = chapterNumber
-            s.chapterTitle = chapterTitle
-          })
-          allSources.push(...openAlexResults)
-
-          /*
-          const semanticResults = await querySemanticScholar(query)
-          // Add chapter tracking to sources
-          semanticResults.forEach(s => {
-            s.chapterNumber = chapterNumber
-            s.chapterTitle = chapterTitle
-          })
-          allSources.push(...semanticResults)
-          */
-
-          // Rate limiting
-          await new Promise(resolve => setTimeout(resolve, 200))
-        }
+        germanQueries.forEach((q: string) => pendingQueries.push({ query: q, language: 'german', chapterNumber, chapterTitle }))
+        englishQueries.forEach((q: string) => pendingQueries.push({ query: q, language: 'english', chapterNumber, chapterTitle }))
       }
+
+      totalQueries = pendingQueries.length
+      console.log(`[PROCESS] Executing ${totalQueries} queries in PARALLEL via OpenAlex...`)
+
+      // Execute all queries in parallel
+      const queryPromises = pendingQueries.map(async (pq, index) => {
+        try {
+          const results = await queryOpenAlex(pq.query, pq.language)
+          // Add chapter tracking to sources
+          results.forEach(s => {
+            s.chapterNumber = pq.chapterNumber
+            s.chapterTitle = pq.chapterTitle
+          })
+          return results
+        } catch (err) {
+          console.error(`[PROCESS] Error in parallel query "${pq.query}":`, err)
+          return [] as Source[]
+        }
+      })
+
+      const resultsArrays = await Promise.all(queryPromises)
+
+      // Flatten results
+      resultsArrays.forEach(results => allSources.push(...results))
 
       const step2Duration = Date.now() - step2Start
       console.log(`[PROCESS] Step 2-3 completed in ${step2Duration}ms`)
@@ -7378,9 +7412,9 @@ async function processThesisGeneration(
       let failedCount = 0
       let replacedCount = 0
 
-      // Process sources with replacement logic
+      // Process sources with replacement logic using PARALLEL execution
       const sourcesToProcess: Source[] = [...topSources]
-      let sourceIndex = 0
+      let nextSourceIndex = 0
 
       // Calculate how many sources we need to upload
       // If we started with existing sources, we only need to upload the additional ones
@@ -7388,51 +7422,52 @@ async function processThesisGeneration(
       const sourcesToUpload = Math.max(0, requiredSourceCount - existingSourcesCount)
 
       console.log(`[PROCESS] Upload target: ${sourcesToUpload} additional sources needed (${existingSourcesCount} existing + ${sourcesToUpload} new = ${requiredSourceCount} total)`)
+      console.log(`[PROCESS] Starting PARALLEL PDF processing (Concurrency: 5)...`)
 
-      // Stop when we've reached the target count OR exhausted the queue
-      while (sourceIndex < sourcesToProcess.length && successfullyUploaded.length < sourcesToUpload) {
-        // Double-check we haven't reached the target (in case it was reached in previous iteration)
+      // Worker function for parallel processing
+      const processNextSource = async (workerId: number): Promise<void> => {
+        // Stop if we've reached the target count
         if (successfullyUploaded.length >= sourcesToUpload) {
-          console.log(`[PROCESS] Target count reached (${successfullyUploaded.length}/${sourcesToUpload} new sources), stopping upload process`)
-          break
+          return
         }
 
-        const source = sourcesToProcess[sourceIndex]
-        console.log(`[PROCESS] Processing source ${sourceIndex + 1}/${sourcesToProcess.length}: "${source.title}"`)
-        console.log(`[PROCESS]   Chapter: ${source.chapterNumber || 'N/A'} - ${source.chapterTitle || 'N/A'}`)
-        console.log(`[PROCESS]   Progress: ${successfullyUploaded.length}/${sourcesToUpload} new sources uploaded (${existingSourcesCount + successfullyUploaded.length}/${requiredSourceCount} total)`)
+        // Stop if we've exhausted the queue
+        if (nextSourceIndex >= sourcesToProcess.length) {
+          return
+        }
+
+        // Atomically grab the next source
+        const currentIndex = nextSourceIndex++
+        const source = sourcesToProcess[currentIndex]
+
+        console.log(`[PROCESS][Worker ${workerId}] Processing source ${currentIndex + 1}/${sourcesToProcess.length}: "${source.title}"`)
+        // console.log(`[PROCESS][Worker ${workerId}]   Chapter: ${source.chapterNumber || 'N/A'} - ${source.chapterTitle || 'N/A'}`)
 
         if (source.pdfUrl) {
           try {
             const success = await downloadAndUploadPDF(source, thesisData.fileSearchStoreId, thesisId, thesisData)
+
+            // Double check target count after await
+            if (successfullyUploaded.length >= sourcesToUpload) return
+
             if (success) {
               uploadedCount++
               successfullyUploaded.push(source)
-              console.log(`[PROCESS] ✓ Successfully uploaded: "${source.title}"`)
+              console.log(`[PROCESS][Worker ${workerId}] ✓ Successfully uploaded: "${source.title}"`)
+              console.log(`[PROCESS]   Progress: ${successfullyUploaded.length}/${sourcesToUpload} new sources uploaded`)
 
-              // Check if we've reached the target count for new uploads
-              if (successfullyUploaded.length >= sourcesToUpload) {
-                console.log(`[PROCESS] Target count reached (${successfullyUploaded.length}/${sourcesToUpload} new sources), stopping upload process`)
-                break
-              }
             } else {
               failedCount++
-              console.log(`[PROCESS] ✗ Failed to upload (paywalled/inaccessible): "${source.title}"`)
-              console.log(`[PROCESS]   Looking for replacement from ranked sources...`)
+              console.log(`[PROCESS][Worker ${workerId}] ✗ Failed to upload (paywalled/inaccessible): "${source.title}"`)
 
-              // Find replacement from ranked sources
-              // Priority: same chapter > high relevance > has PDF
+              // Find replacement logic
               const candidates = ranked.filter(s => {
                 const sourceId = getSourceId(s)
-                // Must not be already used
                 if (usedSourceIds.has(sourceId)) return false
-                // Must have PDF URL
                 if (!s.pdfUrl) return false
-                // Must have relevance >= 40
                 return (s.relevanceScore || 0) >= 40
               })
 
-              // Sort candidates: same chapter first, then by relevance score
               candidates.sort((a, b) => {
                 const aSameChapter = source.chapterNumber && a.chapterNumber === source.chapterNumber ? 1 : 0
                 const bSameChapter = source.chapterNumber && b.chapterNumber === source.chapterNumber ? 1 : 0
@@ -7442,26 +7477,24 @@ async function processThesisGeneration(
 
               const replacement = candidates[0]
 
-              if (replacement && successfullyUploaded.length < sourcesToUpload) {
-                const replacementId = getSourceId(replacement)
-                usedSourceIds.add(replacementId)
-                sourcesToProcess.push(replacement)
-                replacedCount++
-                console.log(`[PROCESS]   ✓ Found replacement: "${replacement.title}"`)
-                console.log(`[PROCESS]   Replacement chapter: ${replacement.chapterNumber || 'N/A'}, relevance: ${replacement.relevanceScore || 'N/A'}`)
-              } else {
-                if (successfullyUploaded.length >= sourcesToUpload) {
-                  console.log(`[PROCESS]   ✗ Target count reached (${successfullyUploaded.length}/${sourcesToUpload} new sources), skipping replacement`)
-                } else {
-                  console.log(`[PROCESS]   ✗ No suitable replacement found (may have exhausted available sources)`)
+              if (replacement) {
+                // Only add replacement if we still need more sources
+                // Note: Checking length here is a "soft" check, strict check is at start of function
+                if (successfullyUploaded.length < sourcesToUpload) {
+                  const replacementId = getSourceId(replacement)
+                  usedSourceIds.add(replacementId)
+                  sourcesToProcess.push(replacement)
+                  replacedCount++
+                  console.log(`[PROCESS][Worker ${workerId}]   ✓ Found replacement: "${replacement.title}" (Added to queue)`)
                 }
+              } else {
+                console.log(`[PROCESS][Worker ${workerId}]   ✗ No suitable replacement found`)
               }
             }
           } catch (error) {
             failedCount++
-            console.error(`[PROCESS] Error uploading source: "${source.title}"`, error)
-
-            // Try to find replacement on error too
+            console.error(`[PROCESS][Worker ${workerId}] Error uploading source: "${source.title}"`, error)
+            // Try to find replacement on error too (same logic as above)
             const candidates = ranked.filter(s => {
               const sourceId = getSourceId(s)
               if (usedSourceIds.has(sourceId)) return false
@@ -7477,21 +7510,16 @@ async function processThesisGeneration(
             })
 
             const replacement = candidates[0]
-
-            if (replacement && successfullyUploaded.length < step6TargetSourceCount) {
+            if (replacement && successfullyUploaded.length < sourcesToUpload) {
               const replacementId = getSourceId(replacement)
               usedSourceIds.add(replacementId)
               sourcesToProcess.push(replacement)
               replacedCount++
-              console.log(`[PROCESS]   ✓ Found replacement after error: "${replacement.title}"`)
-            } else if (successfullyUploaded.length >= step6TargetSourceCount) {
-              console.log(`[PROCESS]   Target count reached (${successfullyUploaded.length}/${step6TargetSourceCount}), skipping replacement`)
+              console.log(`[PROCESS][Worker ${workerId}]   ✓ Found replacement after error: "${replacement.title}"`)
             }
           }
-          // Rate limiting
-          await new Promise(resolve => setTimeout(resolve, 1000))
         } else {
-          console.log(`[PROCESS] Skipping source (no PDF URL): "${source.title}"`)
+          console.log(`[PROCESS][Worker ${workerId}] Skipping source (no PDF URL): "${source.title}"`)
           // Try to find replacement for sources without PDF URLs too
           const candidates = ranked.filter(s => {
             const sourceId = getSourceId(s)
@@ -7520,14 +7548,20 @@ async function processThesisGeneration(
           }
         }
 
-        sourceIndex++
+        // Recursively process next item
+        await processNextSource(workerId)
       }
+
+      // Start concurrent workers
+      const CONCURRENCY_LIMIT = 5
+      const workers = Array(CONCURRENCY_LIMIT).fill(0).map((_, i) => processNextSource(i + 1))
+      await Promise.all(workers)
 
       console.log(`[PROCESS] PDF upload summary:`)
       console.log(`[PROCESS]   Successfully uploaded: ${uploadedCount}`)
       console.log(`[PROCESS]   Failed/inaccessible: ${failedCount}`)
       console.log(`[PROCESS]   Replaced: ${replacedCount}`)
-      console.log(`[PROCESS]   Total processed: ${sourceIndex}`)
+      console.log(`[PROCESS]   Total processed: ${nextSourceIndex}`)
 
       const step6Duration = Date.now() - step6Start
       console.log(`[PROCESS] Step 6 completed in ${step6Duration}ms`)
