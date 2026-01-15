@@ -7104,7 +7104,18 @@ async function processThesisGeneration(
   console.log('='.repeat(80))
 
   // Reset token counters for this job
-  // (Handled by thesisData.tokenStats implicitly)
+  // (Handled by thesisData.tokenStats implicitly if passed from API)
+  // Ensure tokenStats is initialized if missing (e.g. from queue)
+  if (!thesisData.tokenStats) {
+    console.log('[PROCESS] Initializing missing tokenStats...')
+    thesisData.tokenStats = {
+      gemini25ProInput: 0,
+      gemini25ProOutput: 0,
+      gemini3ProInput: 0,
+      gemini3ProOutput: 0,
+      winstonWords: 0
+    }
+  }
 
   try {
     // Check if FileSearchStore already has documents
