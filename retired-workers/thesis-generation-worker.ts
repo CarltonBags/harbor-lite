@@ -5808,9 +5808,8 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
   }>
 }> {
   console.log('[HumanCheck] Starting Winston AI check and potential rewrite...')
-
   const MIN_HUMAN_SCORE = 70
-  const MAX_ITERATIONS = 5 // Limit iterations to avoid infinite loops
+  const MAX_ITERATIONS = 2 // Limit iterations to avoid infinite loops and high costs
 
   let currentContent = content
   let iteration = 0
@@ -5921,28 +5920,8 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
     console.log(`[HumanCheck] identified ${flaggedSentences.length} suspicious sentences...`)
 
     if (flaggedSentences.length === 0) {
-      console.log('[HumanCheck] Low score but no specific sentences flagged, triggering full humanization pass...')
-      // Score is low but Winston couldn't identify specific sentences
-      // This means the AI patterns are structural/paragraph-level, not sentence-level
-      // Trigger full humanization as fallback
-      try {
-        currentContent = await humanizeThesisContent(currentContent, thesisData)
-        console.log('[HumanCheck] Full humanization completed, continuing to next iteration...')
-        // Don't return - let the loop continue to re-check with Winston
-        continue
-      } catch (humanizeError) {
-        console.error('[HumanCheck] Full humanization failed:', humanizeError)
-        // If humanization fails, return current content
-        return {
-          content: currentContent,
-          winstonResult: {
-            score: result.score,
-            sentences: result.sentences,
-            checkedAt: new Date().toISOString(),
-          },
-          winstonIterations
-        }
-      }
+      console.log('[HumanCheck] Low score but no specific sentences flagged. Stopping humanization loop as fallback is disabled.')
+      break // Exit loop, returning current content
     }
 
     // Rewrite flagged sentences by humanizing their parent paragraphs (provides better context)
@@ -6657,9 +6636,19 @@ async function checkWinston(content: string, thesisData: ThesisData): Promise<{
 
   try {
     // Extract plain text from markdown (remove markdown syntax for better detection)
-    // Send content with structure preserved for better detection context
-    // Previous aggressive stripping removed headers and formatting which lowered the score
-    const plainText = content.trim()
+    // Send content without structure markers to mimic "clean text" / LaTeX export format
+    // User testing confirmed clean text scores significantly higher (79%) than Markdown (28%)
+    const plainText = content
+      .replace(/^#+\s+/gm, '') // Remove heading markers
+      .replace(/\*\*(.+?)\*\*/g, '$1') // Remove bold
+      .replace(/\*(.+?)\*/g, '$1') // Remove italic
+      .replace(/\[(.+?)\]\(.+?\)/g, '$1') // Remove links
+      .replace(/`(.+?)`/g, '$1') // Remove code
+      .replace(/\^\d+/g, '') // Remove footnote markers
+      .replace(/\[\^\d+\]/g, '') // Remove other style footnote markers
+      .replace(/\n+/g, '\n') // First: Collapse ALL vertical whitespace to single newlines (dense blocks)
+      .replace(/\n(\d+\.?\d*\s)/g, '\n\n$1') // Then: Add double spacing ONLY before numbered chapters/subchapters
+      .trim()
 
     if (plainText.length < 500) { // Winston often needs more text
       console.warn('[Winston] Text too short for detection, skipping')
@@ -8004,6 +7993,24 @@ async function processThesisGeneration(
 
     // Step 7.4: Winston AI Check & Sentence Rewrite
     console.log('\n[PROCESS] ========== Step 7.4: Winston AI Check & Sentence Rewrite ==========')
+
+    // Generate bibliography first to include it in the human/AI check
+    // (Bibliographies often boost human scores due to structure/dates/names)
+    console.log('[PROCESS] Generating bibliography for Winston check context...')
+    const footnotesForCheck: Record<number, string> = {} // Temporary footnotes
+    const bibForCheck = generateBibliography(
+      thesisContent,
+      sourcesForGeneration || [],
+      thesisData.citationStyle,
+      thesisData.language,
+      footnotesForCheck
+    )
+
+    if (bibForCheck && bibForCheck.text) {
+      console.log(`[PROCESS] Appending bibliography (${bibForCheck.text.length} chars) to content for Winston check`)
+      thesisContent += "\n\n" + bibForCheck.text
+    }
+
     const winstonCheckStart = Date.now()
     let winstonResult: any = null
     let winstonIterations: any[] = []
