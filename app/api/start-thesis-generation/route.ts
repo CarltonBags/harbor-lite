@@ -41,6 +41,8 @@ export async function POST(request: Request) {
       )
     }
 
+
+
     if (!thesis.outline || thesis.outline.length === 0) {
       return NextResponse.json(
         { error: 'Thesis outline is required' },
@@ -171,6 +173,8 @@ export async function POST(request: Request) {
         mandatorySources,
       },
     }
+
+
 
     const job = await thesisQueue.add('generate-thesis', jobData, {
       jobId: thesisId, // Use thesisId as jobId to prevent duplicates

@@ -48,14 +48,18 @@ if (!GEMINI_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const ai = new GoogleGenAI({ apiKey: GEMINI_KEY })
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+// Pricing Constants (USD per 1M tokens/words)
+// Placeholder values - adjust based on actual plan
+const PRICING = {
+  GEMINI_2_5_PRO: { INPUT: 1.25, OUTPUT: 5.00 }, // Estimated
+  GEMINI_3_PRO_PREVIEW: { INPUT: 2.00, OUTPUT: 8.00 }, // Estimated premium
+  WINSTON_AI: { PER_1000_WORDS: 0.06 } // User provided
+}
+
 // Concurrency control: limit number of simultaneous thesis generations
 const MAX_CONCURRENT_JOBS = parseInt(process.env.MAX_CONCURRENT_JOBS || '3', 10)
 let activeJobs = 0
 const jobQueue: Array<{ thesisId: string; thesisData: ThesisData; resolve: () => void }> = []
-
-// Token usage tracking for cost calculation
-let totalInputTokens = 0
-let totalOutputTokens = 0
 
 // Health tracking for production monitoring
 let workerStartTime = Date.now()
@@ -67,28 +71,44 @@ let totalJobsStalled = 0
 let currentJobId: string | null = null
 let currentJobStartedAt: string | null = null
 
+type ModelType = 'gemini-2.5-pro' | 'gemini-3-pro-preview' | 'gemini-2.5-flash' // Flash maps to 2.5 Pro bucket for now or ignore? 
+
 /**
  * Track token usage from AI response for cost calculation
- * Extracts usageMetadata from response and accumulates totals
  */
-function trackTokenUsage(response: any, label: string): void {
+function trackTokenUsage(thesisData: ThesisData, response: any, model: ModelType, label: string): void {
   const meta = response?.usageMetadata
   if (meta) {
     const input = meta.promptTokenCount || 0
     const output = meta.candidatesTokenCount || 0
-    totalInputTokens += input
-    totalOutputTokens += output
-    console.log(`[Tokens] ${label}: +${input} input, +${output} output (total: ${totalInputTokens}/${totalOutputTokens})`)
+
+    // Update specific counters in thesisData
+    if (model === 'gemini-2.5-pro' || model === 'gemini-2.5-flash') {
+      // Note: Grouping Flash with 2.5 Pro for now unless user wants separate
+      thesisData.tokenStats.gemini25ProInput += input
+      thesisData.tokenStats.gemini25ProOutput += output
+    } else if (model === 'gemini-3-pro-preview') {
+      thesisData.tokenStats.gemini3ProInput += input
+      thesisData.tokenStats.gemini3ProOutput += output
+    }
+
+    console.log(`[Tokens] ${label} (${model}): +${input} input, +${output} output`)
   }
 }
 
 /**
- * Reset token counters at start of each job
+ * Calculate total cost in USD
  */
-function resetTokenCounters(): void {
-  totalInputTokens = 0
-  totalOutputTokens = 0
-  console.log('[Tokens] Counters reset for new job')
+function calculateTotalCost(stats: ThesisData['tokenStats']): number {
+  const cost25 = (stats.gemini25ProInput / 1_000_000 * PRICING.GEMINI_2_5_PRO.INPUT) +
+    (stats.gemini25ProOutput / 1_000_000 * PRICING.GEMINI_2_5_PRO.OUTPUT)
+
+  const cost30 = (stats.gemini3ProInput / 1_000_000 * PRICING.GEMINI_3_PRO_PREVIEW.INPUT) +
+    (stats.gemini3ProOutput / 1_000_000 * PRICING.GEMINI_3_PRO_PREVIEW.OUTPUT)
+
+  const costWinston = (stats.winstonWords / 1000) * PRICING.WINSTON_AI.PER_1000_WORDS
+
+  return cost25 + cost30 + costWinston
 }
 
 // Types
@@ -104,6 +124,14 @@ interface ThesisData {
   outline: any[]
   fileSearchStoreId: string
   language: 'german' | 'english'
+  // Token tracking
+  tokenStats: {
+    gemini25ProInput: number
+    gemini25ProOutput: number
+    gemini3ProInput: number
+    gemini3ProOutput: number
+    winstonWords: number
+  }
 }
 
 interface Source {
@@ -590,7 +618,7 @@ Antworte NUR mit einem JSON-Objekt im folgenden Format:
     }),
     'Generate search queries (Gemini)'
   )
-  trackTokenUsage(response, 'Generate search queries')
+  trackTokenUsage(thesisData, response, 'gemini-2.5-flash', 'Generate search queries')
 
   const content = response.text
   if (!content) {
@@ -998,7 +1026,7 @@ Die Indizes entsprechen der Reihenfolge der Quellen im Input (0 bis ${batch.leng
         }),
         `Rank sources batch ${batchIndex + 1}/${batches.length} (Gemini)`
       )
-      trackTokenUsage(response, `Rank sources batch ${batchIndex + 1}`)
+      trackTokenUsage(thesisData, response, 'gemini-2.5-flash', `Rank sources batch ${batchIndex + 1}`)
       const batchDuration = Date.now() - batchStart
       console.log(`[Ranking] Batch ${batchIndex + 1} completed in ${batchDuration}ms`)
 
@@ -1179,7 +1207,7 @@ function selectTopSourcesWithChapterGuarantee(rankedSources: Source[], maxSource
 /**
  * Extract page numbers from PDF using Gemini 2.5 Flash
  */
-async function extractPageNumbers(pdfBuffer: Buffer): Promise<{ pageStart: string | null; pageEnd: string | null }> {
+async function extractPageNumbers(pdfBuffer: Buffer, thesisData: ThesisData): Promise<{ pageStart: string | null; pageEnd: string | null }> {
   console.log(`[PageExtraction] Starting page number extraction, PDF size: ${(pdfBuffer.length / 1024).toFixed(2)} KB`)
   try {
     // Upload PDF to Gemini Files API
@@ -1252,7 +1280,7 @@ async function extractPageNumbers(pdfBuffer: Buffer): Promise<{ pageStart: strin
       }),
       'Extract page numbers (Gemini 2.5 Flash)'
     )
-    trackTokenUsage(response, 'Extract page numbers')
+    trackTokenUsage(thesisData, response, 'gemini-2.5-flash', 'Extract page numbers')
 
     const content = response.text
     if (content) {
@@ -1312,7 +1340,7 @@ function detectFileType(buffer: Buffer): { type: 'pdf' | 'doc' | 'docx' | 'unkno
 /**
  * Step 6: Download document (PDF, DOC, DOCX) and upload to FileSearchStore
  */
-async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, thesisId: string): Promise<boolean> {
+async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, thesisId: string, thesisData: ThesisData): Promise<boolean> {
   if (!source.pdfUrl) {
     console.log(`[DocUpload] Skipping ${source.title} - no document URL`)
     return false
@@ -1410,7 +1438,7 @@ async function downloadAndUploadPDF(source: Source, fileSearchStoreId: string, t
       console.log(`[DocUpload] Extracting PDF page count for FileSearchStore mapping...`)
       const pageExtractStart = Date.now()
       try {
-        const pageNumbers = await extractPageNumbers(docBuffer)
+        const pageNumbers = await extractPageNumbers(docBuffer, thesisData)
         // STRICT VALIDATION & CLEANUP: PDF extraction must return numeric strings only
         const pStart = pageNumbers.pageStart ? pageNumbers.pageStart.trim() : null
         const pEnd = pageNumbers.pageEnd ? pageNumbers.pageEnd.trim() : null
@@ -2043,7 +2071,7 @@ Return a structured plan in Markdown:
       2,
       2000
     )
-    trackTokenUsage(response, 'Generate Thesis Plan')
+    trackTokenUsage(thesisData, response, 'gemini-2.5-pro', 'Generate Thesis Plan')
 
     console.log('[ThesisPlan] Plan generated successfully')
     return response.text || ''
@@ -2360,7 +2388,7 @@ ${extensionInstruction}
       1,
       2000
     )
-    trackTokenUsage(extensionResponse, `Extend thesis pass ${pass}`)
+    trackTokenUsage(thesisData, extensionResponse, 'gemini-2.5-pro', `Extend thesis pass ${pass}`)
 
     const extensionText = extensionResponse.text?.trim()
 
@@ -2941,7 +2969,7 @@ ${startInstruction}`
       1,
       2000
     )
-    trackTokenUsage(response, `Generate chapter ${chapterLabel}`)
+    trackTokenUsage(thesisData, response, 'gemini-2.5-pro', `Generate chapter ${chapterLabel}`)
 
     const newText = response.text?.trim() || ''
     const generatedWordCount = newText ? newText.split(/\s+/).length : 0
@@ -3001,7 +3029,7 @@ ${startInstruction}`
     console.log(`[ThesisGeneration] Verifying citations for chapter ${chapterLabel}...`)
     try {
       // Pass 'sources' for smart page calculation
-      const verifiedContent = await verifyCitationsWithFileSearch(chapterContent, thesisData.fileSearchStoreId, isGerman, sources)
+      const verifiedContent = await verifyCitationsWithFileSearch(chapterContent, thesisData.fileSearchStoreId, isGerman, sources, thesisData)
       if (verifiedContent && verifiedContent.length > 0.8 * chapterContent.length) {
         chapterContent = verifiedContent
         console.log(`[ThesisGeneration] Chapter ${chapterLabel} citations verified and updated.`)
@@ -3031,7 +3059,7 @@ ${startInstruction}`
 /**
  * Creates a concise summary of a generated chapter to maintain context without exceeding token limits.
  */
-async function summarizeChapter(chapterTitle: string, content: string, isGerman: boolean): Promise<string> {
+async function summarizeChapter(chapterTitle: string, content: string, isGerman: boolean, thesisData: ThesisData): Promise<string> {
   // Use a cheaper/faster model for summarization if available, or standard model
   const prompt = isGerman
     ? `Erstelle eine KONFLIKT-VERMEIDUNGSLISTE für das Kapitel "${chapterTitle}".
@@ -3083,7 +3111,7 @@ async function summarizeChapter(chapterTitle: string, content: string, isGerman:
       contents: prompt,
       config: { maxOutputTokens: 600, temperature: 0.3 },
     }), `Summarize chapter ${chapterTitle}`)
-    trackTokenUsage(response, `Summarize chapter`)
+    trackTokenUsage(thesisData, response, 'gemini-2.5-flash', `Summarize chapter`)
     return response.text || ''
   } catch (error) {
     console.warn('[ThesisGeneration] Failed to summarize chapter:', error)
@@ -3101,6 +3129,7 @@ async function critiqueThesis(
   sources: Source[],
   isGerman: boolean,
   fileSearchStoreId: string,
+  thesisData: ThesisData,
   masterReport?: string
 ): Promise<string> {
   console.log('[ThesisCritique] Starting comprehensive thesis critique (Iterative Chapter Mode)...')
@@ -3373,7 +3402,7 @@ async function critiqueThesis(
           }] : undefined,
         },
       }), `Critique Chapter ${i + 1}`)
-      trackTokenUsage(response, `Critique Chapter ${i + 1}`)
+      trackTokenUsage(thesisData, response, 'gemini-3-pro-preview', `Critique Chapter ${i + 1}`)
 
       const responseText = response.text || '{}'
       console.log(`[ThesisCritique] Chapter ${i + 1} Raw Response:`, responseText.substring(0, 500))
@@ -3550,6 +3579,7 @@ async function fixChapterContent(
   chunkIndex: number,
   totalChunks: number,
   allChapterTitles: string[],
+  thesisData: ThesisData,
   fileSearchStoreId?: string
 ): Promise<string> {
   // REMOVED: if (chapterContent.length < 100) check to allow fixing empty chapters
@@ -3685,7 +3715,7 @@ async function fixChapterContent(
           }] : undefined,
         },
       }), 'Fix Chapter Content')
-      trackTokenUsage(response, 'Fix Chapter Content')
+      trackTokenUsage(thesisData, response, 'gemini-2.5-pro', 'Fix Chapter Content')
 
       const modifiedContent = response.text ? response.text.trim() : ''
 
@@ -3724,7 +3754,8 @@ async function fixChapterContent(
 async function syncStructureInIntroduction(
   introContent: string,
   actualStructure: string,
-  isGerman: boolean
+  isGerman: boolean,
+  thesisData: ThesisData
 ): Promise<string> {
   const prompt = isGerman
     ? `Du bist ein strenger akademischer Lektor.
@@ -3784,7 +3815,7 @@ async function syncStructureInIntroduction(
       contents: prompt,
       config: { maxOutputTokens: 8000, temperature: 0.1 },
     }), 'Sync Structure')
-    trackTokenUsage(response, 'Sync Structure')
+    trackTokenUsage(thesisData, response, 'gemini-2.5-flash', 'Sync Structure')
     return response.text ? response.text.trim() : introContent
   } catch (error) {
     console.warn('[StructureSync] Failed to sync:', error)
@@ -3944,7 +3975,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
       console.log(`[ThesisGeneration] Generating ${chapter.number} "${chapter.title}" (${chapterTarget} words target)`)
 
-      const { content: chapterText, wordCount: chapterWordCount } = await generateChapterContent({
+      let { content: chapterText, wordCount: chapterWordCount } = await generateChapterContent({
         thesisData,
         chapter,
         chapterTargetWords: chapterTarget,
@@ -3956,6 +3987,15 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
         sources: rankedSources,
         citationStyle: thesisData.citationStyle,
       })
+
+      // [HUMANIZE V2] Verify & Improve immediately
+      try {
+        chapterText = await humanizeChapterPipeline(chapterText, thesisData)
+        // Recalculate word count rough estimate
+        chapterWordCount = chapterText.split(/\s+/).length
+      } catch (err) {
+        console.error('[HumanizeV2] Pipeline failed for chapter, using original:', err)
+      }
 
       chapterContents.push(chapterText.trim())
       totalWordCount += chapterWordCount
@@ -3994,7 +4034,7 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
 
 
       // Generate Summary for next chapters
-      const summary = await summarizeChapter(`${chapter.number} ${chapter.title} `, chapterText, isGerman)
+      const summary = await summarizeChapter(`${chapter.number} ${chapter.title} `, chapterText, isGerman, thesisData)
       chapterSummaries.push(summary)
       console.log(`[ThesisGeneration] Chapter summary generated(${summary.length} chars)`)
     }
@@ -4941,7 +4981,7 @@ If you write too little again, the thesis will be delivered incomplete!
         1, // Single retry per attempt (we're doing 3 attempts total)
         3000 // 3 second delay between attempts
       )
-      trackTokenUsage(response, `Generate thesis content attempt ${attempt}`)
+      trackTokenUsage(thesisData, response, 'gemini-2.5-pro', `Generate thesis content attempt ${attempt}`)
 
       content = response.text || ''
       let contentLength = content.length
@@ -5137,21 +5177,60 @@ async function checkWithGPTZero(content: string): Promise<{
  * Returns the full paragraph text and its start/end indices in the content
  */
 function findParagraphForSentence(content: string, sentence: string): { paragraph: string, startIdx: number, endIdx: number } | null {
-  // Split content into paragraphs (double newline or markdown paragraph breaks)
+  // 1. Quick exact/normalized match first
+  const normalize = (text: string) => text.replace(/\s+/g, ' ').trim()
+  const cleanSentence = normalize(sentence)
+
+  if (cleanSentence.length < 5) return null // Skip garbage
+
   const paragraphPattern = /\n\n+|\r\n\r\n+/
   const paragraphs = content.split(paragraphPattern)
 
-  let currentIdx = 0
+  let searchStartIndex = 0
+
+  // Helper to remove ALL non-alphanumeric chars for "ultra logic" match
+  // e.g. "**Title:**" -> "Title"
+  const superClean = (text: string) => text.toLowerCase().replace(/[^a-z0-9äöüß]/g, '')
+  const superCleanSentence = superClean(cleanSentence)
+
   for (const paragraph of paragraphs) {
-    if (paragraph.includes(sentence)) {
-      return {
-        paragraph: paragraph.trim(),
-        startIdx: content.indexOf(paragraph, currentIdx),
-        endIdx: content.indexOf(paragraph, currentIdx) + paragraph.length
+    const paragraphStartIdx = content.indexOf(paragraph, searchStartIndex)
+
+    if (paragraphStartIdx !== -1) {
+      searchStartIndex = paragraphStartIdx + paragraph.length
+
+      const cleanParagraph = normalize(paragraph)
+
+      // Strategy 1: Standard inclusion
+      if (paragraph.includes(sentence) || cleanParagraph.includes(cleanSentence)) {
+        return { paragraph, startIdx: paragraphStartIdx, endIdx: paragraphStartIdx + paragraph.length }
+      }
+
+      // Strategy 2: "Ultra Clean" match (ignores all punctuation/markdown)
+      // Good for headers like "## 5.3 Title" vs "5.3 Title"
+      if (superClean(paragraph).includes(superCleanSentence)) {
+        return { paragraph, startIdx: paragraphStartIdx, endIdx: paragraphStartIdx + paragraph.length }
+      }
+
+      // Strategy 3: Token Overlap (Fuzzy) - if 70% of sentence words appear in sequence in paragraph
+      // Good if Winston cutoff the sentence or added artifacts
+      const sentenceWords = cleanSentence.split(' ')
+      if (sentenceWords.length > 3) {
+        let matchCount = 0
+        const paraWords = cleanParagraph.split(' ')
+        // Simple check: do the big words from sentence exist in paragraph?
+        for (const w of sentenceWords) {
+          if (w.length > 4 && cleanParagraph.includes(w)) matchCount++
+        }
+
+        // If >80% of long words match, it's probably the right paragraph
+        if (matchCount > sentenceWords.filter(w => w.length > 4).length * 0.8) {
+          return { paragraph, startIdx: paragraphStartIdx, endIdx: paragraphStartIdx + paragraph.length }
+        }
       }
     }
-    currentIdx += paragraph.length + 2 // +2 for the newlines
   }
+
   return null
 }
 
@@ -5207,58 +5286,54 @@ async function rewriteFlaggedParagraphs(
     console.log(`[Rewrite] Processing paragraph ${processedCount}/${paragraphMap.size} (${data.sentences.length} flagged sentences)`)
 
     const prompt = isGerman
-      ? `Du bist ein Experte darin, akademische Texte menschlicher klingen zu lassen.
+      ? `Du bist ein professioneller Ghostwriter. Dein Ziel ist es, diesen akademischen Text so umzuschreiben, dass er 100% menschlich und handgeschrieben wirkt.
 
 **AUFGABE:**
-Schreibe den folgenden Absatz so um, dass er natürlicher und menschlicher klingt und von AI-Detektoren wie Winston AI als "menschlich" erkannt wird.
+Humanisiere den folgenden Absatz. Brich starre akademische Muster auf. Der Text muss "leben".
 
 **ABSOLUT KRITISCHE REGELN:**
-1. **INHALT 100% BEWAHREN:** ALLE Fakten, Daten, Namen, Argumente und Bedeutungen EXAKT beibehalten
-2. **ZITATIONEN NIEMALS ÄNDERN:** Zitate wie (Müller, 2023, S. 14) NIEMALS modifizieren, löschen oder verschieben
-3. **NUR STIL ÄNDERN:** Nur Satzbau, Wortwahl und Rhythmus anpassen
+1. **INHALT 100% BEWAHREN:** Fakten, Daten, Namen und Argumente dürfen NICHT verändert werden.
+2. **ZITATIONEN UNANTASTBAR:** (Müller, 2023, S. 14) muss EXAKT so bleiben.
+3. **TONALITÄT:** Akademisch, aber flüssig und elegant (wie ein erfahrener Professor, nicht wie ein Student oder KI).
 
-**HUMANISIERUNGS-REGELN:**
-- EXTREME Satz-Burstiness: Mische kurze (5-8 Wörter) mit langen Sätzen (25-35 Wörter)
-- Variiere Satzanfänge: Nicht immer mit Subjekt beginnen
-- Verwende unerwartete aber passende Synonyme
-- VERBOTEN: "zunächst", "ferner", "des Weiteren", "zusammenfassend", "darüber hinaus", "diesbezüglich", "beleuchten", "ergründen", "tiefgreifend", "facettenreich"
-- VERBOTEN: Frage-Antwort-Muster ("X? Y.")
-- VERBOTEN: "Man", "Wir", "Uns" - nutze Passiv
+**ANTI-KI STRATEGIEN (WICHTIG!):**
+- **Satzlängen-Chaos:** Mische extrem kurze Sätze (4-6 Wörter) mit sehr komplexen Satzgefügen.
+- **Menschliche Konnektoren:** Statt "Zudem", "Ferner", "Des Weiteren" → Nutze "Interessant ist hierbei", "Bemerkenswert zeigt sich", "Vielmehr".
+- **Emotionale Intelligenz:** Nutze Wörter wie "drängend", "überraschend", "signifikant", "fragil" um Wichtigkeit zu betonen.
+- **Passiv-Vermeidung:** Formuliere aktiv wo möglich.
+- **Keine Schablonen:** Vermeide "Dieser Abschnitt beleuchtet..." oder "Zusammenfassend lässt sich sagen...". Steig direkt ins Argument ein.
 
-**BESONDERS PROBLEMATISCHE SÄTZE (diese unbedingt stark umformulieren):**
+**PROBLEMATISCHE SÄTZE (Fokus hierauf):**
 ${data.sentences.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
 
-**ABSATZ ZUM UMSCHREIBEN:**
+**ORIGINAL ABSATZ:**
 ${data.paragraph}
 
-**FORMAT:**
-Antworte NUR mit dem umgeschriebenen Absatz. Keine Erklärungen, keine Einleitungen.`
-      : `You are an expert at making academic texts sound more human.
+**DEIN ENTWURF (Nur den Text):**`
+      : `You are a professional ghostwriter. Your goal is to rewrite this academic text to sound 100% human-authored and handcrafted.
 
 **TASK:**
-Rewrite the following paragraph to sound more natural and human, so AI detectors like Winston AI classify it as "human-written".
+Humanize the following paragraph. Break rigid academic templates. The text must "breathe".
 
 **ABSOLUTELY CRITICAL RULES:**
-1. **PRESERVE 100% OF CONTENT:** Keep ALL facts, data, names, arguments and meanings EXACTLY as they are
-2. **NEVER CHANGE CITATIONS:** Citations like (Smith, 2023, p. 14) must NEVER be modified, deleted or moved
-3. **ONLY CHANGE STYLE:** Only adjust sentence structure, word choice and rhythm
+1. **PRESERVE CONTENT 100%:** Facts, data, names, and arguments must NOT be changed.
+2. **CITATIONS SACRED:** (Smith, 2023, p. 14) must remain EXACTLY as is.
+3. **TONE:** Academic but fluid and elegant (like a seasoned professor, not a student or AI).
 
-**HUMANIZATION RULES:**
-- EXTREME sentence burstiness: Mix short (5-8 words) with long sentences (25-35 words)
-- Vary sentence beginnings: Don't always start with subject
-- Use unexpected but appropriate synonyms
-- FORBIDDEN: "firstly", "furthermore", "moreover", "in conclusion", "additionally", "delves into", "crucial", "pivotal", "landscape", "multifaceted", "nuanced"
-- FORBIDDEN: Q&A patterns ("X? Y.")
-- FORBIDDEN: Generic "We", "I", "One" - use passive voice
+**ANTI-AI STRATEGIES (CRITICAL!):**
+- **Sentence Length Chaos:** Mix extremely short sentences (4-6 words) with very complex structures.
+- **Human Connectors:** Instead of "Furthermore", "Moreover", "Additionally" → Use "Strikingly", "It is worth noting", "Rather".
+- **Emotional Intelligence:** Use words like "pressing", "surprising", "significant", "fragile" to emphasize weight.
+- **Avoid Passive:** Use active voice where possible.
+- **No Templates:** Avoid "This section discusses..." or "In conclusion...". Jump straight into the argument.
 
-**PARTICULARLY PROBLEMATIC SENTENCES (strongly rephrase these):**
+**PARTICULARLY PROBLEMATIC SENTENCES (Focus on these):**
 ${data.sentences.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
 
-**PARAGRAPH TO REWRITE:**
+**ORIGINAL PARAGRAPH:**
 ${data.paragraph}
 
-**FORMAT:**
-Respond ONLY with the rewritten paragraph. No explanations, no introductions.`
+**YOUR DRAFT (Text only):**`
 
     // Retry loop for paragraph rewriting (up to 3 attempts)
     const MAX_PARAGRAPH_RETRIES = 3
@@ -5277,7 +5352,7 @@ Respond ONLY with the rewritten paragraph. No explanations, no introductions.`
           }),
           `Rewrite paragraph ${processedCount}`
         )
-        trackTokenUsage(response, `Rewrite paragraph ${processedCount}`)
+        trackTokenUsage(thesisData, response, 'gemini-2.5-pro', `Rewrite paragraph ${processedCount}`)
 
         const responseText = response.text?.trim()
         if (!responseText) {
@@ -5467,7 +5542,7 @@ Respond ONLY with a JSON array of rewritten sentences. No explanations.
         }),
         `Rewrite sentences batch ${Math.floor(i / BATCH_SIZE) + 1}`
       )
-      trackTokenUsage(response, `Rewrite sentences batch ${Math.floor(i / BATCH_SIZE) + 1}`)
+      trackTokenUsage(thesisData, response, 'gemini-2.5-pro', `Rewrite sentences batch ${Math.floor(i / BATCH_SIZE) + 1}`)
 
       const responseText = response.text
       if (!responseText) {
@@ -5545,6 +5620,176 @@ Respond ONLY with a JSON array of rewritten sentences. No explanations.
  * Check content with Winston AI and rewrite if needed to achieve >90% human score
  * Returns all iteration results for tracking/analysis
  */
+// ==========================================
+// HUMANIZATION PIPELINE V2 (Multi-step)
+// ==========================================
+
+const HUMANIZER_PROMPTS = {
+  calibrator: (text: string, language: string, strict: boolean) => `You are an Academic Voice Calibrator. Your goal is to restore "human authorial caution" (hedging) and stance to the text.
+        
+        Rules:
+        1. **Hedging**: AI often makes absolute statements ("This proves X"). Humans hedge ("This suggests X", "This may indicate X").
+           - Inject hedges for interpretations, implications, or generalizations.
+           - NEVER hedge methods, mathematical claims, or citations.
+        2. **Authorial Presence**: Use phrases like "It is worth noting that...", "to some extent", "within the scope of this thesis".
+        3. **Tone**: "Knowledgeable peer" - confident but careful.
+        4. **Fidelity**: Do not change the core meaning.
+        
+        Text to calibrate:
+        "${text}"
+        
+        Output the calibrated text only.
+        
+        Language: ${language}
+        ${strict ? 'Strict Formatting: PRESERVE all Markdown headers (##), lists, and citations exactly.' : ''}`,
+
+  rewriter: (text: string, instructions: string, language: string, strict: boolean) => `You are an expert editor. Rewrite the following paragraph by applying the specific modifications listed below.
+        
+        CRITICAL RULES:
+        1. Only modify the sentences specified. Leave others EXACTLY as they are.
+        2. Keep the meaning unchanged.
+        3. Maintain academic tone.
+        
+        Paragraph:
+        "${text}"
+        
+        Modifications to apply:
+        ${instructions}
+        
+        Output the fully rewritten paragraph only.
+        
+        Language: ${language}
+        ${strict ? 'Strict Formatting: PRESERVE all Markdown headers (##), lists, and citations exactly.' : ''}`,
+
+  punctuation: (text: string, language: string, strict: boolean) => `You are a "Steuerzeichen" (Punctuation and Flow) specialist. 
+        Your task is to refine the punctuation of the following text to match high-quality human academic writing.
+        
+        Principles:
+        1. **Variance > Frequency**: Avoid repeating the same punctuation mark (e.g., dashes, colons) in close proximity.
+        2. **Balance**: If a paragraph has many dashes '—', swapping some for parentheses '()' or commas can improve flow.
+        3. **Rhythm**: Punctuation guides the breath. Ensure the text reads naturally.
+        4. **Constraint**: Do NOT rewrite the words or change the meaning. ONLY adjust punctuation (commas, colons, semi-colons, dashes, parentheses) and minor connective phrasing if absolutely necessary for the punctuation change.
+        
+        Text to calibrate:
+        "${text}"
+        
+        Output the calibrated text only.
+        
+        Language: ${language}
+        ${strict ? 'Strict Formatting: PRESERVE all Markdown headers (##), lists, and citations exactly.' : ''}`
+}
+
+function splitSentences(text: string): string[] {
+  // Simple robust regex for sentence splitting
+  // Matches sentences ending in . ! ? followed by space or end of string
+  // Handles quotes and parentheses reasonably
+  return text.match(/[^.!?\n]+[.!?]+["']?|[^.!?\n]+$/g) || [text]
+}
+
+function planModifications(sentences: string[]): string[] {
+  const mods: string[] = []
+
+  // Config
+  const LONG_SENTENCE_Words = 35
+  const SHORT_SENTENCE_Words = 10
+
+  for (let i = 0; i < sentences.length; i++) {
+    const sentence = sentences[i].trim()
+    const wordCount = sentence.split(/\s+/).length
+
+    if (wordCount > LONG_SENTENCE_Words) {
+      mods.push(`Sentence "${sentence.substring(0, 20)}...": Split this sentence (it is too long).`)
+    } else if (wordCount < SHORT_SENTENCE_Words && i < sentences.length - 1) {
+      const nextSent = sentences[i + 1].trim()
+      const nextWordCount = nextSent.split(/\s+/).length
+      if (nextWordCount < SHORT_SENTENCE_Words) {
+        mods.push(`Sentence "${sentence.substring(0, 20)}...": Combine with next sentence (both are short).`)
+        i++ // Skip next
+      }
+    }
+
+    // Random Hedge (20% chance)
+    if (Math.random() > 0.8) {
+      mods.push(`Sentence "${sentence.substring(0, 20)}...": Add an academic hedge (e.g., 'suggests', 'indicates').`)
+    }
+  }
+  return mods
+}
+
+async function callGeminiSimple(prompt: string, taskName: string, thesisData: ThesisData): Promise<string> {
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt
+    })
+
+    // Mock response object for tracker if needed, or update tracker to handle simple response
+    // trackTokenUsage expects { usageMetadata: ... } usually
+    // But ai.models.generateContent returns a response object with usageMetadata
+    // Let's passed the response directly
+    trackTokenUsage(thesisData, response, 'gemini-2.5-flash', taskName)
+
+    return response.text || ''
+  } catch (e) {
+    console.error(`[HumanizeV2] Error in ${taskName}:`, e)
+    return ''
+  }
+}
+
+async function humanizeChapterPipeline(content: string, thesisData: ThesisData): Promise<string> {
+  console.log(`[HumanizeV2] Starting pipeline for content (~${content.length} chars)`)
+
+  const lang = thesisData.language || 'german'
+  const isStrict = true // Always preserve structure
+
+  // 1. Calibrator
+  console.log('[HumanizeV2] Step 1: Calibrator')
+  let currentText = content
+  const calPrompt = HUMANIZER_PROMPTS.calibrator(currentText, lang, isStrict)
+  const calResult = await callGeminiSimple(calPrompt, 'Calibrator', thesisData)
+  if (calResult && calResult.length > content.length * 0.5) currentText = calResult.trim()
+
+  // 2. Planner & Rewriter (Paragraph Level)
+  console.log('[HumanizeV2] Step 2 & 3: Planner & Rewriter')
+  // Split by double newline to identify paragraphs
+  const sections = currentText.split(/\n\n+/)
+  const rewrittenSections: string[] = []
+
+  for (const section of sections) {
+    // Skip headlines or very short sections
+    if (section.trim().startsWith('#') || section.trim().length < 50) {
+      rewrittenSections.push(section)
+      continue
+    }
+
+    const sentences = splitSentences(section)
+    const instructions = planModifications(sentences)
+
+    if (instructions.length > 0) {
+      const instrStr = instructions.map((m, i) => `${i + 1}. ${m}`).join('\n')
+      const rePrompt = HUMANIZER_PROMPTS.rewriter(section, instrStr, lang, isStrict)
+      const reResult = await callGeminiSimple(rePrompt, 'Rewriter', thesisData)
+      if (reResult && reResult.length > 10) {
+        rewrittenSections.push(reResult.trim())
+      } else {
+        rewrittenSections.push(section)
+      }
+    } else {
+      rewrittenSections.push(section)
+    }
+  }
+
+  currentText = rewrittenSections.join('\n\n')
+
+  // 4. Punctuation
+  console.log('[HumanizeV2] Step 4: Punctuation')
+  const puncPrompt = HUMANIZER_PROMPTS.punctuation(currentText, lang, isStrict)
+  const puncResult = await callGeminiSimple(puncPrompt, 'Punctuation', thesisData)
+  if (puncResult && puncResult.length > currentText.length * 0.5) currentText = puncResult.trim()
+
+  return currentText
+}
+
 async function ensureHumanLikeContent(content: string, thesisData: ThesisData): Promise<{
   content: string
   winstonResult: {
@@ -5582,7 +5827,7 @@ async function ensureHumanLikeContent(content: string, thesisData: ThesisData): 
     iteration++
     console.log(`[HumanCheck] Iteration ${iteration}/${MAX_ITERATIONS}`)
 
-    const result = await checkWinston(currentContent)
+    const result = await checkWinston(currentContent, thesisData)
 
     // If Winston API failed or is unavailable, return content WITHOUT a fake score
     if (!result) {
@@ -6158,7 +6403,7 @@ Your goal is to produce text that reads like it was written by a competent human
         3,
         2000
       )
-      trackTokenUsage(response, `Humanize section ${i + 1}`)
+      trackTokenUsage(thesisData, response, 'gemini-2.5-flash', `Humanize section ${i + 1}`)
 
       const sectionHumanized = response.text || section
 
@@ -6375,14 +6620,20 @@ async function checkZeroGPT(content: string): Promise<{
  * Check text with Winston AI API to detect AI-generated content
  * Returns detection score (0-100 human score)
  */
-async function checkWinston(content: string): Promise<{
+async function checkWinston(content: string, thesisData: ThesisData): Promise<{
   score: number
   sentences: any
+  usedText: string
 } | null> {
   if (!WINSTON_API_KEY) {
     console.log('[Winston] WINSTON_API_KEY not set, skipping Winston check')
     return null
   }
+
+  // Track words for Winston usage/cost
+  const approximateWords = content.split(/\s+/).length
+  thesisData.tokenStats.winstonWords += approximateWords
+  console.log(`[Tokens] Winston: +${approximateWords} words (approximated)`)
 
   console.log('[Winston] Checking text with Winston AI API...')
 
@@ -6467,7 +6718,8 @@ async function checkWinston(content: string): Promise<{
 
     return {
       score: Math.round(avgScore),
-      sentences: allSentences
+      sentences: allSentences,
+      usedText: plainText
     }
 
   } catch (error) {
@@ -6587,7 +6839,7 @@ async function checkPlagiarismWithWinston(content: string): Promise<{
  * Repair plagiarized content by rewriting flagged sequences
  * Uses Gemini to paraphrase the specific sentences identified by Winston
  */
-async function repairPlagiarism(content: string, winstonResult: any): Promise<string> {
+async function repairPlagiarism(content: string, winstonResult: any, thesisData: ThesisData): Promise<string> {
   console.log('[PlagiarismRepair] Starting repair process...')
 
   const results = Array.isArray(winstonResult) ? winstonResult : [winstonResult]
@@ -6664,7 +6916,7 @@ Do not include markdown formatting or explanation.
           { role: 'user', parts: [{ text: prompt }] }
         ]
       })
-      trackTokenUsage(result, 'Plagiarism repair batch')
+      trackTokenUsage(thesisData, result, 'gemini-2.5-flash', 'Plagiarism repair batch')
 
       const responseText = result.text?.replace(/```json/g, '').replace(/```/g, '').trim()
 
@@ -6850,7 +7102,7 @@ async function processThesisGeneration(
   console.log('='.repeat(80))
 
   // Reset token counters for this job
-  resetTokenCounters()
+  // (Handled by thesisData.tokenStats implicitly)
 
   try {
     // Check if FileSearchStore already has documents
@@ -7141,7 +7393,7 @@ async function processThesisGeneration(
 
         if (source.pdfUrl) {
           try {
-            const success = await downloadAndUploadPDF(source, thesisData.fileSearchStoreId, thesisId)
+            const success = await downloadAndUploadPDF(source, thesisData.fileSearchStoreId, thesisId, thesisData)
             if (success) {
               uploadedCount++
               successfullyUploaded.push(source)
@@ -7372,7 +7624,8 @@ async function processThesisGeneration(
           const newIntro = await syncStructureInIntroduction(
             chapters[0], 
             actualStructure, 
-            thesisData.language === 'german'
+            thesisData.language === 'german',
+            thesisData
           )
           
           // Replace the old intro
@@ -7430,6 +7683,7 @@ async function processThesisGeneration(
           sourcesForGeneration || [],
           thesisData.language === 'german',
           thesisData.fileSearchStoreId,
+          thesisData,
           masterReport
         )
 
@@ -7685,6 +7939,7 @@ async function processThesisGeneration(
                 targetIndex,
                 chapters.length,
                 chapterTitles, // Context
+                thesisData,
                 thesisData.fileSearchStoreId
               )
 
@@ -7735,6 +7990,18 @@ async function processThesisGeneration(
       thesisContent = result.content
       winstonResult = result.winstonResult
       winstonIterations = result.winstonIterations || []
+
+      // Save debug text if available
+      if (winstonResult?.usedText) {
+        console.log('[PROCESS] Saving last Winston input text for debugging...')
+        await supabase.from('theses').update({ last_winston_input_text: winstonResult.usedText }).eq('id', thesisId)
+      }
+
+      // Save debug text if available
+      if (winstonResult?.usedText) {
+        console.log('[PROCESS] Saving last Winston input text for debugging...')
+        await supabase.from('theses').update({ last_winston_input_text: winstonResult.usedText }).eq('id', thesisId)
+      }
       const winstonCheckDuration = Date.now() - winstonCheckStart
       console.log(`[PROCESS] Winston check and rewrite completed in ${winstonCheckDuration}ms`)
       console.log(`[PROCESS] Winston iterations tracked: ${winstonIterations.length}`)
@@ -7785,13 +8052,18 @@ async function processThesisGeneration(
 
         // Re-check with Winston after full humanization
         console.log('[PROCESS] Re-checking with Winston after full humanization...')
-        const recheckResult = await checkWinston(thesisContent)
+        const recheckResult = await checkWinston(thesisContent, thesisData)
         if (recheckResult) {
           console.log(`[PROCESS] Post-humanization Winston score: ${recheckResult.score}% human`)
           winstonResult = {
             score: recheckResult.score,
             sentences: recheckResult.sentences,
-            checkedAt: new Date().toISOString()
+            checkedAt: new Date().toISOString(),
+            usedText: recheckResult.usedText
+          }
+
+          if (recheckResult.usedText) {
+            await supabase.from('theses').update({ last_winston_input_text: recheckResult.usedText }).eq('id', thesisId)
           }
           // Add this iteration to tracking
           winstonIterations.push({
@@ -7843,7 +8115,7 @@ async function processThesisGeneration(
 
           if (attempt < 3) {
             console.log('[Plagiarism] Originality < 90%. Attempting auto-repair via substitution...')
-            const repaired = await repairPlagiarism(thesisContent, plagiarismResult.winstonResult)
+            const repaired = await repairPlagiarism(thesisContent, plagiarismResult.winstonResult, thesisData)
 
             if (repaired === thesisContent) {
               console.log('[Plagiarism] Repair yielded no changes. Aborting loop.')
@@ -7924,6 +8196,8 @@ async function processThesisGeneration(
           }
         }
 
+        const totalCost = calculateTotalCost(thesisData.tokenStats)
+
         const updateData: any = {
           latex_content: finalContent, // Maps to 'content' column in older versions of code?
           // Actually, let's verify if 'latex_content' is the right column. 
@@ -7933,6 +8207,14 @@ async function processThesisGeneration(
           clean_markdown_content: cleanMarkdownContent,
           status: 'completed',
           completed_at: new Date().toISOString(),
+
+          // Token & Cost Tracking
+          tokens_gemini_2_5_pro_input: thesisData.tokenStats.gemini25ProInput,
+          tokens_gemini_2_5_pro_output: thesisData.tokenStats.gemini25ProOutput,
+          tokens_gemini_3_pro_preview_input: thesisData.tokenStats.gemini3ProInput,
+          tokens_gemini_3_pro_preview_output: thesisData.tokenStats.gemini3ProOutput,
+          tokens_winston_input: thesisData.tokenStats.winstonWords,
+          total_cost: totalCost,
         }
 
         // Store footnotes and metadata
@@ -8002,6 +8284,9 @@ async function processThesisGeneration(
     const processDuration = Date.now() - processStartTime
     console.log('\n[PROCESS] ========== Thesis Generation Complete ==========')
     console.log(`[PROCESS] Total processing time: ${Math.round(processDuration / 1000)}s (${processDuration}ms)`)
+    const totalInputTokens = thesisData.tokenStats.gemini25ProInput + thesisData.tokenStats.gemini3ProInput + (Math.round(thesisData.tokenStats.winstonWords / 2)) // Rough est for winston input
+    const totalOutputTokens = thesisData.tokenStats.gemini25ProOutput + thesisData.tokenStats.gemini3ProOutput
+
     console.log(`[PROCESS] Thesis generation completed for thesis ${thesisId}`)
     console.log(`[PROCESS] Total tokens used: ${totalInputTokens} input, ${totalOutputTokens} output`)
     console.log('='.repeat(80))
@@ -8013,6 +8298,8 @@ async function processThesisGeneration(
     }).eq('id', thesisId)
     console.log('[Tokens] Token usage saved to database')
 
+
+
     return { success: true }
   } catch (error) {
     const processDuration = Date.now() - processStartTime
@@ -8020,6 +8307,8 @@ async function processThesisGeneration(
     console.error(`[PROCESS] Error after ${Math.round(processDuration / 1000)}s (${processDuration}ms)`)
     console.error('[PROCESS] Error details:', error)
     console.error('='.repeat(80))
+
+
 
     // Update thesis status to draft on error
     await retryApiCall(
@@ -8048,6 +8337,21 @@ app.post('/jobs/thesis-generation', authenticate, async (req: Request, res: Resp
 
   try {
     const { thesisId, thesisData } = req.body
+
+
+
+    // Step 0: Initial Setup
+    // Initialize tokenStats if not present (safety)
+    if (thesisData && !thesisData.tokenStats) {
+      thesisData.tokenStats = {
+        gemini25ProInput: 0,
+        gemini25ProOutput: 0,
+        gemini3ProInput: 0,
+        gemini3ProOutput: 0,
+        winstonWords: 0
+      }
+    }
+
     console.log('[API] Request body:', {
       thesisId,
       hasThesisData: !!thesisData,
@@ -8515,7 +8819,7 @@ function generateBibliography(
 /**
  * Verifies and corrects citation page numbers using Google FileSearch
  */
-async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId: string, isGerman: boolean = false, sources: any[] = []): Promise<string> {
+async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId: string, isGerman: boolean = false, sources: any[] = [], thesisData: ThesisData): Promise<string> {
   const pagePrefix = isGerman ? 'S.' : 'p.'
   const pagesPrefix = isGerman ? 'S.' : 'pp.'
   const defaultPage = `${pagePrefix} 1`
@@ -8600,7 +8904,7 @@ async function verifyCitationsWithFileSearch(content: string, fileSearchStoreId:
       2, // 2 Retries
       1000
     )
-    trackTokenUsage(response, 'Verify citations')
+    trackTokenUsage(thesisData, response, 'gemini-2.5-flash', 'Verify citations')
 
     let verifiedText = response.text?.trim()
 
@@ -8677,6 +8981,7 @@ export async function performCritiqueLoop(
         sourcesForGeneration || [],
         thesisData.language === 'german',
         fileSearchStoreId,
+        thesisData,
         masterReport
       )
 
@@ -8860,6 +9165,7 @@ export async function performCritiqueLoop(
               targetIndex,
               chapters.length,
               chapterTitles,
+              thesisData,
               thesisData.fileSearchStoreId
             )
 
