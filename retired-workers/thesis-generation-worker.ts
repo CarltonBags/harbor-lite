@@ -6044,6 +6044,13 @@ C. **Syntax-Variation (SEHR WICHTIG):**
 D. **Natürliche Abschwächungen:**
    - Verwende verschiedene Formulierungen: "möglicherweise", "lässt sich vermuten", "zum Teil", "unter Umständen", "in gewissem Maße", "tendenziell", "vermutlich", "anscheinend", "wohl", "vielleicht".
    - Variiere die Stärke der Abschwächungen - nicht immer gleich.
+   - **⚠️ WICHTIG: Nutze Abschwächungen NUR bei der Interpretation von Daten oder externen Theorien.**
+   - **🚫 ABSOLUT VERBOTEN: Abschwächungen bei der Beschreibung der eigenen Arbeit, Struktur oder Kapitelinhalte!**
+     - ✗ FALSCH: "Kapitel 4 untersucht scheinbar..." oder "Es wird wohl untersucht..."
+     - ✓ RICHTIG: "Kapitel 4 untersucht..." oder "Es wird untersucht..."
+     - ✗ FALSCH: "Die Arbeit versucht zu zeigen..."
+     - ✓ RICHTIG: "Die Arbeit zeigt..."
+     - Wenn du über die Struktur der Arbeit sprichst: SEI DEFINITIV UND BESTIMMT. Wir wissen, was wir schreiben.
 
 E. **Asymmetrien einbauen (KRITISCH):**
    - Leicht unregelmäßige Taktung (nicht perfekt rhythmisch).
@@ -6251,6 +6258,13 @@ C. **Syntax Variation (VERY IMPORTANT):**
 D. **Natural Hedging:**
    - Use various formulations: "possibly", "it can be assumed", "to some extent", "under certain circumstances", "to a certain degree", "tendentially", "presumably", "apparently", "likely", "perhaps".
    - Vary the strength of hedging - not always the same.
+   - **⚠️ IMPORTANT: Use hedging ONLY when interpreting data or external theories.**
+   - **🚫 ABSOLUTELY FORBIDDEN: Hedging when describing the thesis structure, chapters, or own work!**
+     - ✗ WRONG: "Chapter 4 apparently analyzes..." or "It seems to discuss..."
+     - ✓ RIGHT: "Chapter 4 analyzes..." or "It discusses..."
+     - ✗ WRONG: "The study attempts to show..."
+     - ✓ RIGHT: "The study shows..."
+     - When describing the thesis structure: BE DEFINITIVE and CONFIDENT. We know what we are writing.
 
 E. **Introduce Asymmetries (CRITICAL):**
    - Slightly irregular pacing (not perfectly rhythmic).
