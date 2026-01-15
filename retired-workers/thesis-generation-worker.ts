@@ -6643,14 +6643,9 @@ async function checkWinston(content: string, thesisData: ThesisData): Promise<{
 
   try {
     // Extract plain text from markdown (remove markdown syntax for better detection)
-    const plainText = content
-      .replace(/^#+\s+/gm, '') // Remove heading markers
-      .replace(/\*\*(.+?)\*\*/g, '$1') // Remove bold
-      .replace(/\*(.+?)\*/g, '$1') // Remove italic
-      .replace(/\[(.+?)\]\(.+?\)/g, '$1') // Remove links
-      .replace(/`(.+?)`/g, '$1') // Remove code
-      .replace(/\^\d+/g, '') // Remove footnote markers
-      .trim()
+    // Send content with structure preserved for better detection context
+    // Previous aggressive stripping removed headers and formatting which lowered the score
+    const plainText = content.trim()
 
     if (plainText.length < 500) { // Winston often needs more text
       console.warn('[Winston] Text too short for detection, skipping')
