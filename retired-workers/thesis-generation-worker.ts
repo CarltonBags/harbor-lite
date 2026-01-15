@@ -70,6 +70,8 @@ let totalJobsFailed = 0
 let totalJobsStalled = 0
 let currentJobId: string | null = null
 let currentJobStartedAt: string | null = null
+let totalInputTokens = 0
+let totalOutputTokens = 0
 
 type ModelType = 'gemini-2.5-pro' | 'gemini-3-pro-preview' | 'gemini-2.5-flash' // Flash maps to 2.5 Pro bucket for now or ignore? 
 
@@ -8284,17 +8286,21 @@ async function processThesisGeneration(
     const processDuration = Date.now() - processStartTime
     console.log('\n[PROCESS] ========== Thesis Generation Complete ==========')
     console.log(`[PROCESS] Total processing time: ${Math.round(processDuration / 1000)}s (${processDuration}ms)`)
-    const totalInputTokens = thesisData.tokenStats.gemini25ProInput + thesisData.tokenStats.gemini3ProInput + (Math.round(thesisData.tokenStats.winstonWords / 2)) // Rough est for winston input
-    const totalOutputTokens = thesisData.tokenStats.gemini25ProOutput + thesisData.tokenStats.gemini3ProOutput
+    const jobInputTokens = thesisData.tokenStats.gemini25ProInput + thesisData.tokenStats.gemini3ProInput + (Math.round(thesisData.tokenStats.winstonWords / 2)) // Rough est for winston input
+    const jobOutputTokens = thesisData.tokenStats.gemini25ProOutput + thesisData.tokenStats.gemini3ProOutput
+
+    // Update global stats
+    totalInputTokens += jobInputTokens
+    totalOutputTokens += jobOutputTokens
 
     console.log(`[PROCESS] Thesis generation completed for thesis ${thesisId}`)
-    console.log(`[PROCESS] Total tokens used: ${totalInputTokens} input, ${totalOutputTokens} output`)
+    console.log(`[PROCESS] Total tokens used: ${jobInputTokens} input, ${jobOutputTokens} output`)
     console.log('='.repeat(80))
 
     // Save token usage to database
     await supabase.from('theses').update({
-      input_tokens: totalInputTokens,
-      output_tokens: totalOutputTokens
+      input_tokens: jobInputTokens,
+      output_tokens: jobOutputTokens
     }).eq('id', thesisId)
     console.log('[Tokens] Token usage saved to database')
 
