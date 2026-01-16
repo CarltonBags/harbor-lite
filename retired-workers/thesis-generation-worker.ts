@@ -3154,66 +3154,56 @@ async function critiqueThesis(
 
   const allErrors: any[] = []
 
-  // Iterate through chapters
-  for (let i = 0; i < chapters.length; i++) {
+  // Parallel Execution Logic
+  const CONCURRENT_LIMIT = 5
+  // Helper to process a single chapter
+  const processChapter = async (i: number) => {
     const chapterContent = chapters[i]
     const chapterTitle = chapterContent.split('\n')[0].replace(/#/g, '').trim()
-    // Prepare structural context: Is there a subchapter following?
     const nextChapterContent = i < chapters.length - 1 ? chapters[i + 1] : ''
     const nextChapterTitle = nextChapterContent.split('\n')[0].replace(/#/g, '').trim() || 'NONE'
 
     console.log(`[ThesisCritique] Critiquing Chapter ${i + 1}/${chapters.length}: "${chapterTitle}"`)
 
-    // Ignore empty/structural chapters to prevent hallucinations
     if (chapterContent.length < 100) {
-      console.log(`[ThesisCritique] Chapter ${i + 1} is too short/empty (${chapterContent.length} chars). Skipping to prevent hallucinations.`)
-      continue
+      console.log(`[ThesisCritique] Chapter ${i + 1} is too short/empty (${chapterContent.length} chars). Skipping.`)
+      return []
     }
 
-    // Prepare prompt for this specific chapter
     let chapterPrompt = ''
 
     if (masterReport) {
-      // === VERIFICATION MODE (Targeted) ===
-      // Filter errors relevant to this chapter
+      // === VERIFICATION MODE ===
       let chapterSpecificErrors = ''
       try {
         const reportObj = JSON.parse(masterReport)
         const errors = reportObj.errors || []
-        // Simple filter: Check if error location matches chapter title or number
         const relevantErrors = errors.filter((e: any) => {
-          // Heuristic: Does the error location/quote appear in this chapter?
-          // Or does the location string match the chapter title?
-          if (!e.location) return true // If no location, check everywhere
+          if (!e.location) return true
           const loc = e.location.toLowerCase()
           const title = chapterTitle.toLowerCase()
           return title.includes(loc) || loc.includes(title) || chapterContent.includes(e.quote?.substring(0, 20) || '___')
         })
 
         if (relevantErrors.length === 0) {
-          console.log(`[ThesisCritique] No previous errors mapped to Chapter ${i + 1}. Skipping verification for this chapter.`)
-          continue;
+          console.log(`[ThesisCritique] No previous errors mapped to Chapter ${i + 1}. Skipping verification.`)
+          return []
         }
-
         chapterSpecificErrors = JSON.stringify({ errors: relevantErrors }, null, 2)
       } catch (e) {
-        // Fallback if parsing fails
         chapterSpecificErrors = masterReport
       }
 
+      // Verification Prompt Construction (same as before)
       chapterPrompt = isGerman
         ? `Du bist ein strenger Auditor (Reviewer). Dein Job ist die NACHKONTROLLE von Korrekturen für dieses KAPITEL.
-
       SITUATION:
         Eine Thesis wurde bereits geprüft. Hier sind die Mängel, die in DIESEM KAPITEL gefunden wurden:
-        
         <<<< FEHLER-LISTE FÜR DIESES KAPITEL >>>>
         ${chapterSpecificErrors}
         <<<< ENDE FEHLER-LISTE >>>>
-
       DEINE AUFGABE:
         Prüfe den UNTENSTEHENDEN KAPITEL-TEXT daraufhin, ob DIESE FEHLER behoben wurden.
-
       REGELN:
         1. Prüfe NUR die oben genannten Fehler.
         2. Suche KEINE neuen Fehler!
@@ -3221,32 +3211,19 @@ async function critiqueThesis(
         4. Wenn ein Fehler NOCH IMMER da ist: Füge ihn in deinen Report ein.
         
         OUTPUT FORMAT (JSON):
-        {
-          "errors": [
-            {
-              "location": "Kapitel X...",
-              "quote": "Zitierter Text...",
-              "error": "Fehlerbeschreibung...",
-              "solution": "Lösung..."
-            }
-          ]
-        }
+        { "errors": [ { "location": "...", "quote": "...", "error": "...", "solution": "..." } ] }
         (Lass das Array leer [], wenn alles korrigiert ist.)
 
       KAPITEL TEXT:
       ${chapterContent}`
         : `You are a strict auditor. Your job is VERIFICATION of corrections for this CHAPTER.
-
       SITUATION:
         A thesis has already been audited. Here are the issues found in THIS CHAPTER:
-        
         <<<< ERROR LIST FOR THIS CHAPTER >>>>
         ${chapterSpecificErrors}
         <<<< END LIST >>>>
-
       YOUR TASK:
         Check the CHAPTER TEXT BELOW to see if THESE ERRORS have been fixed.
-
       RULES:
         1. Check ONLY the errors listed above.
         2. Do NOT look for new errors!
@@ -3254,212 +3231,177 @@ async function critiqueThesis(
         4. If an error is STILL present: Include it in your report.
         
         OUTPUT FORMAT (JSON):
-        {
-          "errors": [ ... ]
-        }
+        { "errors": [ ... ] }
         (Leave array empty [] if all fixed.)
 
       CHAPTER TEXT:
       ${chapterContent}`
-
     } else {
-
-      // === FULL CRITIQUE MODE (Standard) ===
-      // INSTRUCTION: Check if chapter is just a structural container (e.g. "1. Introduction" -> "1.1 ...")
-      // If so, empty content is NOT an error.
+      // === FULL CRITIQUE MODE ===
       chapterPrompt = isGerman
         ? `Du bist ein akademischer Prüfer (Reviewer). Überprüfe dieses KAPITEL auf Fehler.
 
-      KONTEXT:
-      - Dies ist Textabschnitt ${i + 1} von ${chapters.length} (sequentiell).
-      - Titel des Kapitels: "${chapterTitle}"
-      
-      PRÜFUNGSKRITERIEN FÜR DIESES KAPITEL:
-      
-      0. **LEERE STRUKTUR-KAPITEL (WICHTIG):**
-         - Ist dieses Kapitel nur eine Hauptüberschrift ohne Text?
-         - PRÜFE NÄCHSTES KAPITEL: "${nextChapterTitle}"
-         - REGEL: Wenn das nächste Kapitel eine direkte Untergliederung ist (z.B. dieses ist "5", nächstes ist "5.1"), dann ist es KEIN Fehler!
-         - Melde "Fehler" NUR wenn es ein inhaltliches Kapitel sein sollte, das versehentlich leer ist (und NICHT von einem Unterkapitel gefolgt wird).
-      
-      1. **FORSCHUNGSFRAGE:** Trägt dieses Kapitel zur Beantwortung bei?
-         FRAGE: "${researchQuestion}"
+       KONTEXT:
+       - Dies ist Textabschnitt ${i + 1} von ${chapters.length} (sequentiell).
+       - Titel des Kapitels: "${chapterTitle}"
+       
+       PRÜFUNGSKRITERIEN FÜR DIESES KAPITEL:
+       
+       0. **LEERE STRUKTUR-KAPITEL (WICHTIG):**
+          - Ist dieses Kapitel nur eine Hauptüberschrift ohne Text?
+          - PRÜFE NÄCHSTES KAPITEL: "${nextChapterTitle}"
+          - REGEL: Wenn das nächste Kapitel eine direkte Untergliederung ist (z.B. dieses ist "5", nächstes ist "5.1"), dann ist es KEIN Fehler!
+          - Melde "Fehler" NUR wenn es ein inhaltliches Kapitel sein sollte, das versehentlich leer ist (und NICHT von einem Unterkapitel gefolgt wird).
+       
+       1. **FORSCHUNGSFRAGE:** Trägt dieses Kapitel zur Beantwortung bei?
+          FRAGE: "${researchQuestion}"
 
-      2. **SOURCE CHECK & HALLUZINATIONEN (IMPORTANT!):**
-         - Vergleiche JEDE Zitation mit der "ERLAUBTEN QUELLEN"-Liste unten.
-         - ERLAUBTE QUELLEN (IN DIESEM PROMPT ENTHALTEN):
-         ${sourceListShort}
-         
-         - **JAHR-CHECK:** Stimmt das Jahr?
-         - **SEITENZAHL-PFLICHT (STRENG!):**
-           - JEDE Zitation MUSS eine Seitenzahl haben (z.B. (Müller, 2020, S. 12)).
-            - VERBOTEN: Zitationen ohne Seite (z.B. nur (Müller, 2020)). -> MELDE FEHLER: "Fehlende Seitenzahl".
-            - **VERDÄCHTIGE SEITENZAHLEN:** Seitenzahlen über 10.000 sind VERDÄCHTIG (wahrscheinlich ein Fehler). -> MELDE FEHLER: "Unplausible Seitenzahl".
-         - **VERFASSER-PFLICHT (STRENG!):**
-           - VERBOTEN: Quellen ohne Verfasser / "o.V." / "Anonymous".
-           - Jede Quelle muss einen Autorennamen haben. -> MELDE FEHLER: "Quelle ohne Verfasser (o.V.) ist nicht erlaubt".
-         - Nutze das 'fileSearch' Werkzeug zur Verifizierung von Inhalten, ABER die Liste 'ERLAUBTE QUELLEN' (oben) ist die Wahrheit für "Existenz".
+       2. **SOURCE CHECK & HALLUZINATIONEN (IMPORTANT!):**
+          - Vergleiche JEDE Zitation mit der "ERLAUBTEN QUELLEN"-Liste unten.
+          - ERLAUBTE QUELLEN (IN DIESEM PROMPT ENTHALTEN):
+          ${sourceListShort}
+          
+          - **JAHR-CHECK:** Stimmt das Jahr?
+          - **SEITENZAHL-PFLICHT (STRENG!):**
+            - JEDE Zitation MUSS eine Seitenzahl haben (z.B. (Müller, 2020, S. 12)).
+             - VERBOTEN: Zitationen ohne Seite (z.B. nur (Müller, 2020)). -> MELDE FEHLER: "Fehlende Seitenzahl".
+             - **VERDÄCHTIGE SEITENZAHLEN:** Seitenzahlen über 10.000 sind VERDÄCHTIG (wahrscheinlich ein Fehler). -> MELDE FEHLER: "Unplausible Seitenzahl".
+          - **VERFASSER-PFLICHT (STRENG!):**
+            - VERBOTEN: Quellen ohne Verfasser / "o.V." / "Anonymous".
+            - Jede Quelle muss einen Autorennamen haben. -> MELDE FEHLER: "Quelle ohne Verfasser (o.V.) ist nicht erlaubt".
+          - Nutze das 'fileSearch' Werkzeug zur Verifizierung von Inhalten, ABER die Liste 'ERLAUBTE QUELLEN' (oben) ist die Wahrheit für "Existenz".
 
-      3. **SPRACHE & STIL:**
-         - Keine "man", "wir", "ich".
-         - Keine rhetorischen Fragen.
-         - Keine Umgangssprache ("halt", "quasi").
-         - **WICHTIG - HEDGING ERLAUBT:** Kritisiere NICHT vorsichtige Formulierungen ("könnte darauf hindeuten", "scheint zu bestätigen"). Dies ist gute wissenschaftliche Vorsicht ("Hedging"). Melde dies NIEMALS als Fehler ("Unnötige Relativierung")!
-         - Kritisiere "Relativierung" NUR, wenn sie Fakten verfälscht (z.B. "Die Erde ist unter Umständen rund"). Bei Interpretationen ist sie ERWÜNSCHT.
+       3. **SPRACHE & STIL:**
+          - Keine "man", "wir", "ich".
+          - Keine rhetorischen Fragen.
+          - Keine Umgangssprache ("halt", "quasi").
+          - **WICHTIG - HEDGING ERLAUBT:** Kritisiere NICHT vorsichtige Formulierungen ("könnte darauf hindeuten", "scheint zu bestätigen"). Dies ist gute wissenschaftliche Vorsicht ("Hedging"). Melde dies NIEMALS als Fehler ("Unnötige Relativierung")!
+          - Kritisiere "Relativierung" NUR, wenn sie Fakten verfälscht (z.B. "Die Erde ist unter Umständen rund"). Bei Interpretationen ist sie ERWÜNSCHT.
 
-       4. **SATZINTEGRITÄT (WICHTIG!):**
-          - Prüfe auf ABGESCHNITTENE oder UNVOLLSTÄNDIGE Sätze.
-          - MELDE FEHLER wenn ein Satz mit "..." gefolgt von Kleinbuchstaben beginnt (z.B. "...tigmatisierten Gruppe").
-          - MELDE FEHLER wenn ein Satz mitten im Wort abgebrochen ist.
-          - LÖSUNG: "Schreibe den vollständigen Satz von Anfang an neu."
+        4. **SATZINTEGRITÄT (WICHTIG!):**
+           - Prüfe auf ABGESCHNITTENE oder UNVOLLSTÄNDIGE Sätze.
+           - MELDE FEHLER wenn ein Satz mit "..." gefolgt von Kleinbuchstaben beginnt (z.B. "...tigmatisierten Gruppe").
+           - MELDE FEHLER wenn ein Satz mitten im Wort abgebrochen ist.
+           - LÖSUNG: "Schreibe den vollständigen Satz von Anfang an neu."
 
-      KAPITEL TEXT:
-      ${chapterContent}
+       KAPITEL TEXT:
+       ${chapterContent}
 
-      ANTWORTE NUR ALS JSON-OBJEKT (KEIN Text davor/danach!):
-      {
-        "errors": [
-          {
-            "location": "${chapterTitle}",
-            "quote": "MINDESTENS 30 ZEICHEN! Der EXAKTE fehlerhafte Satz oder Satzteil. NICHT nur die Zitation, sondern den GESAMTEN Satz mit der Zitation.",
-            "error": "Beschreibung des Fehlers",
-            "solution": "KONKRETE und PRÄZISE Lösungsanweisung (z.B. 'Ändere Jahr auf 2015')"
-          }
-        ]
-      }
-      WICHTIG: Das 'quote' Feld MUSS einen EINDEUTIGEN, KOPIERBAREN Textausschnitt (min 30 Zeichen) enthalten!
-      - FALSCH: "(Sharp & Hahn, 2011)" (zu kurz, kommt mehrfach vor)
-      - RICHTIG: "Die Entstehung des Virus wird als zoonotischer Ursprung beschrieben (Sharp & Hahn, 2011)."
-      (Lass das Array leer [], wenn keine Fehler gefunden wurden.)`
-
+       ANTWORTE NUR ALS JSON-OBJEKT (KEIN Text davor/danach!):
+       {
+         "errors": [
+           {
+             "location": "${chapterTitle}",
+             "quote": "MINDESTENS 30 ZEICHEN! Der EXAKTE fehlerhafte Satz oder Satzteil. NICHT nur die Zitation, sondern den GESAMTEN Satz mit der Zitation.",
+             "error": "Beschreibung des Fehlers",
+             "solution": "KONKRETE und PRÄZISE Lösungsanweisung"
+           }
+         ]
+       }
+       WICHTIG: Das 'quote' Feld MUSS einen EINDEUTIGEN, KOPIERBAREN Textausschnitt (min 30 Zeichen) enthalten!
+       (Lass das Array leer [], wenn keine Fehler gefunden wurden.)`
         : `You are an academic reviewer. Critique this CHAPTER for errors.
 
-      CONTEXT:
-      - This is text section ${i + 1} of ${chapters.length} (sequential).
-      - Chapter Title: "${chapterTitle}"
-      - NOTE: The chapter number in the TITLE (e.g. "2.1") is AUTHORITATIVE. Ignore discrepancies with the sequential count (Section X). Do NOT report wrong chapter numbers if the title itself is consistent.
-      
+       CONTEXT:
+       - This is text section ${i + 1} of ${chapters.length} (sequential).
+       - Chapter Title: "${chapterTitle}"
+       - NOTE: The chapter number in the TITLE (e.g. "2.1") is AUTHORITATIVE. Ignore discrepancies with the sequential count (Section X). Do NOT report wrong chapter numbers if the title itself is consistent.
+       
+       CRITERIA FOR THIS CHAPTER:
 
+       0. **EMPTY STRUCTURAL CHAPTERS (IMPORTANT):**
+          - Is this chapter just a main heading without text?
+          - CHECK NEXT CHAPTER: "${nextChapterTitle}"
+          - RULE: If the next chapter is a direct subsection (e.g. this is "5", next is "5.1"), then this is NOT an error!
+          - Report "Error" ONLY if it is a content chapter that is accidentally left blank AND is NOT followed by a subsection.
+       
+       1. **RESEARCH QUESTION:** Does this chapter contribute?
+          QUESTION: "${researchQuestion}"
 
+       2. **SOURCE CHECK & HALLUCINATIONS (IMPORTANT!):**
+          - Compare EVERY citation with the "ALLOWED SOURCES" list below.
+          - ALLOWED SOURCES:
+          ${sourceListShort}
+          
+          - **YEAR CHECK:** Does year match?
+          - **MANDATORY PAGE NUMBERS (STRICT!):**
+            - EVERY citation MUST have a page number (e.g. (Miller, 2020, p. 12)).
+            - FORBIDDEN: Citations without page (e.g. just (Miller, 2020)). -> REPORT ERROR: "Missing page number".
+          - **MANDATORY AUTHOR (STRICT!):**
+            - FORBIDDEN: Sources without author / "n.d." / "Anonymous" / "o.V.".
+            - Every source must have an author. -> REPORT ERROR: "Source without author is invalid".
+          - Use 'fileSearch' tool to verify content context, but trust the ALLOWED SOURCES list (above) for existence.
 
-      CRITERIA FOR THIS CHAPTER:
+       3. **LANGUAGE & STYLE:**
+          - No "we", "I", "you".
+          - No rhetorical questions.
+          - Academic tone.
+          - **IMPORTANT - HEDGING ALLOWED:** DO NOT critique cautious phrasing ("might suggest", "seems to indicate"). This is good academic "hedging". NEVER report this as an error ("Unnecessary relativization")!
+          - Only critique "relativization" if it distorts facts (e.g. "The earth might be round"). For interpretations, it is DESIRED.
 
-      0. **EMPTY STRUCTURAL CHAPTERS (IMPORTANT):**
-         - Is this chapter just a main heading without text?
-         - CHECK NEXT CHAPTER: "${nextChapterTitle}"
-         - RULE: If the next chapter is a direct subsection (e.g. this is "5", next is "5.1"), then this is NOT an error!
-         - Report "Error" ONLY if it is a content chapter that is accidentally left blank AND is NOT followed by a subsection.
-      
-      1. **RESEARCH QUESTION:** Does this chapter contribute?
-         QUESTION: "${researchQuestion}"
+        4. **SENTENCE INTEGRITY (IMPORTANT!):**
+           - Check for TRUNCATED or INCOMPLETE sentences.
+           - REPORT ERROR if sentence starts with "..." followed by lowercase (e.g. "...tigmatisierten Gruppe").
+           - REPORT ERROR if sentence is cut mid-word.
+           - SOLUTION: "Rewrite the complete sentence from the beginning."
 
-      2. **SOURCE CHECK & HALLUCINATIONS (IMPORTANT!):**
-         - Compare EVERY citation with the "ALLOWED SOURCES" list below.
-         - ALLOWED SOURCES:
-         ${sourceListShort}
-         
-         - **YEAR CHECK:** Does year match?
-         - **MANDATORY PAGE NUMBERS (STRICT!):**
-           - EVERY citation MUST have a page number (e.g. (Miller, 2020, p. 12)).
-           - FORBIDDEN: Citations without page (e.g. just (Miller, 2020)). -> REPORT ERROR: "Missing page number".
-         - **MANDATORY AUTHOR (STRICT!):**
-           - FORBIDDEN: Sources without author / "n.d." / "Anonymous" / "o.V.".
-           - Every source must have an author. -> REPORT ERROR: "Source without author is invalid".
-         - Use 'fileSearch' tool to verify content context, but trust the ALLOWED SOURCES list (above) for existence.
+       CHAPTER TEXT:
+       ${chapterContent}
 
-      3. **LANGUAGE & STYLE:**
-         - No "we", "I", "you".
-         - No rhetorical questions.
-         - Academic tone.
-         - **IMPORTANT - HEDGING ALLOWED:** DO NOT critique cautious phrasing ("might suggest", "seems to indicate"). This is good academic "hedging". NEVER report this as an error ("Unnecessary relativization")!
-         - Only critique "relativization" if it distorts facts (e.g. "The earth might be round"). For interpretations, it is DESIRED.
-
-       4. **SENTENCE INTEGRITY (IMPORTANT!):**
-          - Check for TRUNCATED or INCOMPLETE sentences.
-          - REPORT ERROR if sentence starts with "..." followed by lowercase (e.g. "...tigmatisierten Gruppe").
-          - REPORT ERROR if sentence is cut mid-word.
-          - SOLUTION: "Rewrite the complete sentence from the beginning."
-
-      CHAPTER TEXT:
-      ${chapterContent}
-
-      OUTPUT ONLY AS JSON OBJECT (NO Text before/after!):
-      {
-        "errors": [
-          {
-            "location": "${chapterTitle}",
-            "quote": "AT LEAST 30 CHARS! The EXACT problematic sentence including context. NOT just the citation, but the ENTIRE sentence containing it.",
-            "error": "Error description",
-            "solution": "CONCRETE and PRECISE solution instruction"
-          }
-        ]
-      }
-      IMPORTANT: The 'quote' field MUST contain a UNIQUE, COPY-PASTE-READY excerpt (min 30 chars)!
-      - WRONG: "(Sharp & Hahn, 2011)" (too short, appears multiple times)
-      - RIGHT: "The virus origins are described as zoonotic in nature (Sharp & Hahn, 2011)."
-      (Leave array empty [] if no errors.)`
+       OUTPUT ONLY AS JSON OBJECT (NO Text before/after!):
+       {
+         "errors": [
+           {
+             "location": "${chapterTitle}",
+             "quote": "AT LEAST 30 CHARS! The EXACT problematic sentence including context. NOT just the citation, but the ENTIRE sentence containing it.",
+             "error": "Error description",
+             "solution": "CONCRETE and PRECISE solution instruction"
+           }
+         ]
+       }
+       IMPORTANT: The 'quote' field MUST contain a UNIQUE, COPY-PASTE-READY excerpt (min 30 chars)!
+       (Leave array empty [] if no errors.)`
     }
 
-    // Call Model (Gemini 2.5 Pro)
     try {
-      // Small delay to avoid rate limits
-      if (i > 0) await new Promise(r => setTimeout(r, 500))
-
       const response = await retryApiCall(() => ai.models.generateContent({
-        model: 'gemini-3-pro-preview', // Using Gemini 3 for better critique accuracy
+        model: 'gemini-3-pro-preview',
         contents: chapterPrompt,
         config: {
           temperature: 0.1,
           tools: fileSearchStoreId ? [{
-            fileSearch: {
-              fileSearchStoreNames: [fileSearchStoreId],
-            },
+            fileSearch: { fileSearchStoreNames: [fileSearchStoreId] },
           }] : undefined,
         },
       }), `Critique Chapter ${i + 1}`)
       trackTokenUsage(thesisData, response, 'gemini-3-pro-preview', `Critique Chapter ${i + 1}`)
 
       const responseText = response.text || '{}'
-      console.log(`[ThesisCritique] Chapter ${i + 1} Raw Response:`, responseText.substring(0, 500))
-
-      try {
-        let jsonStr = responseText.trim()
-        // 1. Try removing markdown blocks first
-        jsonStr = jsonStr.replace(/```json\n?|\n?```/g, '').trim()
-
-        // 2. If it doesn't start with {, try to find the first { and last }
-        const firstOpen = jsonStr.indexOf('{')
-        const lastClose = jsonStr.lastIndexOf('}')
-        if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
-          jsonStr = jsonStr.substring(firstOpen, lastClose + 1)
-        } else {
-          // Fallback: if no JSON delimiters found, try to look for explicit [] or assume empty if short
-          if (jsonStr.includes("errors") && jsonStr.includes("[")) {
-            // Maybe it is just the inner part? unlikely.
-          }
-          // If we can't find JSON, invalid.
-          if (!jsonStr.startsWith('{')) {
-            throw new Error("No JSON object found in response");
-          }
-        }
-
-        const json = JSON.parse(jsonStr)
-        if (json.errors && Array.isArray(json.errors)) {
-          // Add chapter context to location if missing
-          const enrichedErrors = json.errors.map((e: any) => ({
-            ...e,
-            location: e.location ? e.location : chapterTitle // Ensure location is set
-          }))
-          allErrors.push(...enrichedErrors)
-          console.log(`[ThesisCritique] Chapter ${i + 1}: Found ${enrichedErrors.length} errors`)
-        }
-      } catch (parseError) {
-        console.warn(`[ThesisCritique] Failed to parse JSON for Chapter ${i + 1}`, parseError)
+      let jsonStr = responseText.trim().replace(/```json\n?|\n?```/g, '').trim()
+      const firstOpen = jsonStr.indexOf('{')
+      const lastClose = jsonStr.lastIndexOf('}')
+      if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
+        jsonStr = jsonStr.substring(firstOpen, lastClose + 1)
       }
 
-    } catch (apiError) {
-      console.error(`[ThesisCritique] Error critiquing Chapter ${i + 1}`, apiError)
+      const json = JSON.parse(jsonStr)
+      if (json.errors && Array.isArray(json.errors)) {
+        return json.errors.map((e: any) => ({ ...e, location: e.location || chapterTitle }))
+      }
+    } catch (e) {
+      console.error(`[ThesisCritique] Error in Chapter ${i + 1}`, e)
     }
+    return []
+  }
+
+  // Execute in batches
+  for (let i = 0; i < chapters.length; i += CONCURRENT_LIMIT) {
+    const batch = []
+    for (let j = 0; j < CONCURRENT_LIMIT && i + j < chapters.length; j++) {
+      batch.push(processChapter(i + j))
+    }
+    const results = await Promise.all(batch)
+    results.forEach(errors => allErrors.push(...errors))
   }
 
   // Aggregate results
@@ -7872,153 +7814,136 @@ async function processThesisGeneration(
             // Extract titles for matching
             const chapterTitles = chapters.map(c => c.split('\n')[0].replace(/#/g, '').trim())
 
-            // 3. Iterate through ERRORS and apply fixes
-            for (let i = 0; i < errors.length; i++) {
-              const err = errors[i]
-              console.log(`[Repair] Processing Error ${i + 1}/${errors.length}: ${err.error?.substring(0, 50)}...`)
+            // 3. GROUP ERRORS BY CHAPTER
+            // Instead of iterating errors sequentially, map them to chapters first
+            // validErrors maps chapterIndex -> Array of Error Objects
+            const errorsByChapter: Record<number, any[]> = {}
 
-              // Identify target chapter index
-              // IMPROVED: Prioritize quote-based search, then fall back to location-based matching
-              const targetIndex = ((location: string, quote: string, titles: string[], allChapters: string[]): number => {
+            // Helper to find chapter index (reused logic)
+            const findChapterIndex = (location: string, quote: string, titles: string[], allChapters: string[]): number => {
+              // STRATEGY 0: Quote-based search FIRST
+              if (quote && quote.length > 10) {
+                let cleanQuote = quote
+                  .replace(/^\.{2,}/g, '')
+                  .replace(/\.{2,}$/g, '')
+                  .replace(/^…/g, '')
+                  .replace(/…$/g, '')
+                  .replace(/\s+/g, ' ')
+                  .trim()
+                const searchStr = cleanQuote.substring(0, Math.min(60, cleanQuote.length))
 
-                // STRATEGY 0 (NEW): Quote-based search FIRST if quote is available
-                // This is the most reliable way to find the actual content
-                if (quote && quote.length > 10) {
-                  // Strip ellipsis that critique agent adds
-                  let cleanQuote = quote
-                    .replace(/^\.{2,}/g, '')
-                    .replace(/\.{2,}$/g, '')
-                    .replace(/^…/g, '')
-                    .replace(/…$/g, '')
-                    .replace(/\s+/g, ' ')
-                    .trim()
-
-                  const searchStr = cleanQuote.substring(0, Math.min(60, cleanQuote.length))
-
+                for (let idx = 0; idx < allChapters.length; idx++) {
+                  const normalizedChapter = allChapters[idx].replace(/\s+/g, ' ')
+                  if (normalizedChapter.includes(searchStr)) return idx
+                }
+                if (searchStr.length > 15) {
+                  const shortQuote = searchStr.substring(0, 15)
                   for (let idx = 0; idx < allChapters.length; idx++) {
-                    // Normalize whitespace in chapter content for matching
                     const normalizedChapter = allChapters[idx].replace(/\s+/g, ' ')
-                    if (normalizedChapter.includes(searchStr)) {
-                      console.log(`[Repair] ✓ Found quote in chapter ${idx + 1} (${titles[idx]?.substring(0, 40)}...)`)
-                      return idx
-                    }
-                  }
-                  // Try shorter substring if full quote not found
-                  if (searchStr.length > 15) {
-                    const shortQuote = searchStr.substring(0, 15)
-                    for (let idx = 0; idx < allChapters.length; idx++) {
-                      const normalizedChapter = allChapters[idx].replace(/\s+/g, ' ')
-                      if (normalizedChapter.includes(shortQuote)) {
-                        console.log(`[Repair] ✓ Found short quote in chapter ${idx + 1} (${titles[idx]?.substring(0, 40)}...)`)
-                        return idx
-                      }
-                    }
+                    if (normalizedChapter.includes(shortQuote)) return idx
                   }
                 }
+              }
+              if (!location) return -1
 
-                if (!location) return -1
-
-                // STRATEGY 1: Strict Number Match (e.g. "1.1")
-                const locNumMatch = location.match(/(\d+(?:\.\d+)*)/)
-                const locNum = locNumMatch ? locNumMatch[1] : null
-
-                if (locNum) {
-                  // First pass: exact match
-                  for (let idx = 0; idx < titles.length; idx++) {
-                    const cleanTitle = titles[idx].replace(/#/g, '').trim()
-                    if (cleanTitle.startsWith(locNum + ' ') || cleanTitle === locNum) {
-                      // VALIDATION: Check if this chapter actually has content (> 100 chars)
-                      if (allChapters[idx].length > 100) {
-                        return idx
-                      } else {
-                        console.warn(`[Repair] Chapter ${idx + 1} matched by number but is too short (${allChapters[idx].length} chars). Searching for content...`)
-                        // Continue to find a chapter that actually has the content
-                      }
-                    }
-                  }
-
-                  // Second pass: subsection match (e.g. "3.1.1" maps to "3 Title")
-                  for (let idx = 0; idx < titles.length; idx++) {
-                    const cleanTitle = titles[idx].replace(/#/g, '').trim()
-                    const chapterNum = cleanTitle.split(' ')[0]
-                    if (chapterNum && locNum.startsWith(chapterNum + '.')) {
-                      // VALIDATION: Check if this chapter actually has content
-                      if (allChapters[idx].length > 100) {
-                        return idx
-                      }
-                    }
-                  }
-                }
-
-                // STRATEGY 2: Fuzzy String Match on Title
-                const locLower = location.toLowerCase()
+              // STRATEGY 1: Strict Number Match
+              const locNumMatch = location.match(/(\d+(?:\.\d+)*)/)
+              const locNum = locNumMatch ? locNumMatch[1] : null
+              if (locNum) {
                 for (let idx = 0; idx < titles.length; idx++) {
-                  const titleLower = titles[idx].toLowerCase()
-                  if (titleLower.includes(locLower) || locLower.includes(titleLower)) {
-                    if (allChapters[idx].length > 100) {
-                      return idx
-                    }
-                  }
+                  const cleanTitle = titles[idx].replace(/#/g, '').trim()
+                  if ((cleanTitle.startsWith(locNum + ' ') || cleanTitle === locNum) && allChapters[idx].length > 100) return idx
                 }
-
-                // STRATEGY 3: If all else fails, search ALL chapters for the quote
-                // (Already tried in Strategy 0, but try again with even more relaxed matching)
-                if (quote && quote.length > 10) {
-                  const words = quote.split(/\s+/).slice(0, 5).join(' ')
-                  for (let idx = 0; idx < allChapters.length; idx++) {
-                    if (allChapters[idx].includes(words)) {
-                      console.log(`[Repair] Found keywords "${words.substring(0, 30)}..." in chapter ${idx + 1}`)
-                      return idx
-                    }
-                  }
+                for (let idx = 0; idx < titles.length; idx++) {
+                  const cleanTitle = titles[idx].replace(/#/g, '').trim()
+                  const chapterNum = cleanTitle.split(' ')[0]
+                  if (chapterNum && locNum.startsWith(chapterNum + '.') && allChapters[idx].length > 100) return idx
                 }
-
-                return -1
-              })(err.location, err.quote, chapterTitles, chapters)
-
-              if (targetIndex === -1) {
-                console.warn(`[Repair] Could not map location "${err.location}" to a chapter. Skipping error.`)
-                continue
               }
 
-              // Apply repair to the specific chapter
-              const chunk = chapters[targetIndex]
+              // STRATEGY 2: Fuzzy Title Match
+              const locLower = location.toLowerCase()
+              for (let idx = 0; idx < titles.length; idx++) {
+                const titleLower = titles[idx].toLowerCase()
+                if ((titleLower.includes(locLower) || locLower.includes(titleLower)) && allChapters[idx].length > 100) return idx
+              }
 
-              // Construct a specific instruction for the Repair Agent
-              const miniReport = `LÖSUNG ANWENDEN:\nFEHLER: ${err.error}\nLÖSUNG: ${err.solution}\nQUOTE: ${err.quote || ''}`
-
-              console.log(`[Repair] Applying fix to Chapter ${targetIndex + 1} (${chapterTitles[targetIndex]})...`)
-
-              const repairedChunk = await fixChapterContent(
-                chunk,
-                miniReport,
-                thesisData.language === 'german',
-                targetIndex,
-                chapters.length,
-                chapterTitles, // Context
-                thesisData,
-                thesisData.fileSearchStoreId
-              )
-
-              if (repairedChunk.trim() === '[DELETE_CHAPTER]') {
-                console.warn(`[Repair] Agent requested DELETE for Chapter ${targetIndex + 1}`)
-                chapters[targetIndex] = ''
-              } else {
-                console.log(`[Repair] Update Check: Original ${chunk.length} chars -> repaired ${repairedChunk.length} chars`)
-                if (repairedChunk.length < 200 && chunk.length > 500) {
-                  console.error(`[Repair] CRITICAL: Repair result is suspiciously short (${repairedChunk.length} vs ${chunk.length}). Reverting!`)
-                  // Do not update
-                } else if (repairedChunk.length < chunk.length * 0.5 && chunk.length > 200) {
-                  console.warn(`[Repair] Fix result dangerously short. Reverting.`)
-                } else {
-                  chapters[targetIndex] = repairedChunk
+              // STRATEGY 3: Fallback Search
+              if (quote && quote.length > 10) {
+                const words = quote.split(/\s+/).slice(0, 5).join(' ')
+                for (let idx = 0; idx < allChapters.length; idx++) {
+                  if (allChapters[idx].includes(words)) return idx
                 }
+              }
+              return -1
+            }
+
+            // Map all errors to chapters
+            for (const err of errors) {
+              const targetIndex = findChapterIndex(err.location, err.quote, chapterTitles, chapters)
+              if (targetIndex !== -1) {
+                if (!errorsByChapter[targetIndex]) errorsByChapter[targetIndex] = []
+                errorsByChapter[targetIndex].push(err)
+              } else {
+                console.warn(`[Repair] Could not map location "${err.location}" to a chapter. Skipping error.`)
               }
             }
 
-            // 4. Reassemble
+            // 4. PROCESS CHAPTERS IN PARALLEL
+            const indicesToRepair = Object.keys(errorsByChapter).map(Number)
+            console.log(`[Repair] Identified ${indicesToRepair.length} chapters requiring repair.`)
+
+            const repairChapterTask = async (idx: number) => {
+              const chapterErrors = errorsByChapter[idx]
+              const chunk = chapters[idx]
+              // Construct a combined report for this chapter
+              let combinedReport = `BITTE KORRIGIERE FOLGENDE ${chapterErrors.length} FEHLER IN DIESEM KAPITEL:\n`
+              chapterErrors.forEach((e, k) => {
+                combinedReport += `--- FEHLER ${k + 1} ---\nFEHLER: ${e.error}\nLÖSUNG: ${e.solution}\nQUOTE: ${e.quote || ''}\n`
+              })
+
+              console.log(`[Repair] Launching concurrent repair for Chapter ${idx + 1} (${chapterTitles[idx]})...`)
+
+              try {
+                const repairedChunk = await fixChapterContent(
+                  chunk,
+                  combinedReport,
+                  thesisData.language === 'german',
+                  idx,
+                  chapters.length,
+                  chapterTitles,
+                  thesisData,
+                  thesisData.fileSearchStoreId
+                )
+
+                if (repairedChunk.trim() === '[DELETE_CHAPTER]') {
+                  console.warn(`[Repair] Agent requested DELETE for Chapter ${idx + 1}`)
+                  chapters[idx] = ''
+                } else {
+                  console.log(`[Repair] Chapter ${idx + 1} Update: ${chunk.length} -> ${repairedChunk.length} chars`)
+                  if (repairedChunk.length < 200 && chunk.length > 500) {
+                    console.error(`[Repair] CRITICAL: Repair result for Chapter ${idx + 1} suspiciously short. Reverting!`)
+                  } else if (repairedChunk.length < chunk.length * 0.5 && chunk.length > 200) {
+                    console.warn(`[Repair] Fix result for Chapter ${idx + 1} dangerously short. Reverting.`)
+                  } else {
+                    chapters[idx] = repairedChunk
+                  }
+                }
+              } catch (err) {
+                console.error(`[Repair] Error repairing Chapter ${idx + 1}`, err)
+              }
+            }
+
+            // Execute with concurrency limit
+            const REPAIR_CONCURRENCY = 5
+            for (let i = 0; i < indicesToRepair.length; i += REPAIR_CONCURRENCY) {
+              const batch = indicesToRepair.slice(i, i + REPAIR_CONCURRENCY).map(idx => repairChapterTask(idx))
+              await Promise.all(batch)
+            }
+
+            // 5. Reassemble
             thesisContent = chapters.filter(c => c.length > 0).join('\n\n')
-            console.log('[Repair] All errors processed. Thesis reassembled.')
+            console.log('[Repair] All batch repairs processed. Thesis reassembled.')
 
           } else {
             console.log('[Repair] No errors parsed to fix (or parsing failed).')
@@ -8040,22 +7965,9 @@ async function processThesisGeneration(
     // Step 7.4: Winston AI Check & Sentence Rewrite
     console.log('\n[PROCESS] ========== Step 7.4: Winston AI Check & Sentence Rewrite ==========')
 
-    // Generate bibliography first to include it in the human/AI check
-    // (Bibliographies often boost human scores due to structure/dates/names)
-    console.log('[PROCESS] Generating bibliography for Winston check context...')
-    const footnotesForCheck: Record<number, string> = {} // Temporary footnotes
-    const bibForCheck = generateBibliography(
-      thesisContent,
-      sourcesForGeneration || [],
-      thesisData.citationStyle,
-      thesisData.language,
-      footnotesForCheck
-    )
-
-    if (bibForCheck && bibForCheck.text) {
-      console.log(`[PROCESS] Appending bibliography (${bibForCheck.text.length} chars) to content for Winston check`)
-      thesisContent += "\n\n" + bibForCheck.text
-    }
+    // SKIP Bibliography injection here as per user request. 
+    // We do NOT want to humanize the bibliography or send it to Winston.
+    // It will be added in Step 8/9.
 
     const winstonCheckStart = Date.now()
     let winstonResult: any = null
