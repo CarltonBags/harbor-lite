@@ -3304,6 +3304,8 @@ async function critiqueThesis(
          - Keine "man", "wir", "ich".
          - Keine rhetorischen Fragen.
          - Keine Umgangssprache ("halt", "quasi").
+         - **WICHTIG - HEDGING ERLAUBT:** Kritisiere NICHT vorsichtige Formulierungen ("könnte darauf hindeuten", "scheint zu bestätigen"). Dies ist gute wissenschaftliche Vorsicht ("Hedging"). Melde dies NIEMALS als Fehler ("Unnötige Relativierung")!
+         - Kritisiere "Relativierung" NUR, wenn sie Fakten verfälscht (z.B. "Die Erde ist unter Umständen rund"). Bei Interpretationen ist sie ERWÜNSCHT.
 
        4. **SATZINTEGRITÄT (WICHTIG!):**
           - Prüfe auf ABGESCHNITTENE oder UNVOLLSTÄNDIGE Sätze.
@@ -3369,6 +3371,8 @@ async function critiqueThesis(
          - No "we", "I", "you".
          - No rhetorical questions.
          - Academic tone.
+         - **IMPORTANT - HEDGING ALLOWED:** DO NOT critique cautious phrasing ("might suggest", "seems to indicate"). This is good academic "hedging". NEVER report this as an error ("Unnecessary relativization")!
+         - Only critique "relativization" if it distorts facts (e.g. "The earth might be round"). For interpretations, it is DESIRED.
 
        4. **SENTENCE INTEGRITY (IMPORTANT!):**
           - Check for TRUNCATED or INCOMPLETE sentences.
@@ -5682,7 +5686,11 @@ const HUMANIZER_PROMPTS = {
            - NEVER hedge methods, mathematical claims, or citations.
         2. **Authorial Presence**: Use phrases like "It is worth noting that...", "to some extent", "within the scope of this thesis".
         3. **Tone**: "Knowledgeable peer" - confident but careful.
-        4. **Fidelity**: Do not change the core meaning.
+        5. **Fidelity**: Do not change the core meaning.
+        6. **ULTRA-CRITICAL - CITATIONS ARE SACRED**: 
+           - NEVER touch, modify, move, or reformat a citation like (Müller, 2020, S. 12).
+           - NEVER change a page number.
+           - If a sentence has a citation, the humanized version MUST have the SAME citation.
         
         Text to calibrate:
         "${text}"
@@ -5698,6 +5706,10 @@ const HUMANIZER_PROMPTS = {
         1. Only modify the sentences specified. Leave others EXACTLY as they are.
         2. Keep the meaning unchanged.
         3. Maintain academic tone.
+        4. **ULTRA-CRITICAL - CITATIONS**:
+           - Do NOT change citation page numbers (e.g. S. 12 -> S. 15 is FORBIDDEN).
+           - Do NOT remove citations.
+           - Keep citations exactly as they appear in the original text.
         
         Paragraph:
         "${text}"
