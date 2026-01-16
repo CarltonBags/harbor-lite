@@ -3365,7 +3365,7 @@ async function critiqueThesis(
 
     try {
       const response = await retryApiCall(() => ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-2.5-pro',
         contents: chapterPrompt,
         config: {
           temperature: 0.1,
@@ -3374,7 +3374,7 @@ async function critiqueThesis(
           }] : undefined,
         },
       }), `Critique Chapter ${i + 1}`)
-      trackTokenUsage(thesisData, response, 'gemini-3-pro-preview', `Critique Chapter ${i + 1}`)
+      trackTokenUsage(thesisData, response, 'gemini-2.5-pro', `Critique Chapter ${i + 1}`)
 
       const responseText = response.text || '{}'
       let jsonStr = responseText.trim().replace(/```json\n?|\n?```/g, '').trim()
@@ -3670,7 +3670,7 @@ async function fixChapterContent(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const response = await retryApiCall(() => ai.models.generateContent({
-        model: 'gemini-3-pro-preview', // Using Gemini 3 for better repair precision
+        model: 'gemini-2.5-pro', // Using Gemini 2.5 Pro for repair
         contents: prompt,
         config: {
           maxOutputTokens: 50000,
@@ -3945,8 +3945,8 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
       // They're just structural headings - actual content lives in subchapters (1.1, 1.2, etc.)
       if (isIntroOnly) {
         console.log(`[ThesisGeneration] Skipping wrapper chapter ${chapter.number} "${chapter.title}" (content in subchapters)`)
-        // Just add the heading, no content
-        chapterContents.push(`## ${chapter.number} ${chapter.title}\n`)
+        // Just add the heading with proper newline separation, no content
+        chapterContents.push(`\n\n## ${chapter.number} ${chapter.title}\n`)
         continue
       }
 
@@ -5729,66 +5729,177 @@ function applyScannedFormatting(text: string): string {
 // ==========================================
 
 const HUMANIZER_PROMPTS = {
-  calibrator: (text: string, language: string, strict: boolean) => `You are an Academic Voice Calibrator. Your goal is to restore "human authorial caution" (hedging) and stance to the text.
-        
-        Rules:
-        1. **Hedging**: AI often makes absolute statements ("This proves X"). Humans hedge ("This suggests X", "This may indicate X").
-           - Inject hedges for interpretations, implications, or generalizations.
-           - NEVER hedge methods, mathematical claims, or citations.
-        2. **Authorial Presence**: Use phrases like "It is worth noting that...", "to some extent", "within the scope of this thesis".
-        3. **Tone**: "Knowledgeable peer" - confident but careful.
-        5. **Fidelity**: Do not change the core meaning.
-        6. **ULTRA-CRITICAL - CITATIONS ARE SACRED**: 
-           - NEVER touch, modify, move, or reformat a citation like (Müller, 2020, S. 12).
-           - NEVER change a page number.
-           - If a sentence has a citation, the humanized version MUST have the SAME citation.
-        
-        Text to calibrate:
-        "${text}"
-        
-        Output the calibrated text only.
-        
-        Language: ${language}
-        ${strict ? 'Strict Formatting: PRESERVE all Markdown headers (##), lists, and citations exactly.' : ''}`,
+  calibrator: (text: string, language: string, strict: boolean) => {
+    const isGerman = language === 'german' || language === 'de'
 
-  rewriter: (text: string, instructions: string, language: string, strict: boolean) => `You are an expert editor. Rewrite the following paragraph by applying the specific modifications listed below.
+    if (isGerman) {
+      return `Du bist ein akademischer Stilkalibrator. Dein Ziel ist es, "menschliche Autorenvorsicht" (Hedging) und Haltung im Text wiederherzustellen.
         
-        CRITICAL RULES:
-        1. Only modify the sentences specified. Leave others EXACTLY as they are.
-        2. Keep the meaning unchanged.
-        3. Maintain academic tone.
-        4. **ULTRA-CRITICAL - CITATIONS**:
-           - Do NOT change citation page numbers (e.g. S. 12 -> S. 15 is FORBIDDEN).
-           - Do NOT remove citations.
-           - Keep citations exactly as they appear in the original text.
+        Regeln:
+        1. **Hedging**: KI macht oft absolute Aussagen ("Dies beweist X"). Menschen hedgen ("Dies deutet auf X hin", "Dies könnte auf X hinweisen").
+           - Füge Hedges bei Interpretationen, Implikationen oder Verallgemeinerungen ein.
+           - NIEMALS bei Methoden, mathematischen Aussagen oder Zitationen hedgen.
+        2. **Autorenpräsenz**: Verwende Formulierungen wie "Es zeigt sich", "in gewissem Maße", "im Rahmen dieser Arbeit".
+        3. **Ton**: "Wissender Peer" - selbstbewusst aber vorsichtig.
+        4. **Treue**: Den Kerninhalt nicht ändern.
+        5. **ULTRA-KRITISCH - ZITATIONEN SIND HEILIG**: 
+           - NIEMALS eine Zitation wie (Müller, 2020, S. 12) anfassen, ändern, verschieben oder umformatieren.
+           - NIEMALS eine Seitenzahl ändern.
         
-        Paragraph:
+        Text zum Kalibrieren:
         "${text}"
         
-        Modifications to apply:
+        Gib nur den kalibrierten Text aus.
+        ${strict ? 'Strenge Formatierung: ERHALTE alle Markdown-Überschriften (##), Listen und Zitationen genau.' : ''}`
+    } else {
+      return `You are an Academic Voice Calibrator specializing in making AI-generated text undetectable.
+
+MISSION: Restore subtle "human authorial caution" while eliminating AI detection signatures.
+
+ENGLISH-SPECIFIC ANTI-DETECTION RULES (CRITICAL):
+
+1. **BANNED PHRASES - NEVER USE THESE:**
+   - "It is worth noting that..." → DELETE, just state directly
+   - "It should be noted that..." → DELETE
+   - "It is important to note..." → DELETE
+   - "Furthermore", "Moreover", "Additionally" → Use "Here,", "Notably,", "In practice,"
+   - "delves", "crucial", "pivotal", "landscape", "multifaceted", "nuanced", "paramount"
+
+2. **HEDGING (Human-Style):**
+   - AI makes absolute claims ("This proves X"). Humans hedge ("This suggests X", "This appears to indicate X").
+   - Inject hedges ONLY for interpretations and generalizations.
+   - NEVER hedge methods, citations, or mathematical claims.
+   - Use: "appears to", "seemingly", "arguably", "to some extent"
+
+3. **BURSTINESS:**
+   - Vary sentence lengths dramatically
+   - Include at least one very short sentence (under 8 words)
+   - Include complex sentences with embedded clauses
+
+4. **CITATIONS ARE SACRED:**
+   - NEVER modify, move, or reformat citations like (Smith, 2020, p. 12)
+   - NEVER change page numbers
+   - Citations must appear identically in output
+
+Text to calibrate:
+"${text}"
+
+Output the calibrated text only. No commentary.
+${strict ? 'Strict Formatting: PRESERVE all Markdown headers (##), lists, and citations exactly.' : ''}`
+    }
+  },
+
+  rewriter: (text: string, instructions: string, language: string, strict: boolean) => {
+    const isGerman = language === 'german' || language === 'de'
+
+    if (isGerman) {
+      return `Du bist ein Experten-Editor. Schreibe den folgenden Absatz um, indem du die unten aufgeführten spezifischen Änderungen anwendest.
+        
+        KRITISCHE REGELN:
+        1. Ändere nur die angegebenen Sätze. Lasse andere GENAU so wie sie sind.
+        2. Behalte die Bedeutung bei.
+        3. Bewahre den akademischen Ton.
+        4. **ULTRA-KRITISCH - ZITATIONEN**:
+           - Ändere KEINE Zitationsseitenzahlen (z.B. S. 12 -> S. 15 ist VERBOTEN).
+           - Entferne KEINE Zitationen.
+           - Behalte Zitationen genau so wie sie im Originaltext erscheinen.
+        
+        Absatz:
+        "${text}"
+        
+        Anzuwendende Änderungen:
         ${instructions}
         
-        Output the fully rewritten paragraph only.
-        
-        Language: ${language}
-        ${strict ? 'Strict Formatting: PRESERVE all Markdown headers (##), lists, and citations exactly.' : ''}`,
+        Gib nur den vollständig umgeschriebenen Absatz aus.
+        ${strict ? 'Strenge Formatierung: ERHALTE alle Markdown-Überschriften (##), Listen und Zitationen genau.' : ''}`
+    } else {
+      return `You are an expert editor specializing in making AI text undetectable.
 
-  punctuation: (text: string, language: string, strict: boolean) => `You are a "Steuerzeichen" (Punctuation and Flow) specialist. 
-        Your task is to refine the punctuation of the following text to match high-quality human academic writing.
+TASK: Rewrite this paragraph by applying the modifications listed below.
+
+ENGLISH ANTI-DETECTION RULES (CRITICAL):
+
+1. **BANNED WORDS - ELIMINATE THESE:**
+   "delves", "crucial", "pivotal", "landscape", "multifaceted", "nuanced", "paramount", "comprehensive", "underscore", "realm", "tapestry"
+
+2. **BANNED CONNECTORS:**
+   "Furthermore" → "Here," or "Notably,"
+   "Moreover" → "In practice," or "Tellingly,"
+   "Additionally" → "Against this backdrop,"
+   "In conclusion" → Just start concluding, no announcement
+
+3. **BURSTINESS:**
+   - Create varied sentence lengths (some very short, some long with clauses)
+   - Never have 3 consecutive sentences of similar length
+
+4. **SYNTAX VARIATION:**
+   - Start some sentences with adverbials or subordinate clauses
+   - Mix active and passive voice (60/40)
+
+5. **CITATIONS ARE SACRED:**
+   - Do NOT change citation page numbers
+   - Do NOT remove citations
+   - Keep citations exactly as they appear
+
+Paragraph:
+"${text}"
+
+Modifications to apply:
+${instructions}
+
+Output the fully rewritten paragraph only. No commentary.
+${strict ? 'Strict Formatting: PRESERVE all Markdown headers (##), lists, and citations exactly.' : ''}`
+    }
+  },
+
+  punctuation: (text: string, language: string, strict: boolean) => {
+    const isGerman = language === 'german' || language === 'de'
+
+    if (isGerman) {
+      return `Du bist ein "Steuerzeichen" (Zeichensetzung und Fluss) Spezialist. 
+        Deine Aufgabe ist es, die Zeichensetzung des folgenden Textes zu verfeinern, um hochwertigem menschlichem akademischen Schreiben zu entsprechen.
         
-        Principles:
-        1. **Variance > Frequency**: Avoid repeating the same punctuation mark (e.g., dashes, colons) in close proximity.
-        2. **Balance**: If a paragraph has many dashes '—', swapping some for parentheses '()' or commas can improve flow.
-        3. **Rhythm**: Punctuation guides the breath. Ensure the text reads naturally.
-        4. **Constraint**: Do NOT rewrite the words or change the meaning. ONLY adjust punctuation (commas, colons, semi-colons, dashes, parentheses) and minor connective phrasing if absolutely necessary for the punctuation change.
+        Prinzipien:
+        1. **Varianz > Häufigkeit**: Vermeide es, dasselbe Satzzeichen (z.B. Gedankenstriche, Doppelpunkte) in direkter Nähe zu wiederholen.
+        2. **Balance**: Wenn ein Absatz viele Gedankenstriche '—' hat, verbessert das Austauschen einiger durch Klammern '()' oder Kommas den Fluss.
+        3. **Rhythmus**: Zeichensetzung führt den Atem. Stelle sicher, dass der Text natürlich zu lesen ist.
+        4. **Einschränkung**: Schreibe die Wörter NICHT um oder ändere die Bedeutung. Passe NUR Zeichensetzung an.
         
-        Text to calibrate:
+        Text zum Kalibrieren:
         "${text}"
         
-        Output the calibrated text only.
-        
-        Language: ${language}
-        ${strict ? 'Strict Formatting: PRESERVE all Markdown headers (##), lists, and citations exactly.' : ''}`
+        Gib nur den kalibrierten Text aus.
+        ${strict ? 'Strenge Formatierung: ERHALTE alle Markdown-Überschriften (##), Listen und Zitationen genau.' : ''}`
+    } else {
+      return `You are a Punctuation and Flow specialist for making text sound human-written.
+
+TASK: Refine the punctuation to eliminate AI-typical patterns.
+
+ENGLISH ANTI-DETECTION RULES:
+
+1. **PUNCTUATION VARIANCE:**
+   - Avoid repeating the same punctuation mark (dashes, colons) in close proximity
+   - If a paragraph has many em-dashes '—', swap some for parentheses or commas
+   - Use semicolons occasionally to break up rhythm
+
+2. **RHYTHM DISRUPTION:**
+   - AI text often has metronomic rhythm. Break this.
+   - Some sentences should feel abrupt, others flowing
+
+3. **CONSTRAINT:**
+   - Do NOT rewrite words or change meaning
+   - ONLY adjust punctuation (commas, colons, semicolons, dashes, parentheses)
+
+4. **CITATIONS:**
+   - NEVER modify citations in any way
+
+Text to calibrate:
+"${text}"
+
+Output the calibrated text only. No commentary.
+${strict ? 'Strict Formatting: PRESERVE all Markdown headers (##), lists, and citations exactly.' : ''}`
+    }
+  }
 }
 
 function splitSentences(text: string): string[] {
