@@ -3543,6 +3543,10 @@ async function fixChapterContent(
 
   const chunkTitle = chapterContent.split('\n')[0].replace(/#/g, '').trim()
 
+  // Determine next chapter for context (wrapper detection)
+  const nextChapterTitle = chunkIndex < allChapterTitles.length - 1 ? allChapterTitles[chunkIndex + 1] : 'NONE'
+  const isWrapper = (chunkTitle && nextChapterTitle !== 'NONE' && nextChapterTitle.replace(/#/g, '').trim().startsWith(chunkTitle.replace(/#/g, '').trim() + '.'))
+
   /* 
    * UPDATED PROMPT: SINGLE ERROR MODE
    * The 'critiqueReport' argument now contains a single instruction: "FEHLER: ... LÖSUNG: ..."
@@ -3563,9 +3567,12 @@ async function fixChapterContent(
     3. Wenn die Anweisung sagt: "LÖSUNG: Ändere X zu Y", dann TUE GENAU DAS im REPLACE-Block.
     4. Wenn die Anweisung sagt: "LÖSUNG: Lösche dieses Kapitel", antworte NUR mit: [DELETE_CHAPTER]
     5. KORREKTUR VON DUPLIKATEN: Wenn die Anweisung "Doppeltes Kapitel", "Zweite Instanz" oder "Entferne Duplikat" erwähnt -> Antworte SOFORT mit: [DELETE_CHAPTER]. (Gehe davon aus, dass DU das Duplikat bist).
-    6. Wenn das Kapitel LEER ist (nur Überschrift), und die Lösung Inhalt hinzufügen will:
-       - Suche nach der Kapite-Überschrift.
-       - Ersetze sie durch "Überschrift\n\n[Neuer Inhalt aus Lösung...]"
+    6. LEERE KAPITEL & WRAPPER (WICHTIG):
+       - KONTEXT: Dieses Kapitel ist "${chunkTitle}". Das NÄCHSTE Kapitel ist "${nextChapterTitle}".
+       - REGEL: Wenn das nächste Kapitel eine direkte Untergliederung ist (z.B. dieses ist "1", nächstes "1.1"), dann ist dieses Kapitel ein "WRAPPER".
+       - VERBOT: FÜGE NIEMALS INHALT ZU EINEM WRAPPER HINZU! Auch wenn die Lösung es verlangt!
+       - Wenn die Lösung sagt "Füge Inhalt hinzu" aber es ist ein Wrapper -> IGNORIERE ES (gib leere Antwort zurück).
+       - Nur wenn es KEIN Wrapper ist (kein Unterkapitel folgt), darfst du Inhalt einfügen.
     7. Nutze das 'fileSearch' Werkzeug NUR wenn du aufgefordert wirst, eine fehlende Seitenzahl zu suchen.
     
     FORMAT (SEARCH/REPLACE) - ZWINGEND ERFORDERLICH:
@@ -3614,13 +3621,16 @@ async function fixChapterContent(
     
     INSTRUCTIONS:
     1. Read the QUOTE in the CORRECTION INSTRUCTION. That is the text you need to change.
-    2. COPY this QUOTE EXACTLY into your SEARCH block (Copy & Paste, DO NOT retype from memory!).
+    2. COPY this QUOTE EXAKTLY into your SEARCH block (Copy & Paste, DO NOT retype from memory!).
     3. If instruction says "SOLUTION: Change X to Y", DO EXACTLY THAT in the REPLACE block.
     4. If instruction says "SOLUTION: Delete this chapter", reply ONLY with: [DELETE_CHAPTER]
     5. DUPLICATE CORRECTION: If instruction mentions "Duplicate chapter", "Second instance" or "Remove duplicate" -> Reply IMMEDIATELY with: [DELETE_CHAPTER]. (Assume YOU are the duplicate).
-    6. If Chapter is EMPTY (only title) and solution wants to add content:
-       - Search for the Chapter Title line.
-       - Replace it with "Title\n\n[New Content from solution...]"
+    6. EMPTY CHAPTERS & WRAPPERS (IMPORTANT):
+       - CONTEXT: This chapter is "${chunkTitle}". The NEXT chapter is "${nextChapterTitle}".
+       - RULE: If the next chapter is a direct subsection (e.g. this is "1", next is "1.1"), then this chapter is a "WRAPPER".
+       - FORBIDDEN: NEVER ADD CONTENT TO A WRAPPER! Even if the solution asks for it!
+       - If solution says "Add content" but it is a wrapper -> IGNORE IT (return empty response).
+       - Only if it is NOT a wrapper (no subsection follows) may you add content.
     7. Use 'fileSearch' tool ONLY if asked to find a missing page number.
     
     FORMAT (SEARCH/REPLACE):
@@ -3917,7 +3927,19 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
       }
 
       // Word target: use wordBudget from flattened chapter if available, else calculate
-      const isIntroOnly = chapter.isIntroOnly ?? false
+      let isIntroOnly = chapter.isIntroOnly ?? false
+
+      // ROBUST WRAPPER DETECTION:
+      // Even if 'isIntroOnly' is false (e.g. short thesis mode), check if this is a parent wrapper.
+      // Rule: If next chapter is a likely child (e.g. current="1", next="1.1"), this is a wrapper.
+      if (!isIntroOnly && i < flattenedChapters.length - 1) {
+        const nextChap = flattenedChapters[i + 1]
+        // Check if next chapter number starts with current chapter number + dot (e.g. "1." starts with "1.")
+        if (nextChap.number.startsWith(chapter.number + '.')) {
+          console.log(`[ThesisGeneration] Auto-detected wrapper chapter ${chapter.number} (followed by ${nextChap.number}) -> Force SKIP`)
+          isIntroOnly = true
+        }
+      }
 
       // SKIP WRAPPER CHAPTERS: Don't generate content for parent chapters (1 Einleitung, 2 Grundlagen etc.)
       // They're just structural headings - actual content lives in subchapters (1.1, 1.2, etc.)
@@ -4018,48 +4040,110 @@ async function generateThesisContent(thesisData: ThesisData, rankedSources: Sour
       combinedContent = extensionResult.content
       totalWordCount = extensionResult.wordCount
       console.log(`[ThesisGeneration] ✓ Word count reached after extension: ~${totalWordCount}/${expectedWordCount} words`)
- 
-      // CRITICAL FIX: Post-extension deduplication
-      // The extension process sometimes regenerates existing chapter headers at the end.
-      // We must scan for duplicate headers and remove them (keeping the first occurrence).
-      const seenHeaders = new Set<string>()
-      const lines = combinedContent.split('\n')
-      const deduplicatedLines: string[] = []
-      let skipUntilNextHeader = false
- 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i]
-        const headerMatch = line.match(/^(#{1,3})\s+(\d+(?:\.\d+)*)\s+(.*)$/)
- 
-        if (headerMatch) {
-          const headerKey = `${headerMatch[2]} ${headerMatch[3]}`.trim().toLowerCase()
- 
-          if (seenHeaders.has(headerKey)) {
-            console.warn(`[ThesisGeneration] Removing duplicate header: "${line}"`)
-            skipUntilNextHeader = true // Skip content until next header
-            continue
-          }
- 
-          seenHeaders.add(headerKey)
-          skipUntilNextHeader = false
-        }
- 
-        if (!skipUntilNextHeader) {
-          deduplicatedLines.push(line)
-        }
-      }
- 
-      if (deduplicatedLines.length < lines.length) {
-        console.log(`[ThesisGeneration] Removed ${lines.length - deduplicatedLines.length} lines (duplicate sections)`)
-        combinedContent = deduplicatedLines.join('\n')
-        totalWordCount = combinedContent.split(/\s+/).length
-      }
- 
-      // Update the structure with the extended content
-      thesisStructure = parseContentToStructure(combinedContent, outlineChapters)
       */
     } else if (totalWordCount < expectedWordCount) {
       console.warn(`[ThesisGeneration] Word count below target (${totalWordCount}/${expectedWordCount}) but extension is DISABLED. Continuing with current content.`)
+    }
+
+    // CRITICAL: DEDUPLICATION (Improved Strategy: Keep Longest)
+    // The user reported that sometimes a short stub appears (200 words) followed by the real chapter.
+    // So we must collect ALL versions of a chapter and keep only the best (longest) one.
+
+    const lines = combinedContent.split('\n')
+    const sections: { header: string; headerNum: string; content: string[] }[] = []
+    let currentSection: { header: string; headerNum: string; content: string[] } | null = null
+
+    // 1. Parse into sections
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      const headerMatch = line.match(/^(#{1,3})\s+(\d+(?:\.\d+)*)\s+(.*)$/)
+
+      if (headerMatch) {
+        const num = headerMatch[2].trim()
+        // Start new section
+        if (currentSection) {
+          sections.push(currentSection)
+        }
+        currentSection = {
+          header: line,
+          headerNum: num,
+          content: []
+        }
+      } else {
+        if (currentSection) {
+          currentSection.content.push(line)
+        } else {
+          // Content before first header? Attach to a "preamble" section or ignore?
+          // Usually there is a title # Thesis Title. But here we deal with body.
+          // If it's the very start, let's make a dummy section.
+          if (line.trim().length > 0) {
+            currentSection = { header: '', headerNum: 'PREAMBLE', content: [line] }
+          }
+        }
+      }
+    }
+    if (currentSection) sections.push(currentSection)
+
+    // 2. Deduplicate
+    const bestSections = new Map<string, typeof currentSection>()
+    const preambleSections: typeof sections = []
+
+    for (const sec of sections) {
+      if (sec.headerNum === 'PREAMBLE') {
+        preambleSections.push(sec)
+        continue
+      }
+
+      if (!bestSections.has(sec.headerNum)) {
+        bestSections.set(sec.headerNum, sec)
+      } else {
+        const existing = bestSections.get(sec.headerNum)!
+        const existingLen = existing.content.join('\n').length
+        const newLen = sec.content.join('\n').length
+
+        console.warn(`[ThesisGeneration] Duplicate Chapter ${sec.headerNum} found!`)
+        console.warn(`[ThesisGeneration] Existing length: ${existingLen} chars vs New length: ${newLen} chars`)
+
+        if (newLen > existingLen) {
+          console.log(`[ThesisGeneration] Keeping NEW version (it is longer).`)
+          bestSections.set(sec.headerNum, sec)
+        } else {
+          console.log(`[ThesisGeneration] Keeping EXISTING version (it is longer).`)
+        }
+      }
+    }
+
+    // 3. Reassemble in order
+    // We need to preserve the original ORDER of chapters (1, 1.1, 1.2, 2...)
+    // The Map iteration order is insertion order, but if we replaced a key, does it stay?
+    // Map order is insertion order of KEYS. Replacing value doesn't change key order. 
+    // BUT if we encountered 5.2 (stub) then 5.2 (real), the key "5.2" was inserted early.
+    // So the position is correct (where the first 5.2 appeared).
+
+    // However, if the text structure was: 5.1 -> 5.2 (stub) -> 5.2 (real).
+    // The output will be 5.1 -> 5.2 (real). Correct.
+
+    const finalSections: string[] = []
+
+    // Add preambles if any
+    preambleSections.forEach(s => {
+      if (s.header) finalSections.push(s.header);
+      finalSections.push(s.content.join('\n'))
+    })
+
+    // Add best chapters
+    for (const [key, sec] of bestSections) {
+      if (sec) { // type check
+        finalSections.push(sec.header)
+        finalSections.push(sec.content.join('\n'))
+      }
+    }
+
+    combinedContent = finalSections.join('\n')
+    totalWordCount = combinedContent.split(/\s+/).length
+
+    if (sections.length > bestSections.size + preambleSections.length) {
+      console.log(`[ThesisGeneration] Deduplication complete. Removed ${sections.length - (bestSections.size + preambleSections.length)} duplicate sections.`)
     }
 
     // Attach structure to the result?
@@ -5744,6 +5828,14 @@ async function humanizeChapterPipeline(content: string, thesisData: ThesisData):
 
   const lang = thesisData.language || 'german'
   const isStrict = true // Always preserve structure
+
+  // GUARD: Skip empty or very short chapters (e.g. wrappers)
+  // If content is just a header "## 1. Intro", do NOT send to AI, it will hallucinate text.
+  const stripHeaders = content.replace(/^#+\s+.*$/gm, '').trim()
+  if (stripHeaders.length < 50) {
+    console.log(`[HumanizeV2] Content too short/empty (${stripHeaders.length} body chars). Skipping to prevent hallucinations.`)
+    return content
+  }
 
   // 1. Calibrator
   console.log('[HumanizeV2] Step 1: Calibrator')
