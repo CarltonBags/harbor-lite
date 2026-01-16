@@ -5352,31 +5352,58 @@ ${data.sentences.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
 ${data.paragraph}
 
 **DEIN ENTWURF (Nur den Text):**`
-      : `You are a professional ghostwriter. Your goal is to rewrite this academic text to sound 100% human-authored and handcrafted.
+      : `You are a senior academic editor who specializes in making AI-generated text undetectable. Your expertise is in mimicking the natural imperfections of human academic writing.
 
-**TASK:**
-Humanize the following paragraph. Break rigid academic templates. The text must "breathe".
+**MISSION:**
+Transform this paragraph so Winston AI, GPTZero, and Turnitin score it as 95%+ human-written. The current text has characteristic AI patterns that must be eliminated.
 
-**ABSOLUTELY CRITICAL RULES:**
-1. **PRESERVE CONTENT 100%:** Facts, data, names, and arguments must NOT be changed.
-2. **CITATIONS SACRED:** (Smith, 2023, p. 14) must remain EXACTLY as is.
-3. **TONE:** Academic but fluid and elegant (like a seasoned professor, not a student or AI).
+**IRON RULES (NEVER BREAK):**
+1. **Content stays identical:** All facts, data, arguments, citations (Author, Year, p. X) remain EXACTLY as given.
+2. **Academic register:** Formal scholarly tone. No slang, no contractions, no first person.
+3. **Length cap:** Output must NOT exceed input length. Condensing is fine; padding is forbidden.
 
-**ANTI-AI STRATEGIES (CRITICAL!):**
-- **Sentence Length Chaos:** Mix extremely short sentences (4-6 words) with very complex structures.
-- **Human Connectors:** Instead of "Furthermore", "Moreover", "Additionally" → Use "Strikingly", "It is worth noting", "Rather".
-- **Emotional Intelligence:** Use words like "pressing", "surprising", "significant", "fragile" to emphasize weight.
-- **Avoid Passive:** Use active voice where possible.
-- **No Templates:** Avoid "This section discusses..." or "In conclusion...". Jump straight into the argument.
-- **LENGTH:** The text must NOT become longer! Shortening is allowed, inflating is FORBIDDEN. Stick strictly to the information density of the original.
+**ENGLISH-SPECIFIC ANTI-DETECTION TECHNIQUES (CRITICAL):**
 
-**PARTICULARLY PROBLEMATIC SENTENCES (Focus on these):**
+1. **BURSTINESS (Most Important for Winston AI):**
+   - REQUIRE at least one sentence under 6 words ("This proved decisive.")
+   - REQUIRE at least one sentence over 28 words with embedded clauses
+   - NEVER have 3 consecutive sentences within ±4 words of each other
+   - Create deliberately "jagged" rhythm—not flowing prose
+
+2. **PERPLEXITY BOOSTING (Critical for GPTZero):**
+   - Avoid the most predictable word at each juncture
+   - Use concrete nouns instead of abstract placeholders ("the mechanism" → "the feedback loop")
+   - Vary your sentence openers: start 40%+ with something OTHER than subject
+   - Deploy uncommon but appropriate synonyms (e.g., "posit" instead of "suggest", "contend" instead of "argue")
+
+3. **KILL THESE AI MARKERS (2025 Detector Signatures):**
+   - BANNED connectors: "Furthermore", "Moreover", "Additionally", "In conclusion", "It is important to note", "It should be noted"
+   - BANNED LLM words: "delves", "crucial", "pivotal", "landscape", "multifaceted", "nuanced", "paramount", "comprehensive", "underscore", "realm", "tapestry"
+   - BANNED patterns: "X? Y." (rhetorical Q&A), "The [noun] of [noun]" repetition, triple-adjective stacks
+   - REPLACE with: "Notably,", "Here,", "Against this backdrop,", "A closer look reveals", "In practice,", "Tellingly,"
+
+4. **SYNTAX SCRAMBLING:**
+   - Vary clause order: sometimes subordinate-first, sometimes main-first
+   - Use parenthetical asides with em-dashes sparingly
+   - Mix active and passive voice within the paragraph (60/40 active)
+   - Occasionally front an adverbial: "Unexpectedly, the data showed..."
+
+5. **ACADEMIC HEDGING (English-specific):**
+   - Use: "appears to", "seemingly", "to some extent", "arguably", "in certain respects"
+   - But NEVER hedge when describing your own thesis structure—be definitive there
+
+6. **NATURAL ASYMMETRY:**
+   - Paragraph shouldn't feel "balanced"—let one idea get more words than others
+   - Transitions can be abrupt where logically appropriate
+   - Vary punctuation: colon, semicolon, em-dash, parentheses—not just commas
+
+**FLAGGED SENTENCES (Rewrite these most aggressively):**
 ${data.sentences.map((s, i) => `${i + 1}. "${s}"`).join('\n')}
 
 **ORIGINAL PARAGRAPH:**
 ${data.paragraph}
 
-**YOUR DRAFT (Text only):**`
+**YOUR REWRITE (paragraph text only, no commentary):**`
 
     // Retry loop for paragraph rewriting (up to 3 attempts)
     const MAX_PARAGRAPH_RETRIES = 3
@@ -5530,51 +5557,49 @@ ${batch.map((s, idx) => `${idx + 1}. ${s}`).join('\n\n')}
 **Format:**
 Antworte NUR mit einem JSON-Array der umgeschriebenen Sätze. Keine Erklärungen.
 ["Umgeschriebener Satz 1", "Umgeschriebener Satz 2", ...]`
-      : `You are an expert at making academic texts sound more human without changing their meaning.
+      : `You are an AI detection evasion specialist for English academic texts. Your job: rewrite sentences so they score 95%+ human on Winston AI and GPTZero.
 
-**Task:**
-Rewrite the following sentences to sound more natural and human. Your goal is to make these sentences pass AI detectors (like Winston AI, GPTZero) as "human-written".
+**TASK:** Rewrite these sentences. Each rewrite must be undetectable as AI-generated while preserving 100% of the factual content.
 
-**CRITICAL Rules for Maximum "Human Score":**
+**ENGLISH-SPECIFIC RULES (CRITICAL FOR DETECTION EVASION):**
 
-1. **EXTREME Sentence Burstiness (MOST IMPORTANT RULE):**
-   - At least 1 sentence per batch MUST be UNDER 8 words (e.g., "That changed everything.")
-   - At least 1 sentence per batch MUST be OVER 30 words
-   - NEVER have 3 consecutive sentences with similar length (±5 words)
-   - Rhythm should feel "bumpy", not smoothly flowing
+1. **EXTREME BURSTINESS (Winston AI's Primary Signal):**
+   - FORCE at least 1 sentence under 7 words in every batch ("The effect was immediate.")
+   - FORCE at least 1 sentence over 32 words with nested clauses
+   - NEVER let 3 sentences land within ±5 words of each other
+   - Create intentionally "irregular" rhythm—human writers are inconsistent
 
-2. **AGGRESSIVELY Increase Perplexity:**
-   - Use at least 1-2 unexpected but appropriate synonyms per sentence
-   - Avoid the 3 most predictable word choices for any given term
-   - Occasionally use less frequent words from the academic register
-   - Start AT LEAST 40% of sentences WITHOUT the subject first
+2. **PERPLEXITY MAXIMIZATION (GPTZero's Primary Signal):**
+   - For each key term, use the 2nd or 3rd most likely synonym, not the most obvious
+   - Front-load 50% of sentences with adverbials, participial phrases, or subordinate clauses
+   - Avoid starting with "The", "This", "It", "There" more than once per 4 sentences
+   - Use concrete specifics: "the 1943 conference" not "the relevant meeting"
 
-3. **FORCE Syntax Variation:**
-   - Start some sentences with subordinate clause, participle, or prepositional phrase
-   - Build in parenthetical insertions (using em-dashes or parentheses)
-   - Occasionally use ellipses or shortened constructions
-   - Vary between active and passive voice within a paragraph
+3. **2025 AI MARKER KILL LIST (AUTOMATIC DETECTION TRIGGERS):**
+   BANNED WORDS: "delves", "crucial", "pivotal", "landscape", "multifaceted", "nuanced", "paramount", "comprehensive", "underscore", "realm", "tapestry", "intricacies", "leveraging", "encompass", "embark"
+   BANNED CONNECTORS: "Furthermore", "Moreover", "Additionally", "In conclusion", "It is important to note", "It should be noted", "firstly", "secondly"
+   BANNED PATTERNS: "X? Y." (rhetorical Q&A), "The [noun] of [noun]" chains, "plays a crucial role", "it is worth noting"
+   REPLACE WITH: "Here,", "Notably,", "In practice,", "Tellingly,", "Against this backdrop,", "A closer look shows", "Put differently,"
 
-4. **Natural Imperfections:**
-   - Occasionally use slightly roundabout but correct phrasing
-   - Vary punctuation: em-dash, parentheses, colon, semicolon
-   - Build in conscious slight syntactic "unevenness" (grammatically correct!)
+4. **SYNTAX SCRAMBLING:**
+   - Alternate clause positioning: subordinate-first, then main-first
+   - Deploy em-dashes for asides—but sparingly
+   - Mix active (60%) and passive (40%) voice
+   - Use semicolons and colons to create unexpected rhythm breaks
 
-5. **AI MARKER KILL LIST 2025 (ABSOLUTELY FORBIDDEN):**
-   - OLD Markers: "firstly", "furthermore", "moreover", "in conclusion", "additionally", "in this context", "it is important to note", "regarding"
-   - NEW Markers: "delves into", "crucial", "pivotal", "landscape", "embark", "realm", "tapestry", "multifaceted", "nuanced", "underscore", "paramount", "comprehensive"
-   - PATTERNS: "X? Y." (Q&A style) → FORBIDDEN, make normal statement
-   - PRONOUNS: "We", "I", "One" (generic) → FORBIDDEN, use passive voice
+5. **NATURAL HEDGING (English academic style):**
+   - Use: "appears to", "seemingly", "to some extent", "arguably", "suggests that"
+   - But be DEFINITIVE when describing your own work/thesis structure
 
-6. **Preserve Content 100%:**
-   - Keep ALL facts, data, names exactly as they are
-   - CITATIONS (e.g., (Smith, 2023, p. 14)) NEVER change or remove!
+6. **CONTENT PRESERVATION (SACRED):**
+   - All facts, names, dates, numbers: UNCHANGED
+   - Citations like (Author, Year, p. X): EXACTLY as given, no modifications
 
-**Sentences to rewrite:**
+**SENTENCES TO REWRITE:**
 ${batch.map((s, idx) => `${idx + 1}. ${s}`).join('\n\n')}
 
-**Format:**
-Respond ONLY with a JSON array of rewritten sentences. No explanations.
+**FORMAT:**
+Respond ONLY with a JSON array of the rewritten sentences. No explanations, no commentary.
 ["Rewritten sentence 1", "Rewritten sentence 2", ...]`
 
     try {
@@ -6365,6 +6390,29 @@ H. **Avoid AI-typical Phrases (ABSOLUTELY CRITICAL):**
    - DO NOT: "It is important to note that...", "It should be mentioned that...", "It is noteworthy that...", "It is interesting to observe that...", "It is worth mentioning that...".
    - Instead: Direct statements without such introductions.
    - Avoid overly polite or explanatory phrases.
+
+H2. **2025 AI MARKER KILL LIST (AUTOMATIC DETECTION TRIGGERS - MEMORIZE THESE):**
+   BANNED WORDS (Winston AI, GPTZero, Turnitin flag these):
+   - "delves", "crucial", "pivotal", "landscape", "multifaceted", "nuanced", "paramount", "comprehensive"
+   - "underscore", "realm", "tapestry", "intricacies", "leveraging", "encompass", "embark", "foster"
+   - "facilitate", "robust", "seamless", "cutting-edge", "groundbreaking", "holistic", "synergy"
+   
+   BANNED CONNECTOR WORDS:
+   - "Furthermore", "Moreover", "Additionally", "In conclusion", "It is important to note"
+   - "It should be noted", "firstly", "secondly", "lastly", "in summary"
+   
+   BANNED PATTERNS:
+   - "X? Y." (rhetorical question-answer) → CONVERT TO STATEMENT
+   - "The [noun] of [noun] of [noun]" chains → SIMPLIFY
+   - "plays a crucial role" → "affects" or "shapes"
+   - "it is worth noting that" → DELETE, state directly
+   - Triple-adjective stacks ("important, significant, and crucial") → USE ONE
+   
+   SAFE REPLACEMENTS:
+   - "delves into" → "examines", "explores", "investigates"
+   - "crucial" → "significant", "key", "central"
+   - "Furthermore" → "Here,", "Notably,", "In practice,", "Tellingly,"
+   - "In conclusion" → "Ultimately,", "In the end,", just start concluding
 
 I. **Aggressive Burstiness (ABSOLUTELY CRITICAL FOR ZEROGPT):**
    - Create extreme sentence length variations: 3-word sentence, then 30-word sentence, then 12-word sentence.
