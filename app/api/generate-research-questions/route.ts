@@ -4,7 +4,7 @@ import { env } from '@/lib/env'
 
 export async function POST(request: Request) {
   try {
-    const { topic, field, thesisType } = await request.json()
+    const { topic, field, thesisType, language } = await request.json()
 
     if (!topic || !field) {
       return NextResponse.json(
@@ -20,37 +20,68 @@ export async function POST(request: Request) {
       )
     }
 
+    const isGerman = !language || language === 'german' || language === 'de'
+
     const thesisTypeLabels: Record<string, string> = {
-      hausarbeit: 'Hausarbeit',
-      seminararbeit: 'Seminararbeit',
-      bachelor: 'Bachelorarbeit',
+      hausarbeit: isGerman ? 'Hausarbeit' : 'Term Paper',
+      seminararbeit: isGerman ? 'Seminararbeit' : 'Seminar Paper',
+      bachelor: isGerman ? 'Bachelorarbeit' : 'Bachelor Thesis',
+      master: isGerman ? 'Masterarbeit' : 'Master Thesis',
     }
+
+    const typeLabel = thesisTypeLabels[thesisType] || (isGerman ? 'Bachelorarbeit' : 'Bachelor Thesis')
 
     // Determine if this is a source-based thesis (no own research/methodology)
     const isSourceBasedThesis = thesisType === 'hausarbeit' || thesisType === 'seminararbeit'
 
-    const sourceBasedInstruction = isSourceBasedThesis
-      ? `WICHTIG: Diese ${thesisTypeLabels[thesisType]} basiert NUR auf Literaturrecherche und Quellenanalyse.
-- Die Forschungsfragen sollten KEINE eigene empirische Forschung erfordern
-- Geeignet sind Fragen wie: "Wie wird X in der Literatur definiert?", "Welche Ansätze gibt es zu Y?", "Wie hat sich Z entwickelt?"
-- NICHT geeignet sind Fragen wie: "Welche Auswirkungen hat X?" (wenn eigene Datenerhebung nötig wäre)`
-      : `Diese ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'} kann eigene Forschung/Methodik enthalten.
-- Die Forschungsfragen können empirische Untersuchungen erfordern`
+    let sourceBasedInstruction = ''
+    if (isGerman) {
+      sourceBasedInstruction = isSourceBasedThesis
+        ? `WICHTIG: Diese ${typeLabel} basiert NUR auf Literaturrecherche und Quellenanalyse.
+  - Die Forschungsfragen sollten KEINE eigene empirische Forschung erfordern
+  - Geeignet sind Fragen wie: "Wie wird X in der Literatur definiert?", "Welche Ansätze gibt es zu Y?", "Wie hat sich Z entwickelt?"
+  - NICHT geeignet sind Fragen wie: "Welche Auswirkungen hat X?" (wenn eigene Datenerhebung nötig wäre)`
+        : `Diese ${typeLabel} kann eigene Forschung/Methodik enthalten.
+  - Die Forschungsfragen können empirische Untersuchungen erfordern`
+    } else {
+      sourceBasedInstruction = isSourceBasedThesis
+        ? `IMPORTANT: This ${typeLabel} is based ONLY on literature review and source analysis.
+  - Research questions should NOT require empirical research.
+  - Suitable: "How is X defined in literature?", "What approaches exist for Y?", "How has Z developed?"
+  - NOT suitable: "What is the impact of X?" (if it requires data collection)`
+        : `This ${typeLabel} may include original research/methodology.
+  - Research questions typically require empirical investigation.`
+    }
 
-    const prompt = `Du bist ein akademischer Berater. Generiere 5 präzise, gut formulierte Forschungsfragen für eine ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'} im Fachbereich ${field} zum Thema "${topic}".
+    const prompt = isGerman
+      ? `Du bist ein akademischer Berater. Generiere 5 präzise, gut formulierte Forschungsfragen für eine ${typeLabel} im Fachbereich ${field} zum Thema "${topic}".
 
 ${sourceBasedInstruction}
 
 Die Forschungsfragen sollten:
 - Wissenschaftlich präzise und klar formuliert sein
 - Zum Thema und Fachbereich passen
-- Für eine ${thesisTypeLabels[thesisType] || 'Bachelorarbeit'} angemessen sein
+- Für eine ${typeLabel} angemessen sein
 - Verschiedene Aspekte des Themas abdecken
-- **Allgemein genug sein, um durch Standardliteratur beantwortbar zu sein** (Vermeide extrem spezifische Messgrößen oder Nischen-Szenarien ohne Literatur, z.B. "Muskelwachstum nach exakt 16 Tagen")
-- **Fokussiere auf Konzepte und Zusammenhänge**, nicht auf anekdotische Details
+- **Allgemein genug sein, um durch Standardliteratur beantwortbar zu sein**
+- **Fokussiere auf Konzepte und Zusammenhänge**
 
-Antworte NUR mit einer JSON-Liste von genau 5 Forschungsfragen, ohne zusätzlichen Text. Format:
+Antworte NUR mit einer JSON-Liste von genau 5 Forschungsfragen auf DEUTSCH, ohne zusätzlichen Text. Format:
 ["Frage 1", "Frage 2", "Frage 3", "Frage 4", "Frage 5"]`
+      : `You are an academic advisor. Generate 5 precise, well-formulated research questions for a ${typeLabel} in the field of ${field} on the topic "${topic}".
+
+${sourceBasedInstruction}
+
+The research questions should:
+- Be scientifically precise and clearly formulated
+- Fit the topic and field
+- Be appropriate for a ${typeLabel}
+- Cover different aspects of the topic
+- **Be general enough to be answerable by standard literature**
+- **Focus on concepts and relationships**
+
+Reply ONLY with a JSON list of exactly 5 research questions in ENGLISH, without extra text. Format:
+["Question 1", "Question 2", "Question 3", "Question 4", "Question 5"]`
 
     // Initialize Google Gen AI SDK
     const ai = new GoogleGenAI({ apiKey: env.GEMINI_KEY })

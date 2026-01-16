@@ -13,8 +13,11 @@ export async function createThesis(
     research_question: string
     citation_style: string
     target_length: number
+    target_length: number
     length_unit: string
+    language: string
     outline?: any
+    metadata?: any
   }
 ): Promise<Thesis> {
   const supabase = createSupabaseClient()
@@ -30,7 +33,9 @@ export async function createThesis(
       citation_style: thesisData.citation_style,
       target_length: thesisData.target_length,
       length_unit: thesisData.length_unit,
+      language: thesisData.language || 'german',
       outline: thesisData.outline || null,
+      metadata: thesisData.metadata || null,
       status: 'draft',
     })
     .select()
@@ -55,13 +60,16 @@ export async function updateThesis(
     research_question: string
     citation_style: string
     target_length: number
+
     length_unit: string
+    language: string
     outline: any
     file_search_store_id: string
     uploaded_sources: any
     status: string
     critique_report: string
     critique_history: any[]
+    metadata: any
   }>
 ): Promise<Thesis> {
   const supabase = createSupabaseClient()

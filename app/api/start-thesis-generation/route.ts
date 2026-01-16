@@ -169,7 +169,7 @@ export async function POST(request: Request) {
         lengthUnit: thesis.length_unit,
         outline: thesis.outline,
         fileSearchStoreId: fileSearchStoreId,
-        language: thesis.metadata?.language || 'german',
+        language: thesis.language || thesis.metadata?.language || 'german',
         mandatorySources,
       },
     }

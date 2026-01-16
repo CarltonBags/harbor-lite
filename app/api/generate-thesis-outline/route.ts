@@ -322,25 +322,31 @@ These elements are AUTOMATICALLY added by the system and must NOT appear in the 
     })
 
     // Validate and normalize structure
+    const isGerman = !language || language === 'german' || language === 'de'
+
+    const defaultChapterTitle = isGerman ? 'Unbenanntes Kapitel' : 'Untitled Chapter'
+    const defaultSectionTitle = isGerman ? 'Unbenannter Abschnitt' : 'Untitled Section'
+    const defaultSubsectionTitle = isGerman ? 'Unbenannter Unterabschnitt' : 'Untitled Subsection'
+
     const validatedOutline = filteredOutline.map((item: any, index: number) => {
       const chapterNumber = item.number || String(index + 1)
       const sections = Array.isArray(item.sections) ? item.sections.map((section: any, secIndex: number) => {
         const sectionNumber = section.number || `${chapterNumber}.${secIndex + 1}`
         const subsections = Array.isArray(section.subsections) ? section.subsections.map((subsection: any, subIndex: number) => ({
           number: subsection.number || `${sectionNumber}.${subIndex + 1}`,
-          title: subsection.title || 'Unbenannter Unterabschnitt',
+          title: subsection.title || defaultSubsectionTitle,
         })) : []
 
         return {
           number: sectionNumber,
-          title: section.title || 'Unbenannter Abschnitt',
+          title: section.title || defaultSectionTitle,
           subsections,
         }
       }) : []
 
       return {
         number: chapterNumber,
-        title: item.title || item.chapter || 'Unbenanntes Kapitel',
+        title: item.title || item.chapter || defaultChapterTitle,
         sections,
       }
     })

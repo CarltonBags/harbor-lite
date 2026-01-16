@@ -61,6 +61,7 @@ export interface Thesis {
   citation_style: string
   target_length: number
   length_unit: string
+  language: string
   outline: OutlineChapter[] | null
   latex_content: string | null
   pdf_url: string | null

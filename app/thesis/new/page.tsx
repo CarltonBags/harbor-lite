@@ -492,7 +492,8 @@ const NewThesisContent = () => {
       const suggestions = await generateResearchQuestionSuggestions(
         dataToUse.topic,
         fieldValue,
-        dataToUse.type || 'bachelor'
+        dataToUse.type || 'bachelor',
+        dataToUse.language || 'german' // Default to german if missing
       )
       setResearchQuestionSuggestions(suggestions)
     } catch (error) {
@@ -543,6 +544,8 @@ const NewThesisContent = () => {
           citation_style: formData.citationStyle || 'apa',
           target_length: avgWords,
           length_unit: formData.lengthUnit, // Store the original unit (pages or words)
+          language: formData.language || 'german',
+          metadata: { language: formData.language || 'german' },
         })
       } else {
         // Create new thesis
@@ -554,6 +557,8 @@ const NewThesisContent = () => {
           citation_style: formData.citationStyle || 'apa',
           target_length: avgWords,
           length_unit: formData.lengthUnit, // Store the original unit (pages or words)
+          language: formData.language || 'german',
+          metadata: { language: formData.language || 'german' },
         })
         setThesisId(newThesis.id)
       }
@@ -1174,6 +1179,8 @@ const NewThesisContent = () => {
           target_length: avgWords,
           length_unit: formData.lengthUnit,
           outline: outline,
+          language: formData.language || 'german',
+          metadata: { language: formData.language || 'german' },
         })
         currentThesisId = newThesis.id
         setThesisId(currentThesisId)
@@ -1207,6 +1214,8 @@ const NewThesisContent = () => {
           target_length: avgWords,
           length_unit: formData.lengthUnit,
           outline: outline,
+          language: formData.language || 'german',
+          metadata: { language: formData.language || 'german' },
         })
       }
 
@@ -2382,7 +2391,8 @@ const NewThesisContent = () => {
 async function generateResearchQuestionSuggestions(
   topic: string,
   field: string,
-  thesisType: ThesisType
+  thesisType: ThesisType,
+  language: 'german' | 'english'
 ): Promise<string[]> {
   const response = await fetch('/api/generate-research-questions', {
     method: 'POST',
@@ -2393,6 +2403,7 @@ async function generateResearchQuestionSuggestions(
       topic,
       field,
       thesisType,
+      language,
     }),
   })
 
