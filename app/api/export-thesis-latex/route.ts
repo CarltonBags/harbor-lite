@@ -348,8 +348,53 @@ function convertMarkdownToLaTeX(
   footnotes: Record<number, string>,
   isGerman: boolean
 ): string {
+  // FIRST: Normalize all Unicode to NFC form
+  // This converts decomposed characters (a + combining diaeresis) to composed form (ä)
+  // Without this, decomposed umlauts won't match our placeholder patterns
+  try {
+    content = content.normalize('NFC')
+  } catch (e) {
+    // If normalization fails, continue with original
+  }
+
+  // ALSO: Explicitly handle decomposed umlauts that NFC might have missed
+  content = content.replace(/a\u0308/g, 'ä')
+  content = content.replace(/o\u0308/g, 'ö')
+  content = content.replace(/u\u0308/g, 'ü')
+  content = content.replace(/A\u0308/g, 'Ä')
+  content = content.replace(/O\u0308/g, 'Ö')
+  content = content.replace(/U\u0308/g, 'Ü')
+
+  // CRITICAL: Protect all German umlauts with placeholders BEFORE any other processing
+  // This prevents normalizeText and other functions from corrupting them
+  const umlautMap: [string, string][] = [
+    ['ä', '___UMLAUT_A_LOWER___'],
+    ['ö', '___UMLAUT_O_LOWER___'],
+    ['ü', '___UMLAUT_U_LOWER___'],
+    ['Ä', '___UMLAUT_A_UPPER___'],
+    ['Ö', '___UMLAUT_O_UPPER___'],
+    ['Ü', '___UMLAUT_U_UPPER___'],
+    ['ß', '___UMLAUT_SS___'],
+  ]
+
+  // Protect umlauts
+  for (const [umlaut, placeholder] of umlautMap) {
+    content = content.split(umlaut).join(placeholder)
+  }
+
   // Normalize content first to fix encoding issues
   content = normalizeText(content)
+
+  // PRE-PROCESSING: Split inline headings onto their own lines
+  // This fixes cases like "...text.## 2 Chapter" where headings are concatenated
+  // The regex looks for ## preceded by non-whitespace and adds a newline before it
+  content = content.replace(/([^\n])(#{1,6}\s+\d)/g, '$1\n\n$2')
+
+  // Restore umlauts from placeholders
+  for (const [umlaut, placeholder] of umlautMap) {
+    content = content.split(placeholder).join(umlaut)
+  }
+
   const lines = content.split('\n')
   let latex = ''
   let inCodeBlock = false
@@ -1176,38 +1221,43 @@ function normalizeText(text: string): string {
   normalized = normalized.replace(/([a-zäöü])SZ([A-ZÄÖÜ])/g, '$1 Z$2')
 
   // Fix incorrect umlauts in English words
-  // "Äre" -> "Are" (common English word pattern)
-  normalized = normalized.replace(/\bÄre\b/gi, 'Are')
-  normalized = normalized.replace(/\bÄnd\b/gi, 'And')
-  normalized = normalized.replace(/\bÄny\b/gi, 'Any')
-  normalized = normalized.replace(/\bÄll\b/gi, 'All')
-  normalized = normalized.replace(/\bÄre\s+You\b/gi, 'Are You')
+  // NOTE: We use (^|\\s) and (\\s|$) instead of \\b because JavaScript's \\b 
+  // treats non-ASCII characters like ä as word boundaries, which causes
+  // "Sphäre" to incorrectly match "Äre" and become "SphAre"
+  normalized = normalized.replace(/(^|\s)Äre(\s|$)/gi, '$1Are$2')
+  normalized = normalized.replace(/(^|\s)Änd(\s|$)/gi, '$1And$2')
+  normalized = normalized.replace(/(^|\s)Äny(\s|$)/gi, '$1Any$2')
+  normalized = normalized.replace(/(^|\s)Äll(\s|$)/gi, '$1All$2')
+  normalized = normalized.replace(/(^|\s)Äre\s+You(\s|$)/gi, '$1Are You$2')
 
   // Fix standalone "Ä" at start of English words (followed by lowercase letters)
   // Only if it's clearly an English word pattern
-  normalized = normalized.replace(/\bÄ([a-z]{2,})\b/g, (match, rest) => {
+  // Use (^|\s) instead of \b to avoid Unicode word boundary issues
+  normalized = normalized.replace(/(^|\s)Ä([a-z]{2,})(\s|$)/g, (match, pre, rest, post) => {
     // Common English word patterns that start with "A"
     const englishPatterns = ['re', 'nd', 'ny', 'll', 'nd', 're', 'ct', 'ble', 'bout', 'fter', 'gain', 'lso', 'mong', 'nother', 'lready', 'lways', 'lthough', 'mong', 'nswer', 'ppear', 'pply', 'pproach', 'rrange', 'rticle', 'spect', 'ssume', 'ttach', 'ttack', 'ttempt', 'ttend', 'ttitude', 'ttract', 'udience', 'uthor', 'vailable', 'verage', 'void', 'ward', 'ware', 'wake', 'ward', 'way']
     if (englishPatterns.some(pattern => rest.toLowerCase().startsWith(pattern))) {
-      return 'A' + rest
+      return pre + 'A' + rest + post
     }
     return match
   })
 
   // Fix "Ö" that should be "O" in English contexts
-  normalized = normalized.replace(/\bÖ([a-z]{2,})\b/g, (match, rest) => {
+  // Use (^|\s) instead of \b to avoid Unicode word boundary issues
+  normalized = normalized.replace(/(^|\s)Ö([a-z]{2,})(\s|$)/g, (match, pre, rest, post) => {
     const englishPatterns = ['nly', 'nce', 'pen', 'ver', 'ther', 'rder', 'ffer', 'ffice', 'ften', 'ther', 'wner', 'bject', 'bserve', 'btain', 'bvious', 'ccur', 'cean', 'ctober', 'ffice', 'fficer', 'ften', 'nion', 'nly', 'pen', 'peration', 'pinion', 'pportunity', 'pposite', 'ption', 'rder', 'rganization', 'riginal', 'ther', 'utcome', 'utside', 'ver', 'wner']
     if (englishPatterns.some(pattern => rest.toLowerCase().startsWith(pattern))) {
-      return 'O' + rest
+      return pre + 'O' + rest + post
     }
     return match
   })
 
   // Fix "Ü" that should be "U" in English contexts
-  normalized = normalized.replace(/\bÜ([a-z]{2,})\b/g, (match, rest) => {
+  // Use (^|\s) instead of \b to avoid Unicode word boundary issues
+  normalized = normalized.replace(/(^|\s)Ü([a-z]{2,})(\s|$)/g, (match, pre, rest, post) => {
     const englishPatterns = ['nder', 'nion', 'nique', 'nit', 'nited', 'niversity', 'nless', 'ntil', 'pdate', 'pon', 'pper', 'rban', 'rge', 'rgent', 'sually', 'tilize']
     if (englishPatterns.some(pattern => rest.toLowerCase().startsWith(pattern))) {
-      return 'U' + rest
+      return pre + 'U' + rest + post
     }
     return match
   })
@@ -1266,6 +1316,30 @@ function escapeLaTeXForText(text: string): string {
 function sanitizeForLaTeX(text: string): string {
   if (!text) return ''
 
+  // IMPORTANT: Normalize Unicode to NFC first!
+  // This converts decomposed characters (a + combining diaeresis) to composed form (ä)
+  // Without this, the regex below may fail to recognize umlauts properly
+  try {
+    text = text.normalize('NFC')
+  } catch (e) {
+    // If normalization fails, continue with original
+  }
+
+  // MANUAL FIX: Handle decomposed umlauts that NFC might have missed
+  // Replace base letter + combining diaeresis (U+0308) with composed form
+  text = text.replace(/a\u0308/g, 'ä')
+  text = text.replace(/o\u0308/g, 'ö')
+  text = text.replace(/u\u0308/g, 'ü')
+  text = text.replace(/A\u0308/g, 'Ä')
+  text = text.replace(/O\u0308/g, 'Ö')
+  text = text.replace(/U\u0308/g, 'Ü')
+
+  // Also handle other extended Latin characters that look like umlauts
+  // Latin Extended-A: ă (U+0103) -> a, etc. - but we want to keep actual umlauts
+  // Latin Extended-B variants
+  text = text.replace(/ǟ/g, 'ä')  // a with diaeresis and macron
+  text = text.replace(/ǻ/g, 'ä')  // a with ring and acute
+
   // Define allowed characters:
   // - Latin alphabet: A-Z, a-z
   // - Numbers: 0-9
@@ -1273,8 +1347,28 @@ function sanitizeForLaTeX(text: string): string {
   // - Basic punctuation: . , ; : ! ? - ( ) [ ] " ' / 
   // - Spaces and newlines
 
-  return text.replace(/[^\x20-\x7E\xC0-\xFF\n\r\t]/g, (match) => {
-    // Check if it's a German umlaut or allowed extended ASCII
+  // First, explicitly preserve German umlauts by replacing them with placeholders
+  const umlauts: [string, string][] = [
+    ['ä', '__UMLAUT_A_LOWER__'],
+    ['ö', '__UMLAUT_O_LOWER__'],
+    ['ü', '__UMLAUT_U_LOWER__'],
+    ['Ä', '__UMLAUT_A_UPPER__'],
+    ['Ö', '__UMLAUT_O_UPPER__'],
+    ['Ü', '__UMLAUT_U_UPPER__'],
+    ['ß', '__UMLAUT_SS__'],
+  ]
+
+  for (const [umlaut, placeholder] of umlauts) {
+    text = text.split(umlaut).join(placeholder)
+  }
+
+  // Now sanitize - remove non-Latin characters
+  text = text.replace(/[^\x20-\x7E\xC0-\xFF\n\r\t_]/g, (match) => {
+    // Check if it's a placeholder (starts with __)
+    if (match.startsWith('_')) {
+      return match
+    }
+
     const code = match.charCodeAt(0)
 
     // Allow German umlauts and common Western European characters
@@ -1291,6 +1385,13 @@ function sanitizeForLaTeX(text: string): string {
     // Remove everything else (Cyrillic, Greek, CJK, Arabic, etc.)
     return ''
   })
+
+  // Restore German umlauts from placeholders
+  for (const [umlaut, placeholder] of umlauts) {
+    text = text.split(placeholder).join(umlaut)
+  }
+
+  return text
 }
 
 function escapeLaTeX(text: string): string {

@@ -5746,6 +5746,14 @@ const HUMANIZER_PROMPTS = {
            - NIEMALS eine Zitation wie (Müller, 2020, S. 12) anfassen, ändern, verschieben oder umformatieren.
            - NIEMALS eine Seitenzahl ändern.
         
+        6. **KEINE RELATIVIERUNG IN AUFBAU DER ARBEIT**:
+           - Im Abschnitt "Aufbau der Arbeit" oder bei Kapitelankündigungen (z.B. "Kapitel 2 wird...", "In Kapitel 3...") NIEMALS hedgen!
+           - Die Struktur der Arbeit ist bekannt und definitiv - hier sind Relativierungen unsinnig.
+           - VERBOTEN in Strukturbeschreibungen: "dürfte", "könnte", "scheint", "vermutlich", "möglicherweise", "in gewissem Maße"
+           - STATTDESSEN: "wird", "befasst sich", "untersucht", "analysiert", "widmet sich"
+           - Beispiel FALSCH: "Kapitel 2 dürfte die Grundlagen behandeln"
+           - Beispiel RICHTIG: "Kapitel 2 behandelt die Grundlagen"
+        
         Text zum Kalibrieren:
         "${text}"
         
